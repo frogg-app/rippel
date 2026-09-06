@@ -96,3 +96,33 @@ the array is authoritative.
 ComfyUI's WebSocket vocabulary has moved: recent versions emit `progress_state`
 with per-node state alongside (or instead of) the older flat `progress` frame.
 Handle both; the older one is what this project was originally written against.
+
+---
+
+## Queue
+
+There is one GPU and several people. The queue is therefore a real, visible
+object rather than an implementation detail, and an admin needs to be able to
+act on it.
+
+    GET   /queue                  -> { entries: QueueEntry[], running: QueueEntry | null }
+    POST  /jobs/:id/cancel        existing; owner or admin
+    POST  /queue/:id/priority     { position: 'top' }        admin only
+    DELETE /queue/:id             admin only, cancels someone else's queued job
+
+`QueueEntry` is a `Job` plus who owns it and where it sits:
+
+    { job: Job, position: number, ownerName: string | null, ownerId: Uuid }
+
+Non-admins see the queue too — knowing whether ten jobs are ahead of you is the
+difference between waiting and reloading — but they see only their OWN prompts.
+Another user's entry is present, with its position and a display name, and its
+`job.params` withheld. That is deliberate: the length of the queue is not
+private, but what someone typed into it is.
+
+`Job.queuePosition` stays per-user (how many of *your* jobs are ahead). The
+queue view's `position` is global. Both are needed and they are not the same
+number; do not conflate them.
+
+`job.status` events already fire on every transition, so a client watching the
+socket can keep a queue view live without polling.
