@@ -3,7 +3,7 @@
  * here so callers never reach into the individual modules.
  */
 
-export { compile, dimensionsFor } from './compile.js';
+export { compile, dimensionsFor, videoFrameCount } from './compile.js';
 export type { CompileInput, CompileResult, ResolvedValues, Substitution } from './compile.js';
 export { ValidationError, TemplateError } from './errors.js';
 export { getPath, setPath, setPaths, hasPath, cloneGraph } from './json-path.js';

@@ -1,0 +1,124 @@
+{
+  "4": {
+    "class_type": "CheckpointLoaderSimple",
+    "inputs": {
+      "ckpt_name": "ltx-video-2b-v0.9.1.safetensors"
+    },
+    "_meta": { "title": "Load LTX-Video checkpoint" }
+  },
+  "12": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "t5xxl_fp16.safetensors",
+      "type": "ltxv"
+    },
+    "_meta": { "title": "Load T5 text encoder" }
+  },
+  "6": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "",
+      "clip": ["12", 0]
+    },
+    "_meta": { "title": "Positive prompt" }
+  },
+  "7": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "",
+      "clip": ["12", 0]
+    },
+    "_meta": { "title": "Negative prompt" }
+  },
+  "10": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "example.png"
+    },
+    "_meta": { "title": "First frame" }
+  },
+  "17": {
+    "class_type": "LTXVPreprocess",
+    "inputs": {
+      "image": ["10", 0],
+      "img_compression": 35
+    },
+    "_meta": { "title": "Motion" }
+  },
+  "18": {
+    "class_type": "LTXVImgToVideo",
+    "inputs": {
+      "positive": ["6", 0],
+      "negative": ["7", 0],
+      "vae": ["4", 2],
+      "image": ["17", 0],
+      "width": 512,
+      "height": 512,
+      "length": 97,
+      "batch_size": 1,
+      "strength": 1.0
+    },
+    "_meta": { "title": "First frame to video" }
+  },
+  "13": {
+    "class_type": "LTXVConditioning",
+    "inputs": {
+      "positive": ["18", 0],
+      "negative": ["18", 1],
+      "frame_rate": 25.0
+    },
+    "_meta": { "title": "Frame-rate conditioning" }
+  },
+  "14": {
+    "class_type": "KSamplerSelect",
+    "inputs": {
+      "sampler_name": "euler"
+    },
+    "_meta": { "title": "Sampler" }
+  },
+  "15": {
+    "class_type": "LTXVScheduler",
+    "inputs": {
+      "steps": 20,
+      "max_shift": 2.05,
+      "base_shift": 0.95,
+      "stretch": true,
+      "terminal": 0.1
+    },
+    "_meta": { "title": "Sigmas" }
+  },
+  "3": {
+    "class_type": "SamplerCustom",
+    "inputs": {
+      "add_noise": true,
+      "noise_seed": 0,
+      "cfg": 3.0,
+      "model": ["4", 0],
+      "positive": ["13", 0],
+      "negative": ["13", 1],
+      "sampler": ["14", 0],
+      "sigmas": ["15", 0],
+      "latent_image": ["18", 2]
+    },
+    "_meta": { "title": "Sample" }
+  },
+  "8": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": ["3", 0],
+      "vae": ["4", 2]
+    },
+    "_meta": { "title": "Decode" }
+  },
+  "9": {
+    "class_type": "SaveWEBM",
+    "inputs": {
+      "images": ["8", 0],
+      "filename_prefix": "comfy-studio/img2vid",
+      "codec": "vp9",
+      "fps": 25.0,
+      "crf": 24.0
+    },
+    "_meta": { "title": "Save" }
+  }
+}

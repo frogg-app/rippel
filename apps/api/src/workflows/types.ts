@@ -69,7 +69,40 @@ export type ParamSource =
   | 'scheduler'
   | 'seed'
   | 'denoise'
-  | 'filenamePrefix';
+  | 'filenamePrefix'
+  // ---------------------------------------------------------------- video
+  /**
+   * Frames per second of the finished clip. Bound in more than one place on
+   * purpose: a video model conditions on the rate it is generating for, and the
+   * encoder has to be told the same number or the file plays at the wrong speed
+   * while every frame in it is correct. Two paths, one source.
+   */
+  | 'fps'
+  /**
+   * How many frames to sample. **Derived, not a field** — `VideoParams` carries
+   * `lengthSeconds` and `fps` because that is what a person picks, and frames
+   * are their product. Storing both would let them disagree.
+   *
+   * The product is then snapped to what the family can actually sample; see
+   * `frameQuantum` on the manifest, and `videoFrameCount` in the compiler.
+   */
+  | 'frameCount'
+  /**
+   * `VideoParams.motion`, verbatim. Deliberately *not* normalised to 0..1 here:
+   * "motion amount" is a different knob on every family (SVD has a trained
+   * motion bucket, LTX-Video has conditioning-image compression, WAN has
+   * neither), so the number means whatever the manifest's constraint says it
+   * means and the UI reads its slider bounds from there.
+   */
+  | 'motion'
+  /**
+   * `VideoParams.cameraPreset`. No template we ship binds it yet: LTX-Video
+   * 0.9.1 has no camera-control input, and the families that do (WAN's
+   * `WanCameraImageToVideo`, or LTX-2's camera LoRAs) need weights nobody has
+   * installed. It is in the vocabulary so the first template that gains one is
+   * a manifest change rather than a compiler change.
+   */
+  | 'cameraPreset';
 
 /**
  * What a value must satisfy before we will write it into a graph. The API
@@ -164,6 +197,19 @@ export interface WorkflowManifest {
    */
   readonly resolutions: ResolutionTable;
   readonly quality: PresetTable;
+  /**
+   * Frame counts this family can sample, expressed as the quantum in
+   * `frameQuantum * n + 1`. Omitted by image templates and by video families
+   * that accept any length.
+   *
+   * The leading `+ 1` is not a fudge: latent-video models encode one key frame
+   * and then groups of N, so LTX-Video accepts 8n+1 (9, 17, …, 97) and WAN
+   * accepts 4n+1. Asking for 100 frames is not rejected by ComfyUI — the latent
+   * node silently rounds — and the clip that comes back is then a different
+   * length from the one we recorded on the job and showed the user. Snapping
+   * here means the number in the library is the number of frames in the file.
+   */
+  readonly frameQuantum?: number;
   /** Omitted by templates that cannot take LoRAs; requesting one is then an error. */
   readonly lora?: LoraChainSpec;
 }

@@ -16,10 +16,17 @@
 import type { JobKind } from '@comfy/shared';
 import type { WorkflowManifest, WorkflowTemplate } from './types.js';
 import { img2imgSdxlTemplate } from './img2img-sdxl.js';
+import { img2vidLtxvTemplate } from './img2vid-ltxv.js';
 import { txt2imgSdxlTemplate } from './txt2img-sdxl.js';
+import { txt2vidLtxvTemplate } from './txt2vid-ltxv.js';
 
 /** Every template we ship. Add new families here and nowhere else. */
-export const TEMPLATES: readonly WorkflowTemplate[] = [txt2imgSdxlTemplate, img2imgSdxlTemplate];
+export const TEMPLATES: readonly WorkflowTemplate[] = [
+  txt2imgSdxlTemplate,
+  img2imgSdxlTemplate,
+  txt2vidLtxvTemplate,
+  img2vidLtxvTemplate,
+];
 
 /**
  * Base-model strings arrive from three places that disagree about spelling:

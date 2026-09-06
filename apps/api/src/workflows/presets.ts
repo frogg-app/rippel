@@ -108,3 +108,94 @@ export function resolutionFor(aspect: AspectRatio): Resolution {
 export function presetFor(quality: QualityPreset): PresetDefaults {
   return QUALITY_PRESETS[quality];
 }
+
+// ---------------------------------------------------------------- video
+
+/**
+ * LTX-Video resolution buckets.
+ *
+ * These are emphatically *not* the SDXL 1MP buckets, and reusing those is the
+ * single easiest way to make video unusable on a 16 GB card. A latent video is
+ * a stack: memory scales with width * height * frames, so 1024x1024 at 97
+ * frames is roughly a hundred times the working set of one 1024x1024 image and
+ * will exhaust any consumer card long before it finishes. Everything here sits
+ * at ~0.25-0.3 MP per frame, which at 97 frames is the same order of magnitude
+ * as a single SDXL image and leaves headroom for the decode.
+ *
+ * Every value is a multiple of 32. LTX-Video's VAE downsamples spatially by 32
+ * (`EmptyLTXVLatentVideo` declares `step: 32` on both axes), so a non-multiple
+ * is rounded by the node and the clip comes back a different size from the one
+ * recorded on the asset row.
+ *
+ * 768x512 is the family's own default and the shape it was trained hardest on;
+ * the buckets below are that budget redistributed across the aspect chips
+ * rather than exact fractions, on the same reasoning as the SDXL table.
+ */
+export const LTXV_RESOLUTIONS: ResolutionTable = {
+  '1:1': { width: 512, height: 512 },
+  '3:2': { width: 672, height: 448 },
+  '2:3': { width: 448, height: 672 },
+  '16:9': { width: 704, height: 384 },
+  '9:16': { width: 384, height: 704 },
+};
+
+/**
+ * The samplers we offer for LTX-Video.
+ *
+ * Much shorter than `SDXL_SAMPLERS`, because the sigma schedule is not a free
+ * choice here: `LTXVScheduler` computes its own shifted sigmas and hands them to
+ * `SamplerCustom`, so all that is left to pick is the integrator. Ancestral and
+ * SDE variants inject fresh noise at every step, which on a video model reads as
+ * per-frame flicker rather than as variety, so they are not offered at all.
+ */
+export const LTXV_SAMPLERS = ['euler', 'dpmpp_2m', 'ddim'] as const;
+
+/**
+ * Quality presets for LTX-Video.
+ *
+ * Step counts are far lower than SDXL's and the guidance far weaker, and both
+ * are properties of the model rather than of our taste: LTX-Video 2B is a
+ * few-step model that has converged by ~20 steps, and Lightricks' own guidance
+ * is cfg ~3. Running it at SDXL's 28 steps and cfg 6.5 gives a saturated,
+ * juddering clip — which is exactly why `PresetTable` hangs off the manifest
+ * instead of being one global table.
+ *
+ * `scheduler` is carried because `PresetDefaults` requires it, but no LTX-Video
+ * template binds it: this graph has no scheduler *widget*, only the
+ * `LTXVScheduler` node, which derives its sigmas from the step count and the
+ * shift constants. The value below is what an Advanced drawer would show if the
+ * family ever gained a scheduler control.
+ */
+export const LTXV_QUALITY_PRESETS: PresetTable = {
+  fast: { steps: 12, cfg: 3.0, sampler: 'euler', scheduler: 'normal' },
+  balanced: { steps: 20, cfg: 3.0, sampler: 'euler', scheduler: 'normal' },
+  high: { steps: 30, cfg: 3.5, sampler: 'euler', scheduler: 'normal' },
+};
+
+/**
+ * LTX-Video samples one key frame plus groups of eight, so a valid length is
+ * `8n + 1` — 9, 17, … 97. See `frameQuantum` on `WorkflowManifest` for why a
+ * length off that grid is worse than an error.
+ */
+export const LTXV_FRAME_QUANTUM = 8;
+
+/**
+ * The frame counts the templates will sample, at the extremes.
+ *
+ * The floor is one quantum: below `8n + 1` there is no clip. The ceiling is a
+ * VRAM budget rather than a model limit — `EmptyLTXVLatentVideo` accepts up to
+ * 16384 — picked so the largest bucket above still decodes at the longest
+ * length on a 16 GB card. 161 frames is 6.4 seconds at the native 25 fps.
+ */
+export const LTXV_MIN_FRAMES = LTXV_FRAME_QUANTUM + 1;
+export const LTXV_MAX_FRAMES = LTXV_FRAME_QUANTUM * 20 + 1;
+
+/**
+ * LTX-Video was trained at 25 fps and `LTXVConditioning` defaults to it. The
+ * bounds are what stays watchable: below ~8 fps the model's own temporal
+ * consistency breaks down, and above 30 the frame budget buys duration nobody
+ * perceives.
+ */
+export const LTXV_NATIVE_FPS = 25;
+export const LTXV_MIN_FPS = 8;
+export const LTXV_MAX_FPS = 30;

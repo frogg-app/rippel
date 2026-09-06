@@ -123,6 +123,43 @@ function initDenoise(params: GenerationParams): number | undefined {
   return init?.influence;
 }
 
+// ---------------------------------------------------------------- video
+
+/**
+ * Frames to sample, from the length and rate the user actually chose.
+ *
+ * `GenerationParams.video` has no frame count and must not gain one: frames are
+ * `lengthSeconds * fps`, and carrying the product alongside its factors is an
+ * invitation for the three to disagree after a re-run edits one of them.
+ *
+ * The product is then snapped up onto the family's `frameQuantum * n + 1` grid
+ * (see the note on `frameQuantum` in workflows/types.ts). Rounding *up* rather
+ * than to nearest is deliberate — a clip that is a fraction of a frame longer
+ * than asked for is unremarkable, one that is shorter looks truncated — and the
+ * snapped value is what the manifest constraint is then checked against, so a
+ * request just under the template's ceiling cannot be pushed over it silently.
+ *
+ * Returns `undefined` when the request carries no video block at all; the
+ * template's `required: true` on the input turns that into the readable
+ * "Frames is required by this model but was not supplied".
+ */
+export function videoFrameCount(
+  params: GenerationParams,
+  manifest: WorkflowManifest,
+): number | undefined {
+  const video = params.video;
+  if (!video) return undefined;
+  const raw = video.lengthSeconds * video.fps;
+  if (!Number.isFinite(raw) || raw <= 0) {
+    throw new ValidationError('frameCount', 'Video length and frame rate must both be positive');
+  }
+  const quantum = manifest.frameQuantum;
+  if (quantum === undefined || quantum <= 1) return Math.round(raw);
+  // ceil onto {1, q+1, 2q+1, ...}; a request for exactly q*n+1 is left alone.
+  const groups = Math.ceil((Math.round(raw) - 1) / quantum);
+  return Math.max(0, groups) * quantum + 1;
+}
+
 /**
  * The single place a binding turns into a value. Returns `undefined` when the
  * request simply doesn't carry one — the caller decides whether that is a
@@ -167,6 +204,19 @@ function resolveBinding(
       // match a file on disk back to the job (and therefore the user) that
       // asked for it. The job id is supplied by the caller via ctx.
       return ctx.filenamePrefix;
+
+    // ------------------------------------------------------------- video
+    // All four read `params.video`, which is absent for every image
+    // capability. Returning undefined there is correct rather than defensive:
+    // an image template binds none of these, so nothing asks.
+    case 'fps':
+      return params.video?.fps;
+    case 'frameCount':
+      return videoFrameCount(params, input.template.manifest);
+    case 'motion':
+      return params.video?.motion;
+    case 'cameraPreset':
+      return params.video?.cameraPreset;
   }
 }
 
