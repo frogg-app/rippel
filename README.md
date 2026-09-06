@@ -45,21 +45,31 @@ family is a new template plus manifest on the server — the frontend does not c
 
 ## About the reported VRAM figure
 
-`/system_stats` reports whatever the driver claims, and that is **not** the card's
-physical memory. On ROCm with DynamicVRAM, and on unified-memory systems, host RAM
-is pooled into the total — a 16 GB card can report 36 GB. No field in ComfyUI's API
-distinguishes the two cases.
+`/system_stats` reports whatever the driver claims about the device ComfyUI selected,
+and that is **not** necessarily the card you meant. Two distinct things inflate it:
 
-So the app shows the figure as *reported* rather than claiming to know your card,
-records host RAM beside it for context, and lets an admin set a per-backend
-`vram_limit_mb` override. The durable fix is empirical: learning each backend's real
-ceiling from observed job outcomes, which is the only approach correct on every vendor.
+- **The wrong device.** A machine with both integrated and discrete graphics enumerates
+  both, and ComfyUI takes device 0 — which on a Ryzen desktop is the iGPU, reporting a
+  large slice of system RAM as its memory. This is not hypothetical: our own test box
+  reported "36.5 GB" for what we assumed was a 16 GB RX 6900 XT, and it turned out to be
+  a `gfx1036` iGPU with one compute unit. It could load a checkpoint but faulted on the
+  first real kernel. Pin the card with `HIP_VISIBLE_DEVICES` (or `--cuda-device`) and
+  check `gcnArchName` before believing any of these numbers.
+- **Pooled host memory.** Even on the right card, ROCm with DynamicVRAM and
+  unified-memory systems pool host RAM into the total, so the figure is a budget rather
+  than a physical size.
+
+No field in ComfyUI's API distinguishes any of these cases. So the app shows the figure
+as *reported* rather than claiming to know your card, records host RAM beside it for
+context, and lets an admin set a per-backend `vram_limit_mb` override. The durable fix is
+empirical: learning each backend's real ceiling from observed job outcomes, which is the
+only approach correct on every vendor.
 
 ## Layout
 
 ```
 apps/api          Fastify + TypeScript. Auth, jobs, backend registry, model catalogue.
-apps/web          Next.js front end.
+apps/web          Vite + React front end.
 packages/shared   Types shared by both. No runtime code.
 docker/           Dockerfiles and the Caddy front door.
 design/           The UI design canvas and its source artboards.
