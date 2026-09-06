@@ -1,0 +1,220 @@
+/**
+ * Tests for the model install transport.
+ *
+ * These run against a stubbed `fetch` rather than a live ComfyUI: the whole
+ * point of the transport is the shape of the conversation with Manager, and
+ * that shape was read off Manager's source. What is worth pinning down is that
+ * we send what its whitelist check expects and interpret its replies correctly
+ * — particularly the failure replies, which are the ones an operator will
+ * actually hit.
+ */
+
+import { afterEach, describe, expect, it, vi } from 'vitest';
+
+import { ComfyManagerTransport } from './transports/comfy-manager.js';
+import { TransportError } from './transport.js';
+import { backendHasFile, folderForType } from './installs.js';
+
+const BASE = 'http://backend:8188';
+
+/** Stub fetch with a handler keyed on the path. */
+function stubFetch(handler: (path: string, init?: RequestInit) => Response | Promise<Response>) {
+  const spy = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+    const path = String(url).slice(BASE.length);
+    return handler(path, init);
+  });
+  vi.stubGlobal('fetch', spy);
+  return spy;
+}
+
+const json = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
+
+afterEach(() => vi.unstubAllGlobals());
+
+describe('ComfyManagerTransport.available', () => {
+  it('is false on a stock ComfyUI, where Manager routes 404', async () => {
+    stubFetch(() => new Response('Not Found', { status: 404 }));
+    expect(await new ComfyManagerTransport(BASE).available()).toBe(false);
+  });
+
+  it('is false when the backend is unreachable rather than throwing', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('ECONNREFUSED'); }));
+    expect(await new ComfyManagerTransport(BASE).available()).toBe(false);
+  });
+
+  it('is true when the queue endpoint answers', async () => {
+    stubFetch(() => json({ total_count: 0, done_count: 0, in_progress_count: 0, is_processing: false }));
+    expect(await new ComfyManagerTransport(BASE).available()).toBe(true);
+  });
+});
+
+describe('ComfyManagerTransport.catalogue', () => {
+  const models = [
+    {
+      name: 'sd_xl_base_1.0.safetensors',
+      type: 'checkpoints',
+      base: 'SDXL',
+      save_path: 'checkpoints/SDXL',
+      description: 'Stable Diffusion XL base model',
+      filename: 'sd_xl_base_1.0.safetensors',
+      url: 'https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/resolve/main/sd_xl_base_1.0.safetensors',
+      size: '6.94GB',
+      installed: 'False',
+    },
+    // A type we have no model category for: must be skipped, not guessed at.
+    { name: 'mystery', type: 'gligen', base: 'X', save_path: 'gligen', filename: 'm.safetensors', url: 'http://x/m' },
+    // Missing a url: unusable.
+    { name: 'broken', type: 'checkpoints', base: 'SDXL', save_path: 'checkpoints', filename: 'b.safetensors' },
+  ];
+
+  it('maps entries and builds a ref matching Manager\'s whitelist tuple', async () => {
+    stubFetch(() => json({ models }));
+    const entries = await new ComfyManagerTransport(BASE).catalogue();
+
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({
+      ref: 'checkpoints/SDXL/sd_xl_base_1.0.safetensors',
+      filename: 'sd_xl_base_1.0.safetensors',
+      type: 'checkpoint',
+      base: 'SDXL',
+      size: '6.94GB',
+      installed: false,
+    });
+  });
+
+  it('reads the installed flag as both a string and a boolean', async () => {
+    stubFetch(() => json({ models: [{ ...models[0], installed: 'True' }] }));
+    expect((await new ComfyManagerTransport(BASE).catalogue())[0]!.installed).toBe(true);
+
+    stubFetch(() => json({ models: [{ ...models[0], installed: true }] }));
+    expect((await new ComfyManagerTransport(BASE).catalogue())[0]!.installed).toBe(true);
+  });
+});
+
+describe('ComfyManagerTransport.install', () => {
+  const request = {
+    name: 'sd_xl_base_1.0.safetensors',
+    filename: 'sd_xl_base_1.0.safetensors',
+    type: 'checkpoints',
+    base: 'SDXL',
+    savePath: 'checkpoints/SDXL',
+    url: 'https://huggingface.co/x/sd_xl_base_1.0.safetensors',
+  };
+
+  it('sends the fields Manager matches its whitelist on, then starts the queue', async () => {
+    const calls: { path: string; body?: unknown }[] = [];
+    stubFetch((path, init) => {
+      calls.push({ path, body: init?.body ? JSON.parse(String(init.body)) : undefined });
+      return new Response('', { status: 200 });
+    });
+
+    await new ComfyManagerTransport(BASE).install(request);
+
+    expect(calls.map((c) => c.path)).toEqual([
+      '/manager/queue/install_model',
+      '/manager/queue/start',
+    ]);
+    // save_path, base and filename are the tuple check_whitelist_for_model
+    // compares; getting any of them wrong is a 400 from the backend.
+    expect(calls[0]!.body).toMatchObject({
+      save_path: 'checkpoints/SDXL',
+      base: 'SDXL',
+      filename: 'sd_xl_base_1.0.safetensors',
+      url: request.url,
+    });
+  });
+
+  it('treats a 201 from queue/start as success, not a conflict', async () => {
+    stubFetch((path) =>
+      path === '/manager/queue/start'
+        ? new Response('', { status: 201 })
+        : new Response('', { status: 200 }),
+    );
+    await expect(new ComfyManagerTransport(BASE).install(request)).resolves.toBeUndefined();
+  });
+
+  it('explains a 403 as the security level, which is what it always is', async () => {
+    stubFetch(() => new Response('security', { status: 403 }));
+    await expect(new ComfyManagerTransport(BASE).install(request)).rejects.toThrow(/security level/i);
+  });
+
+  it('explains a 400 as the model not being on the list', async () => {
+    stubFetch(() => new Response('bad', { status: 400 }));
+    await expect(new ComfyManagerTransport(BASE).install(request)).rejects.toThrow(
+      /does not recognise/i,
+    );
+  });
+
+  it('marks a 5xx retryable and a 4xx not', async () => {
+    stubFetch(() => new Response('', { status: 503 }));
+    await expect(new ComfyManagerTransport(BASE).install(request)).rejects.toMatchObject({
+      retryable: true,
+    });
+  });
+});
+
+describe('ComfyManagerTransport.progress', () => {
+  const request = {
+    name: 'x', filename: 'x.safetensors', type: 'checkpoints',
+    base: 'SDXL', savePath: 'checkpoints/SDXL', url: 'http://x',
+  };
+
+  it('reports downloading while the queue is working', async () => {
+    stubFetch(() => json({ total_count: 1, done_count: 0, in_progress_count: 1, is_processing: true }));
+    expect(await new ComfyManagerTransport(BASE).progress(request)).toMatchObject({
+      state: 'downloading',
+    });
+  });
+
+  it('never claims complete from an idle queue', async () => {
+    // An idle queue is ambiguous — not started, or finished, or failed — so the
+    // caller must corroborate against ComfyUI's own listing. Reporting
+    // 'complete' here would mark a failed download as installed.
+    stubFetch(() => json({ total_count: 0, done_count: 0, in_progress_count: 0, is_processing: false }));
+    const progress = await new ComfyManagerTransport(BASE).progress(request);
+    expect(progress.state).toBe('queued');
+  });
+
+  it('surfaces a transport error rather than a bogus state', async () => {
+    stubFetch(() => new Response('', { status: 500 }));
+    await expect(new ComfyManagerTransport(BASE).progress(request)).rejects.toThrow(TransportError);
+  });
+});
+
+describe('folderForType', () => {
+  it('maps our model types onto ComfyUI folder names', () => {
+    expect(folderForType('checkpoint')).toBe('checkpoints');
+    expect(folderForType('lora')).toBe('loras');
+    expect(folderForType('upscaler')).toBe('upscale_models');
+  });
+
+  it('returns null for a type with no folder, rather than guessing', () => {
+    expect(folderForType('video')).toBeNull();
+  });
+});
+
+describe('backendHasFile', () => {
+  it('matches a file Manager saved into a subfolder on a Windows backend', async () => {
+    // Manager's save_path for this entry is "checkpoints/SDXL", so ComfyUI
+    // lists it with the subfolder attached and a Windows separator. Comparing
+    // the raw strings would miss it and the install would never complete.
+    stubFetch(() => json(['SDXL\\sd_xl_base_1.0.safetensors']));
+    expect(await backendHasFile(BASE, 'checkpoints', 'sd_xl_base_1.0.safetensors')).toBe(true);
+  });
+
+  it('matches a forward-slash subfolder too', async () => {
+    stubFetch(() => json(['SDXL/sd_xl_base_1.0.safetensors']));
+    expect(await backendHasFile(BASE, 'checkpoints', 'sd_xl_base_1.0.safetensors')).toBe(true);
+  });
+
+  it('is false while only the other models are present', async () => {
+    stubFetch(() => json(['hunyuan_video_720p_fp8_e4m3fn.safetensors']));
+    expect(await backendHasFile(BASE, 'checkpoints', 'sd_xl_base_1.0.safetensors')).toBe(false);
+  });
+
+  it('is false rather than throwing when the backend errors', async () => {
+    stubFetch(() => new Response('', { status: 500 }));
+    expect(await backendHasFile(BASE, 'checkpoints', 'x.safetensors')).toBe(false);
+  });
+});

@@ -6,12 +6,14 @@ import { migrate, pool, waitForDatabase } from './db.js';
 import { seed } from './seed.js';
 import { pruneSessions } from './auth/sessions.js';
 import { startBackendPoller } from './lib/backend-poller.js';
+import { startInstallPoller } from './models/install-poller.js';
 import authPlugin from './plugins/auth.js';
 import authRoutes from './routes/auth.js';
 import backendRoutes from './routes/backends.js';
 import healthRoutes from './routes/health.js';
 import modelRoutes from './routes/models.js';
 import assetRoutes from './storage/routes.js';
+import modelInstallRoutes from './models/routes.js';
 
 const app = Fastify({
   logger: {
@@ -33,6 +35,7 @@ await app.register(
     await api.register(backendRoutes);
     await api.register(modelRoutes);
     await api.register(assetRoutes);
+    await api.register(modelInstallRoutes);
   },
   { prefix: '/api' },
 );
@@ -57,6 +60,7 @@ async function main() {
   await seed((msg) => app.log.info(msg));
 
   const stopPoller = startBackendPoller((msg) => app.log.info(msg));
+  const stopInstallPoller = startInstallPoller((msg) => app.log.info(msg));
   const pruneTimer = setInterval(() => {
     void pruneSessions().catch((err) => app.log.warn({ err }, 'session prune failed'));
   }, 60 * 60 * 1000);
@@ -67,6 +71,7 @@ async function main() {
     app.log.info(`${signal} received, shutting down`);
     clearInterval(pruneTimer);
     stopPoller();
+    stopInstallPoller();
     await app.close();
     await pool.end();
     process.exit(0);

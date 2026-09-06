@@ -261,3 +261,64 @@ export interface ApiError {
   error: string;
   message: string;
 }
+
+// ---------------------------------------------------------------- model installs
+
+/**
+ * One model a backend could install, as offered by that backend's catalogue.
+ *
+ * This is deliberately per-backend rather than global: what can be installed
+ * depends on what the backend's transport will accept. ComfyUI-Manager, for
+ * one, refuses any download that is not on its own whitelist, so the honest
+ * answer to "what can I install here" comes from the backend itself.
+ */
+export interface ModelCatalogEntry {
+  /** Stable within one backend's catalogue; not a database id. */
+  ref: string;
+  name: string;
+  filename: string;
+  type: ModelType;
+  /** Family, as the catalogue spells it, e.g. "SDXL". */
+  base: string;
+  description: string | null;
+  /** Human size string from the catalogue, e.g. "6.94GB". Not always present. */
+  size: string | null;
+  /** Where the bytes come from; shown so an operator can see what they are pulling. */
+  url: string;
+  /** True when this backend already has the file on disk. */
+  installed: boolean;
+}
+
+export type ModelInstallStatus =
+  | 'queued'
+  | 'downloading'
+  | 'complete'
+  | 'failed'
+  | 'cancelled';
+
+/**
+ * A request to put a model onto a backend.
+ *
+ * Progress is coarse on purpose. The only transport we have reports per-task
+ * state rather than bytes transferred, so there is no honest percentage to show
+ * for a multi-gigabyte download — see `ModelInstall.detail`, which carries what
+ * the transport actually told us instead of a fabricated number.
+ */
+export interface ModelInstall {
+  id: Uuid;
+  backendId: Uuid;
+  /** Who asked for it. Installs are admin-only, but we still record who. */
+  requestedBy: Uuid;
+  filename: string;
+  displayName: string;
+  type: ModelType;
+  base: string;
+  url: string;
+  status: ModelInstallStatus;
+  /** What the transport last said, verbatim-ish. Null while queued. */
+  detail: string | null;
+  error: string | null;
+  createdAt: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+}
