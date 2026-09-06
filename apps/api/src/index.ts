@@ -18,6 +18,7 @@ import assetRoutes from './storage/routes.js';
 import modelInstallRoutes from './models/routes.js';
 import jobRoutes from './orchestrator/routes.js';
 import libraryRoutes from './library/routes.js';
+import uploadRoutes from './uploads/routes.js';
 
 const app = Fastify({
   logger: {
@@ -44,6 +45,7 @@ await app.register(
     await api.register(modelInstallRoutes);
     await api.register(jobRoutes);
     await api.register(libraryRoutes);
+    await api.register(uploadRoutes);
   },
   { prefix: '/api' },
 );

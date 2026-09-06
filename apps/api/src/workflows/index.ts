@@ -44,3 +44,21 @@ export {
 } from './registry.js';
 
 export { txt2imgSdxlManifest, txt2imgSdxlTemplate } from './txt2img-sdxl.js';
+
+export {
+  IMG2IMG_INIT_IMAGE_NODE_ID,
+  img2imgSdxlManifest,
+  img2imgSdxlTemplate,
+} from './img2img-sdxl.js';
+
+/**
+ * The init-image transfer. Exported here because the orchestrator is its only
+ * caller: nothing in this directory wires it into a dispatch.
+ */
+export type { TransferredInitImage } from './init-image.js';
+export {
+  INIT_IMAGE_SUBFOLDER,
+  sendInitImageToBackend,
+  sendStoredInitImageToBackend,
+  withInitImage,
+} from './init-image.js';

@@ -24,6 +24,9 @@ import {
   parseInputPath,
   resolveInputPath,
   txt2imgSdxlTemplate,
+  IMG2IMG_INIT_IMAGE_NODE_ID,
+  img2imgSdxlTemplate,
+  withInitImage,
 } from './index.js';
 import type { ComfyApiGraph } from './index.js';
 
@@ -233,6 +236,75 @@ describe('txt2img-sdxl specifics', () => {
   });
 });
 
+describe('img2img-sdxl specifics', () => {
+  const graph = img2imgSdxlTemplate.graph;
+  const manifest = img2imgSdxlTemplate.manifest;
+
+  it('is txt2img with the empty latent swapped for LoadImage -> VAEEncode', () => {
+    // Everything the two graphs share keeps its node id and its wiring, so a
+    // dumped graph from either template reads the same way.
+    for (const id of ['4', '6', '7', '3', '8', '9']) {
+      expect(graph[id]!.class_type, id).toBe(txt2imgSdxlTemplate.graph[id]!.class_type);
+    }
+    expect(graph['5'], 'the empty latent must be gone').toBeUndefined();
+    expect(graph['10']!.class_type).toBe('LoadImage');
+    expect(graph['11']!.class_type).toBe('VAEEncode');
+
+    // The init image is decoded with the checkpoint's own VAE (output 2), and
+    // the resulting latent is what the sampler starts from.
+    expect(graph['11']!.inputs['pixels']).toEqual(['10', 0]);
+    expect(graph['11']!.inputs['vae']).toEqual(['4', 2]);
+    expect(graph['3']!.inputs['latent_image']).toEqual(['11', 0]);
+  });
+
+  it('binds denoise to the sampler, which is how the influence slider reaches it', () => {
+    // compile.ts resolves the `denoise` binding from the init reference's
+    // `influence`; this path is the entire wiring between the two.
+    const denoise = manifest.inputs.find((i) => i.source === 'denoise');
+    expect(denoise?.path).toBe('3.inputs.denoise');
+    expect(denoise?.required, 'img2img without an init image is a contradiction').toBe(true);
+    // Unlike txt2img, the graph's own default must not be full denoise, or the
+    // template silently ignores the source image when something goes wrong.
+    expect(graph['3']!.inputs['denoise']).toBeLessThan(1);
+  });
+
+  it('binds no size or batch inputs, because the init image decides both', () => {
+    for (const source of ['width', 'height', 'batchSize'] as const) {
+      expect(manifest.inputs.find((i) => i.source === source), source).toBeUndefined();
+    }
+  });
+
+  it('leaves the init image out of the manifest entirely', () => {
+    // The filename is not a user parameter — it names a file on the backend's
+    // disk that only exists after we put it there. See img2img-sdxl.ts.
+    for (const input of manifest.inputs) {
+      expect(input.path.startsWith(`${IMG2IMG_INIT_IMAGE_NODE_ID}.`)).toBe(false);
+    }
+    expect(graph[IMG2IMG_INIT_IMAGE_NODE_ID]!.class_type).toBe('LoadImage');
+  });
+});
+
+describe('withInitImage', () => {
+  it('points the LoadImage node at the transferred file without mutating the template', () => {
+    // The name is the backend's `subfolder/name`, not a bare filename: files we
+    // push land in a subfolder of input/, and that path is what LoadImage
+    // resolves. See the verified notes in init-image.ts.
+    const out = withInitImage(img2imgSdxlTemplate.graph, 'comfy-studio/abc123.png');
+    expect(out[IMG2IMG_INIT_IMAGE_NODE_ID]!.inputs['image']).toBe('comfy-studio/abc123.png');
+    // The template is a module-level constant shared by every job.
+    expect(img2imgSdxlTemplate.graph[IMG2IMG_INIT_IMAGE_NODE_ID]!.inputs['image']).toBe(
+      'example.png',
+    );
+    // Nothing else moved.
+    expect(out['3']).toEqual(img2imgSdxlTemplate.graph['3']);
+  });
+
+  it('refuses a graph that has no LoadImage where it expects one', () => {
+    expect(() => withInitImage(txt2imgSdxlTemplate.graph, 'x.png')).toThrow(/no init-image node/);
+    expect(() => withInitImage(img2imgSdxlTemplate.graph, 'x.png', '3')).toThrow(/not a LoadImage/);
+  });
+});
+
 describe('registry', () => {
   it('finds the SDXL txt2img template by family, however it is spelled', () => {
     for (const spelling of ['sdxl', 'SDXL', 'SDXL 1.0', 'sdxl-1.0', 'Pony']) {
@@ -240,8 +312,15 @@ describe('registry', () => {
     }
   });
 
+  it('finds the SDXL img2img template for the same family spellings', () => {
+    for (const spelling of ['sdxl', 'SDXL 1.0', 'Illustrious']) {
+      expect(findTemplate('img2img', spelling)?.manifest.id).toBe('img2img-sdxl');
+    }
+  });
+
   it('returns undefined for an unknown family or a model with none', () => {
     expect(findTemplate('txt2img', 'flux.1')).toBeUndefined();
+    expect(findTemplate('img2img', 'flux.1')).toBeUndefined();
     expect(findTemplate('img2vid', 'sdxl')).toBeUndefined();
     expect(findTemplate('txt2img', null)).toBeUndefined();
   });
@@ -252,7 +331,7 @@ describe('registry', () => {
   });
 
   it('reports capabilities per family', () => {
-    expect(capabilitiesFor('SDXL 1.0')).toEqual(['txt2img']);
+    expect([...capabilitiesFor('SDXL 1.0')].sort()).toEqual(['img2img', 'txt2img']);
     expect(capabilitiesFor('flux.1')).toEqual([]);
     expect(capabilitiesFor(null)).toEqual([]);
   });

@@ -17,6 +17,10 @@ export default defineConfig({
       AUTH_SECRET: 'test-secret-not-used-for-anything',
       DATABASE_URL: 'postgres://unused:unused@127.0.0.1:1/unused',
       STORAGE_LOCAL_PATH: '/tmp/comfy-studio-test-assets',
+      // Deliberately tiny: the upload route test has to send a file that
+      // exceeds the cap, and 20 MB of noise through the multipart parser is
+      // slow for no extra coverage.
+      UPLOAD_MAX_BYTES: '65536',
     },
   },
 });
