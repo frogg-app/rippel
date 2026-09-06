@@ -240,6 +240,7 @@ function world(seed: Partial<Omit<World, 'db'>> = {}): World {
           .map((c) => ({
             id: c.id,
             name: c.name,
+            created_at: c.created_at,
             // COUNT(a.id) over the join to live assets, not to membership rows.
             count: String(
               w.members.filter(
@@ -260,7 +261,9 @@ function world(seed: Partial<Omit<World, 'db'>> = {}): World {
           created_at: new Date().toISOString(),
         };
         w.collections.push(row);
-        return [{ id: row.id, name: row.name }];
+        // Mirror the real RETURNING clause, created_at included — the caller
+        // turns it into an ISO string and a missing column is an invalid date.
+        return [{ id: row.id, name: row.name, created_at: row.created_at }];
       }
 
       case 'delete-collection': {
@@ -616,15 +619,15 @@ describe('collections', () => {
     expect(await addAssetToCollection(w.db, COLLECTION, assetId(2), ALICE)).toBe(true);
 
     expect(await listCollections(w.db, ALICE)).toEqual([
-      { id: COLLECTION, name: 'Keepers', count: 2 },
+      { id: COLLECTION, name: 'Keepers', assetCount: 2, createdAt: expect.any(String) },
     ]);
 
     // A soft delete leaves the membership row behind; the count must not.
     await softDeleteAsset(w.db, assetId(1), ALICE);
-    expect((await listCollections(w.db, ALICE))[0]!.count).toBe(1);
+    expect((await listCollections(w.db, ALICE))[0]!.assetCount).toBe(1);
 
     await removeAssetFromCollection(w.db, COLLECTION, assetId(2), ALICE);
-    expect((await listCollections(w.db, ALICE))[0]!.count).toBe(0);
+    expect((await listCollections(w.db, ALICE))[0]!.assetCount).toBe(0);
   });
 
   it('refuses to add an asset the caller does not own', async () => {
@@ -648,7 +651,7 @@ describe('collections', () => {
   it('creates and deletes, leaving the assets alone', async () => {
     const w = collectionWorld();
     const created = await createCollection(w.db, ALICE, 'Blues');
-    expect(created).toMatchObject({ name: 'Blues', count: 0 });
+    expect(created).toMatchObject({ name: 'Blues', assetCount: 0 });
 
     await addAssetToCollection(w.db, created.id, assetId(1), ALICE);
     expect(await deleteCollection(w.db, created.id, ALICE)).toBe(true);

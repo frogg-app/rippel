@@ -14,7 +14,6 @@
  */
 import { describe, expect, it, vi } from 'vitest';
 
-import { mockLibrary } from '../library/mock';
 
 vi.mock('../lib/api-library', async () => {
   const actual = await vi.importActual<typeof import('../lib/api-library')>('../lib/api-library');

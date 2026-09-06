@@ -173,19 +173,28 @@ function escapeLike(input: string): string {
 
 // ---------------------------------------------------------------- one asset
 
+/**
+ * One asset, in the same shape the grid gets.
+ *
+ * Deliberately identical to a list row rather than a bare `Asset`: the drawer
+ * needs `collectionIds` to tick the right boxes in its collections menu, and a
+ * client that had to reason about two subtly different asset shapes depending
+ * on which endpoint produced one would get it wrong eventually.
+ */
 export async function getAsset(
   db: LibraryDb,
   assetId: string,
   userId: string,
-): Promise<Asset | null> {
-  const row = await db.queryOne<AssetRow>(
+): Promise<LibraryAsset | null> {
+  const row = await db.queryOne<TileRow>(
     `-- library:get-asset
-     SELECT ${ASSET_COLUMNS}
+     SELECT ${ASSET_COLUMNS}, ${TILE_COLUMNS}
        FROM assets a
+       ${TILE_JOINS}
       WHERE a.id = $1 AND a.user_id = $2 AND a.deleted_at IS NULL`,
     [assetId, userId],
   );
-  return row ? rowToAsset(row) : null;
+  return row ? toLibraryAsset(row) : null;
 }
 
 export interface JobRow {
@@ -240,19 +249,47 @@ export function rowToJob(row: JobRow, assets: Asset[]): Job {
  * is a drawer with no metadata, not an error: callers get null and show the
  * image without the record.
  */
+/**
+ * The job behind an asset, enriched for the detail drawer.
+ *
+ * Three things the drawer needs that a raw job row cannot give it:
+ *
+ *  - **Model and LoRA names.** `params` holds ids; the browser has no way to
+ *    turn a uuid into "Sd Xl Base 1.0" without a request per id.
+ *  - **The seed that was actually used.** `params.advanced.seed` is null
+ *    whenever the user asked for a random one, and the number worth copying is
+ *    the one the compiler rolled — which is why `jobs.resolved` exists.
+ *  - **Duration**, which is a subtraction the client should not be doing.
+ */
+export interface LibraryJob extends Job {
+  modelName: string | null;
+  loraNames: string[];
+  seed: number | null;
+  backendName: string | null;
+  durationSeconds: number | null;
+}
+
 export async function getJobForAsset(
   db: LibraryDb,
   jobId: string | null,
   userId: string,
-): Promise<Job | null> {
+): Promise<LibraryJob | null> {
   if (!jobId) return null;
 
-  const row = await db.queryOne<JobRow>(
+  const row = await db.queryOne<JobRow & {
+    resolved: { seed?: number; loras?: { filename: string }[] } | null;
+    model_name: string | null;
+    backend_name: string | null;
+  }>(
     `-- library:get-job
-     SELECT id, user_id, kind, status, params, backend_id, progress, error,
-            created_at, started_at, finished_at
-       FROM jobs
-      WHERE id = $1 AND user_id = $2`,
+     SELECT j.id, j.user_id, j.kind, j.status, j.params, j.backend_id, j.progress,
+            j.error, j.created_at, j.started_at, j.finished_at, j.resolved,
+            m.display_name AS model_name,
+            b.name AS backend_name
+       FROM jobs j
+       LEFT JOIN models m ON m.id = (j.params->>'modelId')::uuid
+       LEFT JOIN backends b ON b.id = j.backend_id
+      WHERE j.id = $1 AND j.user_id = $2`,
     [jobId, userId],
   );
   if (!row) return null;
@@ -267,7 +304,34 @@ export async function getJobForAsset(
     [jobId, userId],
   );
 
-  return rowToJob(row, siblings.map(rowToAsset));
+  // LoRA display names, in the order the request listed them, so the drawer can
+  // line them up with their weights.
+  const loraIds = (row.params.loras ?? []).map((l) => l.modelId);
+  const loraRows = loraIds.length
+    ? await db.query<{ id: string; display_name: string }>(
+        `-- library:job-loras
+         SELECT id, display_name FROM models WHERE id = ANY($1::uuid[])`,
+        [loraIds],
+      )
+    : [];
+  const loraNames = loraIds.map(
+    (id) => loraRows.find((r) => r.id === id)?.display_name ?? 'Unknown LoRA',
+  );
+
+  const started = row.started_at ? new Date(row.started_at).getTime() : null;
+  const finished = row.finished_at ? new Date(row.finished_at).getTime() : null;
+
+  return {
+    ...rowToJob(row, siblings.map(rowToAsset)),
+    modelName: row.model_name,
+    loraNames,
+    // Prefer what actually ran; fall back to what was asked for, which is the
+    // right answer when the user locked a seed and the job never dispatched.
+    seed: row.resolved?.seed ?? row.params.advanced?.seed ?? null,
+    backendName: row.backend_name,
+    durationSeconds:
+      started && finished ? Math.max(0, Math.round((finished - started) / 1000)) : null,
+  };
 }
 
 /** The raw job_id, needed to look the job up after fetching the asset. */
@@ -293,16 +357,19 @@ export async function setStarred(
   assetId: string,
   userId: string,
   starred: boolean,
-): Promise<Asset | null> {
-  const row = await db.queryOne<AssetRow>(
+): Promise<LibraryAsset | null> {
+  // The UPDATE cannot carry the tile joins in its RETURNING, so the row is
+  // re-read through the same path the grid uses — one extra cheap query in
+  // exchange for star, list and detail all yielding an identical shape.
+  const row = await db.queryOne<{ id: string }>(
     `-- library:set-starred
      UPDATE assets a
         SET starred = $3
       WHERE a.id = $1 AND a.user_id = $2 AND a.deleted_at IS NULL
-      RETURNING ${ASSET_COLUMNS}`,
+      RETURNING a.id`,
     [assetId, userId, starred],
   );
-  return row ? rowToAsset(row) : null;
+  return row ? getAsset(db, assetId, userId) : null;
 }
 
 /**
@@ -363,13 +430,16 @@ export async function restoreAsset(
 export interface CollectionSummary {
   id: string;
   name: string;
-  count: number;
+  /** Live assets in it — soft-deleted ones are not counted. */
+  assetCount: number;
+  createdAt: string;
 }
 
 interface CollectionRow {
   id: string;
   name: string;
   count: string | number;
+  created_at: Date | string;
 }
 
 /**
@@ -383,7 +453,7 @@ export async function listCollections(
 ): Promise<CollectionSummary[]> {
   const rows = await db.query<CollectionRow>(
     `-- library:list-collections
-     SELECT c.id, c.name, COUNT(a.id) AS count
+     SELECT c.id, c.name, c.created_at, COUNT(a.id) AS count
        FROM collections c
        LEFT JOIN collection_assets ca ON ca.collection_id = c.id
        LEFT JOIN assets a ON a.id = ca.asset_id AND a.deleted_at IS NULL
@@ -392,7 +462,12 @@ export async function listCollections(
       ORDER BY c.created_at DESC`,
     [userId],
   );
-  return rows.map((r) => ({ id: r.id, name: r.name, count: Number(r.count) }));
+  return rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    assetCount: Number(r.count),
+    createdAt: new Date(r.created_at).toISOString(),
+  }));
 }
 
 export async function createCollection(
@@ -400,14 +475,19 @@ export async function createCollection(
   userId: string,
   name: string,
 ): Promise<CollectionSummary> {
-  const row = await db.queryOne<{ id: string; name: string }>(
+  const row = await db.queryOne<{ id: string; name: string; created_at: Date | string }>(
     `-- library:create-collection
      INSERT INTO collections (user_id, name) VALUES ($1, $2)
-     RETURNING id, name`,
+     RETURNING id, name, created_at`,
     [userId, name],
   );
   if (!row) throw new Error('collections INSERT returned no row');
-  return { id: row.id, name: row.name, count: 0 };
+  return {
+    id: row.id,
+    name: row.name,
+    assetCount: 0,
+    createdAt: new Date(row.created_at).toISOString(),
+  };
 }
 
 export async function deleteCollection(

@@ -151,7 +151,13 @@ export function startOrchestrator(log: (msg: string) => void = console.log): () 
         backendId: result.backend.id,
         comfyPromptId: result.promptId,
       });
-      await query('UPDATE jobs SET template_id = $2 WHERE id = $1', [job.id, result.templateId]);
+      // The resolved values are the only record of what actually ran — the
+      // rolled seed above all, without which the image cannot be reproduced.
+      await query('UPDATE jobs SET template_id = $2, resolved = $3 WHERE id = $1', [
+        job.id,
+        result.templateId,
+        JSON.stringify(result.resolved),
+      ]);
 
       tracked.set(result.promptId, {
         jobId: job.id,

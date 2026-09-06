@@ -10,6 +10,7 @@
 
 import type { Uuid } from '@comfy/shared';
 import { compile, TemplateError, ValidationError } from '../compiler/index.js';
+import type { ResolvedValues } from '../compiler/index.js';
 import { findTemplate } from '../workflows/registry.js';
 import { queryOne } from '../db.js';
 import { filenamesOn, pickBackend, type Candidate } from './select.js';
@@ -39,7 +40,8 @@ export interface Dispatched {
   backend: Candidate;
   promptId: string;
   templateId: string;
-  seed: number;
+  /** Everything the compiler decided, recorded so the job can be reproduced. */
+  resolved: ResolvedValues;
 }
 
 /**
@@ -112,6 +114,6 @@ export async function dispatch(job: JobRow, clientId: string): Promise<Dispatche
     backend,
     promptId,
     templateId: template.manifest.id,
-    seed: compiled.resolved.seed,
+    resolved: compiled.resolved,
   };
 }

@@ -26,7 +26,8 @@
  *            collectionId? uuid
  *            q?           free text, matched against the originating job's
  *                         prompt and negative prompt
- *     -> 200 { items: LibraryAsset[]; nextCursor: string | null }
+ *     -> 200 { assets: LibraryAsset[]; nextCursor: string | null }
+ *        (this module renames them to `items` internally — see `list` below)
  *        Ordered created_at DESC, id DESC. `nextCursor: null` means this was
  *        the last page. Soft-deleted assets are never included.
  *
@@ -214,7 +215,21 @@ export interface LibraryApi {
 
 const liveLibrary: LibraryApi = {
   assets: {
-    list: (req) => request<LibraryPage>(`/library/assets${toQuery(req)}`, { signal: req.signal }),
+    /**
+     * The server calls the page's rows `assets`; this module calls them
+     * `items` throughout. Translating here, at the one place the wire format
+     * is parsed, keeps that difference from leaking into every component —
+     * and mapping the wrong one is what turned this screen black the first
+     * time it ran against the real API, because `undefined.map` is not a
+     * recoverable render.
+     */
+    list: async (req) => {
+      const body = await request<{ assets: LibraryAsset[]; nextCursor: string | null }>(
+        `/library/assets${toQuery(req)}`,
+        { signal: req.signal },
+      );
+      return { items: body.assets ?? [], nextCursor: body.nextCursor ?? null };
+    },
     get: (id, signal) =>
       request<{ asset: LibraryAsset; job: LibraryJob | null }>(`/library/assets/${id}`, { signal }),
     setStarred: (id, starred) =>
