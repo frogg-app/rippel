@@ -62,6 +62,18 @@ const checkpoints: Model[] = [
     sourceRef: null,
     backendIds: ['backend-1'],
   },
+  {
+    id: 'model-mystery',
+    type: 'checkpoint',
+    filename: 'mystery_mix.safetensors',
+    displayName: 'Mystery Mix',
+    baseModel: 'mystery',
+    previewUrl: null,
+    sizeBytes: null,
+    source: 'local',
+    sourceRef: null,
+    backendIds: ['backend-1'],
+  },
 ];
 
 const created: GenerationParams[] = [];
@@ -156,22 +168,25 @@ describe('CreatePage', () => {
     expect(screen.getByText('Write a prompt first.')).toBeInTheDocument();
   });
 
-  it('will not let a model with no template be chosen, and says why', async () => {
+  it("lists only this mode's models, and a template-less one explains itself", async () => {
     const user = userEvent.setup();
     render(<CreatePage />);
-    const blocked = await screen.findByRole('radio', { name: /Hunyuan/i });
+    await screen.findByRole('radio', { name: /SDXL Base/i });
 
-    // `aria-disabled`, not `disabled`: a disabled button takes no click and
-    // shows no tooltip, so the explanation is unreachable by the person who
-    // needs it. Pressing it must not select it, and must answer.
+    // A video checkpoint under Image is not a blocked tile any more; it is
+    // not there at all. The toggle is what changes the list.
+    expect(screen.queryByRole('radio', { name: /Hunyuan/i })).not.toBeInTheDocument();
+
+    // A model whose family has no template at all stays, blocked, so that
+    // pressing it answers. `aria-disabled`, not `disabled`: a disabled button
+    // takes no click and shows no tooltip.
+    const blocked = screen.getByRole('radio', { name: /Mystery Mix/i });
     expect(blocked).toHaveAttribute('aria-disabled', 'true');
     await user.click(blocked);
     expect(blocked).toHaveAttribute('aria-checked', 'false');
-    expect(await screen.findByText(/is a video model/i)).toBeInTheDocument();
+    expect(await screen.findByText(/no workflow template/i)).toBeInTheDocument();
 
     // ...and the runnable one is preselected, so the screen opens usable.
-    // Preselection waits on the capabilities fetch, so this waits too — read
-    // eagerly it passes or fails depending on promise scheduling.
     await waitFor(() =>
       expect(screen.getByRole('radio', { name: /SDXL Base/i })).toHaveAttribute(
         'aria-checked',
@@ -608,19 +623,23 @@ describe('mode toggle', () => {
     await screen.findByRole('radio', { name: /SDXL Base/i });
     await user.type(screen.getByRole('textbox', { name: /prompt/i }), 'a wave breaking');
 
+    expect(screen.getByRole('slider', { name: /image count/i })).toBeInTheDocument();
+
     await user.click(screen.getByRole('radio', { name: 'Video' }));
 
-    // The video checkpoint is now the selectable one, and the image ones are not.
+    // The list is now the video checkpoints, and the image ones are gone.
     await waitFor(() =>
       expect(screen.getByRole('radio', { name: /Hunyuan/i })).toHaveAttribute(
         'aria-disabled',
         'false',
       ),
     );
-    expect(screen.getByRole('radio', { name: /SDXL Base/i })).toHaveAttribute(
-      'aria-disabled',
-      'true',
-    );
+    expect(screen.queryByRole('radio', { name: /SDXL Base/i })).not.toBeInTheDocument();
+
+    // And the controls follow: a clip has a length and a rate, not a count.
+    expect(screen.queryByRole('slider', { name: /image count/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('slider', { name: /duration/i })).toBeInTheDocument();
+    expect(screen.getByRole('radiogroup', { name: /frame rate/i })).toBeInTheDocument();
 
     await user.click(screen.getByRole('radio', { name: /Hunyuan/i }));
     await user.click(screen.getByRole('button', { name: /^generate$/i }));
@@ -628,10 +647,17 @@ describe('mode toggle', () => {
     await waitFor(() => expect(created).toHaveLength(1));
     expect(created[0]!.kind).toBe('txt2vid');
     expect(created[0]!.modelId).toBe('model-hunyuan');
+    expect(created[0]!.batchSize).toBe(1);
+    expect(created[0]!.video).toMatchObject({ lengthSeconds: 4, fps: 25 });
   });
 
   it('offers the switch when nothing in this mode can run', async () => {
     const user = userEvent.setup();
+    const { workflowsApi } = await import('../lib/api-jobs');
+    vi.mocked(workflowsApi.capabilities).mockResolvedValueOnce({
+      byFamily: { sdxl: ['txt2img'] },
+      live: true,
+    });
     render(
       <>
         <ModeToggle />
@@ -640,11 +666,10 @@ describe('mode toggle', () => {
     );
     await screen.findByRole('radio', { name: /SDXL Base/i });
 
-    // In video mode the only runnable checkpoint is the Hunyuan one; block it
-    // by asking about the image models and check the picker points the way
-    // back rather than leaving the user stuck.
+    // No family here has a video template, so Video lists nothing runnable
+    // (the template-less checkpoints, blocked) and the picker has to point
+    // the way back rather than leave the user stuck.
     await user.click(screen.getByRole('radio', { name: 'Video' }));
-    await user.click(await screen.findByRole('radio', { name: /SDXL Base/i }));
 
     const back = await screen.findByRole('button', { name: /switch to image mode/i });
     await user.click(back);

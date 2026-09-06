@@ -153,6 +153,24 @@ export const MIN_BATCH = 1;
 export const MAX_BATCH = 8;
 
 /**
+ * Video length and rate. The bounds mirror the LTX-Video template's frame
+ * budget (9 to 161 frames) at watchable rates: 25 fps is what the model was
+ * trained at, so it is the default and the longest clip at that rate is 6.4s.
+ */
+export const VIDEO_LENGTH_MIN = 1;
+export const VIDEO_LENGTH_MAX = 6;
+export const VIDEO_LENGTH_STEP = 0.5;
+export const VIDEO_FPS_OPTIONS = [12, 16, 24, 25] as const;
+export type VideoFps = (typeof VIDEO_FPS_OPTIONS)[number];
+/** SVD-style motion amount; the middle of its 0..255 range. */
+const DEFAULT_MOTION = 127;
+
+export interface VideoState {
+  lengthSeconds: number;
+  fps: number;
+}
+
+/**
  * Seeds are unsigned 64-bit in ComfyUI and capped at 2^53-1 by the compiler,
  * but a seed a human is meant to read, retype and recognise wants to be short.
  * We roll in the 32-bit range, which every ComfyUI UI also uses.
@@ -218,6 +236,8 @@ export interface CreateFormState {
   quality: QualityPreset;
   aspect: AspectRatio;
   batchSize: number;
+  /** Only read in video mode; kept across a toggle so nothing is lost. */
+  video: VideoState;
   loras: LoraSelection[];
   advanced: AdvancedState;
   /**
@@ -279,6 +299,7 @@ export function initialFormState(): CreateFormState {
     quality: 'balanced',
     aspect: '1:1',
     batchSize: 1,
+    video: { lengthSeconds: 4, fps: 25 },
     loras: [],
     initImage: null,
     advanced: {
@@ -354,8 +375,18 @@ export function toGenerationParams(state: CreateFormState): GenerationParams {
     modelId: state.modelId,
     quality: state.quality,
     aspect: state.aspect,
-    batchSize: state.batchSize,
+    // A video job is one clip; the batch slider is not shown in video mode
+    // and its value must not leak into the request.
+    batchSize: modeOfKind(effectiveKind(state)) === 'video' ? 1 : state.batchSize,
   };
+
+  if (modeOfKind(params.kind) === 'video') {
+    params.video = {
+      lengthSeconds: state.video.lengthSeconds,
+      fps: state.video.fps,
+      motion: DEFAULT_MOTION,
+    };
+  }
 
   const negative = state.negativePrompt.trim();
   if (negative) params.negativePrompt = negative;
@@ -438,6 +469,9 @@ export function fromGenerationParams(
     quality: params.quality,
     aspect: params.aspect,
     batchSize: params.batchSize,
+    video: params.video
+      ? { lengthSeconds: params.video.lengthSeconds, fps: params.video.fps }
+      : previous.video,
     loras: params.loras ? [...params.loras] : [],
     // Remixing an img2img job keeps its starting image. The preview URL is
     // rebuilt from the source rather than carried in the params, which only
@@ -476,6 +510,11 @@ export function secondsForSteps(steps: number, batchSize: number): number {
  */
 export function estimateSeconds(state: CreateFormState): number {
   const steps = state.advanced.steps ?? PRESET_DEFAULTS[state.quality].steps;
+  if (modeOfKind(state.kind) === 'video') {
+    // A clip costs roughly one image per eight frames on the LTX template.
+    const frames = state.video.lengthSeconds * state.video.fps;
+    return secondsForSteps(steps, Math.max(1, Math.round(frames / 8)));
+  }
   return secondsForSteps(steps, state.batchSize);
 }
 

@@ -28,6 +28,10 @@ import {
   modeOfKind,
   MAX_BATCH,
   MIN_BATCH,
+  VIDEO_FPS_OPTIONS,
+  VIDEO_LENGTH_MAX,
+  VIDEO_LENGTH_MIN,
+  VIDEO_LENGTH_STEP,
   QUALITY_LABELS,
   QUALITY_PRESETS,
   checkSubmittable,
@@ -184,18 +188,48 @@ export function CreatePage() {
             />
           </Group>
 
-          <Group label="Images">
-            <Slider
-              label="Image count"
-              accent
-              min={MIN_BATCH}
-              max={MAX_BATCH}
-              value={form.batchSize}
-              display={String(form.batchSize)}
-              hint="Every image in a batch uses the same seed with a different offset."
-              onChange={(batchSize) => patch({ batchSize })}
-            />
-          </Group>
+          {/* What the mode decides: a batch of stills, or one clip with a
+              length and a rate. Keyed by mode so the block re-enters when the
+              toggle flips, rather than one control silently becoming another. */}
+          {mode === 'video' ? (
+            <div key="video" className={styles.modeBlock}>
+              <Group label="Video">
+                <Slider
+                  label="Duration"
+                  accent
+                  min={VIDEO_LENGTH_MIN}
+                  max={VIDEO_LENGTH_MAX}
+                  step={VIDEO_LENGTH_STEP}
+                  value={form.video.lengthSeconds}
+                  display={`${form.video.lengthSeconds}s`}
+                  valueText={`${form.video.lengthSeconds} seconds`}
+                  hint="Longer clips cost more memory and time. About six seconds is the most a 16 GB card decodes."
+                  onChange={(lengthSeconds) => patch({ video: { ...form.video, lengthSeconds } })}
+                />
+                <Chips
+                  label="Frame rate"
+                  value={String(form.video.fps)}
+                  options={VIDEO_FPS_OPTIONS.map((fps) => ({ value: String(fps), label: `${fps} fps` }))}
+                  onChange={(fps) => patch({ video: { ...form.video, fps: Number(fps) } })}
+                />
+              </Group>
+            </div>
+          ) : (
+            <div key="image" className={styles.modeBlock}>
+              <Group label="Images">
+                <Slider
+                  label="Image count"
+                  accent
+                  min={MIN_BATCH}
+                  max={MAX_BATCH}
+                  value={form.batchSize}
+                  display={String(form.batchSize)}
+                  hint="Every image in a batch uses the same seed with a different offset."
+                  onChange={(batchSize) => patch({ batchSize })}
+                />
+              </Group>
+            </div>
+          )}
 
           <AdvancedDrawer
             open={advancedOpen}
@@ -227,8 +261,10 @@ export function CreatePage() {
           <div className={styles.estimate}>
             {submittable.reason ?? (
               <>
-                {form.batchSize} {form.batchSize === 1 ? 'image' : 'images'} &middot; about{' '}
-                {estimateSeconds(form)} seconds
+                {mode === 'video'
+                  ? `${form.video.lengthSeconds}s clip`
+                  : `${form.batchSize} ${form.batchSize === 1 ? 'image' : 'images'}`}{' '}
+                &middot; about {estimateSeconds(form)} seconds
               </>
             )}
           </div>

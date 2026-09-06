@@ -88,6 +88,15 @@ export function ModelPicker({
   const otherMode: CreateMode = mode === 'image' ? 'video' : 'image';
   const runnable = models.filter((model) => modelSupported(model, kind, capabilities));
 
+  // Only this mode's models are listed. A model whose family is known to run
+  // the *other* mode only is left out rather than shown blocked — the toggle
+  // is what changes the list, and a video checkpoint under Image is noise. A
+  // model with no known kinds at all stays, blocked, so it can explain itself.
+  const listed = models.filter((model) => {
+    const kinds = modelKinds(model, capabilities);
+    return kinds.length === 0 || kinds.some((candidate) => modeOfKind(candidate) === mode);
+  });
+
   // What could be run if the toggle were flipped — the sentence worth saying
   // when nothing here works.
   const otherModeModels = models.filter((model) =>
@@ -102,8 +111,10 @@ export function ModelPicker({
 
   return (
     <>
-      <div className={styles.grid} role="radiogroup" aria-label="Model">
-        {models.map((model) => {
+      {/* Keyed by mode: the grid re-enters, tiles staggering in, when the
+          toggle flips. */}
+      <div key={mode} className={styles.grid} role="radiogroup" aria-label="Model">
+        {listed.map((model, index) => {
           const supported = modelSupported(model, kind, capabilities);
           const selected = model.id === value;
           const reason = supported ? null : blockedReason(model, kind, capabilities);
@@ -131,7 +142,7 @@ export function ModelPicker({
               ]
                 .filter(Boolean)
                 .join(' ')}
-              style={tileArt(model)}
+              style={{ ...tileArt(model), '--i': index } as React.CSSProperties}
               onClick={() => {
                 if (supported) {
                   setExplainedId(null);

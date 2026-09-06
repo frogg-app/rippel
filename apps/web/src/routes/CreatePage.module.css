@@ -104,6 +104,15 @@
 .inputs > :nth-child(6) { animation-delay: 200ms; }
 .inputs > :nth-child(7) { animation-delay: 240ms; }
 
+/* The block the mode toggle swaps: one image control set or one video one.
+   Keyed in the markup, so a flip plays this entrance and nothing else moves. */
+.modeBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  animation: rise var(--dur-slow) var(--ease-out) both;
+}
+
 .footer {
   flex-shrink: 0;
   padding: 14px var(--panel-pad-x) 18px;
