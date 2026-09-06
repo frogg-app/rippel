@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef, useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
-import { Lockup } from '../components/Mark';
+import { Mark } from '../components/Mark';
 import { CubeIcon, ImageIcon, SparkIcon } from '../components/icons';
 import { BackendPill } from './BackendPill';
 import { QueueChip } from './QueueChip';
@@ -55,6 +55,14 @@ export function AppShell() {
   return (
     <div className={styles.shell}>
       <aside className={styles.rail}>
+        {/* The mark fills the rail's width; the word sits in the top bar to
+            its right at UI size. This is deliberately not the brand lockup —
+            the app header uses the mark large and the name small, and the
+            ripple plays under the pointer on either. */}
+        <NavLink to="/create" className={styles.brand} aria-label="rippel home">
+          <Mark size={36} ripple="hover" />
+        </NavLink>
+
         <nav ref={navRef} className={styles.nav} aria-label="Primary">
           {indicator ? (
             <span
@@ -83,10 +91,8 @@ export function AppShell() {
       <div className={styles.plateWrap}>
         <header className={styles.topbar}>
           <div className={styles.topLeading}>
-            {/* The lockup ripples under the pointer. Never re-typeset the
-                word beside the mark by hand — this is the one place it lives. */}
-            <NavLink to="/create" className={styles.brand} aria-label="rippel home">
-              <Lockup size={19} ripple="hover" />
+            <NavLink to="/create" className={styles.wordmark} tabIndex={-1} aria-hidden>
+              rippel
             </NavLink>
             {onCreate ? <ModeToggle /> : null}
           </div>

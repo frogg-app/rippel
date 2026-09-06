@@ -14,8 +14,24 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 58px 0 14px;
+  padding: 10px 0 14px;
   gap: 18px;
+}
+
+/* The same 40px row as the top bar, so the mark and the word share a centre
+   line: rail padding-top 10 + 40 = top bar padding-top 10 + height 40. */
+.brand {
+  height: 40px;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  transition: filter var(--dur-slow) var(--ease-out);
+}
+
+.brand:hover {
+  filter: brightness(1.1);
 }
 
 .nav {
@@ -119,14 +135,20 @@
   gap: 22px;
 }
 
-/* The lockup: the mark ripples under the pointer (see Mark.module.css); the
-   word stays still. Placed 4px in so its ink lines up with the plate edge. */
-.brand {
-  display: flex;
-  align-items: center;
-  padding: 4px 6px;
-  margin-left: -2px;
-  border-radius: 8px;
+/* The name, at the same size as before, left-aligned after the mark. Epilogue
+   300, lowercase, the brand tracking; ripple on the mark when hovered. */
+.wordmark {
+  font-family: var(--font-display);
+  font-weight: 300;
+  font-size: 19px;
+  letter-spacing: var(--tracking-brand);
+  color: var(--text);
+  line-height: 1;
+  padding-bottom: 2px;
+}
+
+.wordmark:hover {
+  color: var(--text);
 }
 
 .status {
