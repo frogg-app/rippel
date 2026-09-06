@@ -41,7 +41,9 @@ export const MOCK = {
   // The seam itself stays rather than being torn out — the component tests
   // drive the whole page through it, and the next screen built against an
   // endpoint that does not exist yet will want exactly this again.
-  jobs: false,
+  // `VITE_JOBS_MOCK=1` turns it back on for a dev server, the same seam the
+  // library has, so the running and finished states can be seen without a GPU.
+  jobs: import.meta.env.DEV && import.meta.env.VITE_JOBS_MOCK === '1',
 };
 
 const BASE = '/api';

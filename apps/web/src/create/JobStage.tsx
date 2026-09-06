@@ -28,6 +28,7 @@ import { useEffect, useState } from 'react';
 import type { Asset, Job, JobProgress } from '@comfy/shared';
 import { type QueuePlace, ordinal } from '../lib/api-queue';
 import { SparkIcon } from '../components/icons';
+import { Mark } from '../components/Mark';
 import { DownloadIcon, PlayIcon, RemixIcon } from './icons';
 import { isTerminal } from './jobProgress';
 import styles from './stage.module.css';
@@ -402,7 +403,10 @@ function Waiting({ job, place }: { job: Job; place: QueuePlace | null }) {
 
   return (
     <div className={styles.message}>
-      <span className={styles.spinner} aria-hidden />
+      {/* The mark, rippling: the brand's own loader, above the phase line. */}
+      <span className={styles.working} aria-hidden>
+        <Mark size={44} ripple="loop" />
+      </span>
       <p className={styles.messageTitle}>{title}</p>
       <p className={styles.messageBody}>{body}</p>
     </div>

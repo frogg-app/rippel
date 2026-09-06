@@ -90,17 +90,15 @@ export function AdvancedDrawer({
 
   // Opening the drawer at the bottom of a scrolled panel used to reveal only
   // its head, with the controls below the fold. Once the body has mounted,
-  // bring the whole card up into view — but only on a click, never on the
-  // first render (the open state persists, and a page that scrolls itself on
-  // load is disorienting).
+  // bring the whole card up into view — but only after a *click*. The open
+  // state persists, and a page that scrolls itself on load is disorienting;
+  // a "first render" guard is not enough because StrictMode rehearses effects
+  // twice in dev and consumed it.
   const cardRef = useRef<HTMLElement>(null);
-  const mounted = useRef(false);
+  const clicked = useRef(false);
   useEffect(() => {
-    if (!mounted.current) {
-      mounted.current = true;
-      return;
-    }
-    if (!open) return;
+    if (!open || !clicked.current) return;
+    clicked.current = false;
     const card = cardRef.current;
     // jsdom has no scrollIntoView; the tests open this drawer constantly.
     if (!card || typeof card.scrollIntoView !== 'function') return;
@@ -117,7 +115,10 @@ export function AdvancedDrawer({
         className={open ? `${styles.head} ${styles.headOpen}` : styles.head}
         aria-expanded={open}
         aria-controls={bodyId}
-        onClick={() => onOpenChange(!open)}
+        onClick={() => {
+          clicked.current = !open;
+          onOpenChange(!open);
+        }}
       >
         <span className={styles.headText}>
           <span className={styles.title}>Advanced</span>
