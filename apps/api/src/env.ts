@@ -117,6 +117,12 @@ export const env = {
   adminEmail: optional('ADMIN_EMAIL', ''),
   adminPassword: optional('ADMIN_PASSWORD', ''),
 
+  /**
+   * Shared secret for the comfyui-rippel-storage helper node on each backend
+   * (tools/comfyui-rippel-storage). Empty means the Storage view reports the
+   * helper as unauthorised rather than sending an empty token.
+   */
+  comfyStorageToken: optional('COMFY_STORAGE_TOKEN', ''),
   civitaiApiKey: optional('CIVITAI_API_KEY', ''),
   huggingfaceToken: optional('HUGGINGFACE_TOKEN', ''),
 } as const;

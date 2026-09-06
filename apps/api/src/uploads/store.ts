@@ -23,6 +23,7 @@ import { env } from '../env.js';
 import { buildKey, type StorageDriver } from '../storage/driver.js';
 import { makeThumbnail, readImageInfo } from '../storage/images.js';
 import { storage } from '../storage/index.js';
+import { contentHash } from '../workflows/init-image.js';
 
 /** The database calls this module makes, as an interface, so tests can fake it. */
 export interface UploadDb {
@@ -224,8 +225,8 @@ export async function storeUpload(opts: StoreUploadOptions): Promise<Upload> {
 
   const row = await db.queryOne<UploadRow>(
     `INSERT INTO uploads
-       (user_id, storage_key, thumb_key, mime_type, width, height, size_bytes)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)
+       (user_id, storage_key, thumb_key, mime_type, width, height, size_bytes, content_hash)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
      RETURNING ${SELECT_COLUMNS}`,
     [
       opts.userId,
@@ -235,6 +236,9 @@ export async function storeUpload(opts: StoreUploadOptions): Promise<Upload> {
       info.width,
       info.height,
       opts.bytes.byteLength,
+      // The basename this file gets on a ComfyUI box, so the storage view can
+      // say whose it is (backends/storage.ts).
+      contentHash(opts.bytes),
     ],
   );
 

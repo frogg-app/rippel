@@ -389,6 +389,12 @@ export interface ModelRunnability {
   missing: MissingCompanion[];
   /** The backend this verdict is about; a verdict is never global. */
   backendId: Uuid | null;
+  /**
+   * The template the verdict was measured against — the one that would run,
+   * or the nearest one to running when nothing does. Absent for support files
+   * and for families with no template at all.
+   */
+  templateId?: string;
 }
 
 // ---------------------------------------------------------------- model installs
@@ -638,4 +644,134 @@ export interface QueueEntry {
 export interface QueueView {
   entries: QueueEntry[];
   running: QueueEntry | null;
+}
+
+// ---------------------------------------------------------------- storage
+
+/**
+ * What rippel has left on a ComfyUI machine's disk, per backend. Read through
+ * the comfyui-rippel-storage helper node (tools/comfyui-rippel-storage); see
+ * API_CONTRACT.md "Backend storage".
+ */
+export type StorageFolder = 'input' | 'output';
+
+export type StorageHelperState = 'ok' | 'missing' | 'unauthorised' | 'offline';
+
+export interface StorageOwner {
+  id: Uuid;
+  email: string;
+  displayName: string | null;
+}
+
+export interface StorageFile {
+  /** Relative to the backend's comfy-studio folder, forward slashes. */
+  path: string;
+  size: number;
+  modifiedAt: string;
+  /** Null when nothing in rippel's records matches the file. */
+  owner: StorageOwner | null;
+  jobId?: Uuid;
+  assetId?: Uuid;
+  uploadId?: Uuid;
+}
+
+export interface StorageGroup {
+  totalBytes: number;
+  files: StorageFile[];
+}
+
+export interface BackendStorage {
+  helper: StorageHelperState;
+  input: StorageGroup;
+  output: StorageGroup;
+}
+
+export interface StorageDeletion {
+  deleted: string[];
+  missing: string[];
+}
+
+// ---------------------------------------------------------------- model workflows
+
+/**
+ * One workflow template as the registry ships it, for browsing. The graph
+ * itself is not exposed; what an operator needs is what it is for, which
+ * families it serves, where it expects each file to live, and whether it is a
+ * hand-authored graph or the generic guess.
+ */
+export interface WorkflowTemplateSummary {
+  id: string;
+  version: number;
+  label: string;
+  capability: JobKind;
+  /** Family spellings the template claims, as the manifest lists them. */
+  baseModels: string[];
+  isFallback: boolean;
+  /** The ComfyUI folder its *model* loader reads, e.g. "checkpoints". */
+  loaderFolder: string | null;
+  /** Every model folder the graph reads, model loader first. */
+  loaderFolders: string[];
+  /** Companion files the graph loads that the user never picks. */
+  requires: { id: string; label: string; modelType: ModelType; why: string }[];
+  /** Node classes the backend must have registered. */
+  requiredNodeClasses: string[];
+  description: string;
+}
+
+/** A template that could serve one model, with how it would fare on a backend. */
+export interface ModelWorkflowOption {
+  template: WorkflowTemplateSummary;
+  /** Measured against this template alone, on the backend asked about. */
+  verdict: ModelRunnability;
+  /** True when the automatic rules would pick this one for its capability. */
+  automatic: boolean;
+  /** True when an operator has pinned this one for its capability. */
+  assigned: boolean;
+}
+
+export interface ModelWorkflows {
+  model: {
+    id: Uuid;
+    displayName: string;
+    filename: string;
+    family: string | null;
+    /** Where the file is on the backend asked about, when it could be read. */
+    folder: string | null;
+  };
+  backend: { id: Uuid; name: string } | null;
+  /** Pinned template per capability; a capability absent here is automatic. */
+  assigned: Partial<Record<JobKind, string>>;
+  options: ModelWorkflowOption[];
+}
+
+/** What `DELETE /models/:id` did. */
+export interface ModelRemoval {
+  /** The record is gone and jobs can no longer name the model. */
+  removed: boolean;
+  /** Whether the file itself was deleted from the backend's disk. */
+  removedFromDisk: boolean;
+  /** Plain words about what remains to be done, when anything does. */
+  note: string | null;
+}
+
+// ---------------------------------------------------------------- backend admin
+
+/** What an administrator sends to create or change a backend. */
+export interface BackendInput {
+  name: string;
+  baseUrl: string;
+  enabled?: boolean;
+  /** MB; null clears an override. */
+  vramLimitMb?: number | null;
+}
+
+/** The answer to "can rippel reach this ComfyUI right now?". */
+export interface BackendProbe {
+  ok: boolean;
+  latencyMs: number;
+  version?: string;
+  device?: string;
+  /** Bytes, as the backend reports them (a budget, not the card's size). */
+  vramTotal?: number;
+  error?: string;
 }

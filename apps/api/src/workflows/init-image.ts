@@ -96,9 +96,12 @@ export interface TransferredInitImage {
  * byte-identically, and — the reason it is a hash and not the upload's id — the
  * name we put on a shared LAN box leaks neither a user id nor a database key.
  */
+export function contentHash(bytes: Buffer): string {
+  return createHash('sha256').update(bytes).digest('hex').slice(0, 32);
+}
+
 function contentName(bytes: Buffer, extension: string): string {
-  const digest = createHash('sha256').update(bytes).digest('hex').slice(0, 32);
-  return `${digest}.${extension.replace(/^\./, '').toLowerCase()}`;
+  return `${contentHash(bytes)}.${extension.replace(/^\./, '').toLowerCase()}`;
 }
 
 /**
