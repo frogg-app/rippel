@@ -15,10 +15,13 @@ import {
   filterCatalogue,
   filterInstalled,
   foldFamily,
+  formatCount,
   groupInstalled,
   latestByFilename,
+  matchesRunFilter,
+  runs,
 } from './catalogue';
-import { makeEntry, makeInstall, makeModel } from './testing';
+import { makeEntry, makeInstall, makeModel, makeRunnability } from './testing';
 
 describe('foldFamily', () => {
   it('folds both vocabularies onto the same key', () => {
@@ -85,13 +88,13 @@ describe('filterCatalogue', () => {
   ];
 
   it('matches the description, where the searchable words live', () => {
-    expect(filterCatalogue(entries, { type: null, base: null, q: 'halation' })).toHaveLength(1);
+    expect(filterCatalogue(entries, { type: null, base: null, q: 'halation', run: 'all' })).toHaveLength(1);
   });
 
   it('filters on the catalogue’s own family spelling', () => {
-    expect(filterCatalogue(entries, { type: null, base: 'FLUX.1', q: '' })).toHaveLength(1);
+    expect(filterCatalogue(entries, { type: null, base: 'FLUX.1', q: '', run: 'all' })).toHaveLength(1);
     // Deliberately not folded: these options come from the entries themselves.
-    expect(filterCatalogue(entries, { type: null, base: 'flux1', q: '' })).toHaveLength(0);
+    expect(filterCatalogue(entries, { type: null, base: 'flux1', q: '', run: 'all' })).toHaveLength(0);
   });
 
   it('offers only the types and families actually present', () => {
@@ -123,5 +126,60 @@ describe('elapsed', () => {
     expect(elapsed('2026-09-06T08:00:00.000Z', start + 42_000)).toBe('42s');
     expect(elapsed('2026-09-06T08:00:00.000Z', start + 125_000)).toBe('2m 5s');
     expect(elapsed('2026-09-06T08:00:00.000Z', start + 3_900_000)).toBe('1h 5m');
+  });
+});
+
+describe('the runnability filter', () => {
+  const ready = makeRunnability({ status: 'ready' });
+  const generic = makeRunnability({ status: 'generic' });
+  const blocked = makeRunnability({ status: 'needs-companion' });
+  const support = makeRunnability({ status: 'support' });
+
+  it('counts the generic workflow as running, because it does', () => {
+    // It is flagged differently on the card — nobody wrote that graph for this
+    // model — but "will it run" and "is it any good" are different questions
+    // and this filter only answers the first.
+    expect(runs('generic')).toBe(true);
+    expect(matchesRunFilter(generic, 'runs')).toBe(true);
+    expect(matchesRunFilter(ready, 'runs')).toBe(true);
+    expect(matchesRunFilter(blocked, 'runs')).toBe(false);
+  });
+
+  it('does not call a support file broken', () => {
+    // A VAE is not a failed checkpoint. It appears under "everything" and
+    // under neither of the narrowed views.
+    expect(matchesRunFilter(support, 'blocked')).toBe(false);
+    expect(matchesRunFilter(support, 'runs')).toBe(false);
+    expect(matchesRunFilter(support, 'all')).toBe(true);
+  });
+
+  it('leaves an unjudged entry out of both narrowed lists', () => {
+    // No verdict means the backend could not be asked. Counting it as working
+    // would be the one wrong answer that costs somebody a 7 GB download.
+    expect(matchesRunFilter(null, 'runs')).toBe(false);
+    expect(matchesRunFilter(null, 'blocked')).toBe(false);
+    expect(matchesRunFilter(null, 'all')).toBe(true);
+  });
+
+  it('narrows the catalogue with the other filters still applied', () => {
+    const entries = [
+      makeEntry({ ref: 'a', type: 'checkpoint', runnability: ready }),
+      makeEntry({ ref: 'b', type: 'checkpoint', runnability: blocked }),
+      makeEntry({ ref: 'c', type: 'lora', runnability: ready }),
+    ];
+    const filters = { type: 'checkpoint' as const, base: null, q: '' };
+    expect(filterCatalogue(entries, { ...filters, run: 'all' })).toHaveLength(2);
+    expect(filterCatalogue(entries, { ...filters, run: 'runs' })).toHaveLength(1);
+    expect(filterCatalogue(entries, { ...filters, run: 'blocked' })).toHaveLength(1);
+  });
+});
+
+describe('formatCount', () => {
+  it('fits a download count in the width a card has for it', () => {
+    expect(formatCount(412)).toBe('412');
+    expect(formatCount(8_113)).toBe('8.1k');
+    expect(formatCount(64_200)).toBe('64k');
+    expect(formatCount(1_767_210)).toBe('1.8M');
+    expect(formatCount(41_000_000)).toBe('41M');
   });
 });

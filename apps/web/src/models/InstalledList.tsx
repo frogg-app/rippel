@@ -11,9 +11,24 @@
  * Grouped by type first, family second: the type is which slot the file fills,
  * the family is what it is compatible with, and those are the two questions
  * asked before any other.
+ *
+ * A row also says whether the file can actually be *used*. "Installed" and
+ * "usable" are different claims and this list was only making the first: the
+ * two video checkpoints on the box have sat here looking available for weeks
+ * while every job against them failed, because their text encoder was never
+ * downloaded. A row that cannot run now says so, in the API's words, and a row
+ * that can says nothing — the absence of bad news is the common case and does
+ * not need a badge of its own.
  */
-import type { Model, Uuid } from '@comfy/shared';
-import { TYPE_LABELS, basename, groupInstalled } from './catalogue';
+import type { Model, ModelRunnability, Uuid } from '@comfy/shared';
+import {
+  RUNNABILITY_LABEL,
+  RUNNABILITY_TONE,
+  TYPE_LABELS,
+  basename,
+  groupInstalled,
+  runs,
+} from './catalogue';
 import styles from './ModelsPanels.module.css';
 
 export interface InstalledListProps {
@@ -22,9 +37,16 @@ export interface InstalledListProps {
   backendOrder: { id: Uuid; name: string; online: boolean }[];
   /** The backend the rest of the screen is acting on; its chip is emphasised. */
   selectedBackendId: Uuid | null;
+  /** Verdict per model id. Absent ids simply get no verdict shown. */
+  runnability: Record<Uuid, ModelRunnability>;
 }
 
-export function InstalledList({ models, backendOrder, selectedBackendId }: InstalledListProps) {
+export function InstalledList({
+  models,
+  backendOrder,
+  selectedBackendId,
+  runnability,
+}: InstalledListProps) {
   const groups = groupInstalled(models);
 
   return (
@@ -47,6 +69,7 @@ export function InstalledList({ models, backendOrder, selectedBackendId }: Insta
                   <span className={`mono ${styles.rowFile}`} title={model.filename}>
                     {basename(model.filename)}
                   </span>
+                  <RowVerdict verdict={runnability[model.id] ?? null} />
                 </div>
                 <ul className={styles.hosts} aria-label="Backends holding this model">
                   {backendOrder
@@ -74,5 +97,24 @@ export function InstalledList({ models, backendOrder, selectedBackendId }: Insta
         </section>
       ))}
     </div>
+  );
+}
+
+/**
+ * The bad news, when there is any.
+ *
+ * Silent for a model that runs and for a support file: neither is a problem,
+ * and a badge on every row would leave the two that matter nowhere to stand
+ * out. The text is the API's whole sentence, because it names the file to
+ * download or the folder to move — a badge alone would be an accusation with
+ * no remedy.
+ */
+function RowVerdict({ verdict }: { verdict: ModelRunnability | null }) {
+  if (!verdict || runs(verdict.status) || verdict.status === 'support') return null;
+  return (
+    <span className={`${styles.rowVerdict} ${styles[`verdict_${RUNNABILITY_TONE[verdict.status]}`]}`}>
+      <span className={styles.verdictChip}>{RUNNABILITY_LABEL[verdict.status]}</span>
+      <span className={styles.rowVerdictText}>{verdict.detail ?? verdict.summary}</span>
+    </span>
   );
 }

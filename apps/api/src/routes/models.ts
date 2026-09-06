@@ -1,8 +1,10 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { query } from '../db.js';
+import { runnabilityFor } from '../models/runnability.js';
+import { objectInfoFor } from '../orchestrator/preflight.js';
 import { normalizeBaseModel } from '../workflows/registry.js';
-import type { Model, ModelType } from '@comfy/shared';
+import type { ModelRunnability, RunnabilityStatus, Model, ModelType, Uuid } from '@comfy/shared';
 
 interface ModelRow {
   id: string;
@@ -29,7 +31,33 @@ const listQuery = z.object({
    * select the same models. The UI passes back a value it got from `families`.
    */
   baseModel: z.string().min(1).max(64).optional(),
+  /**
+   * Also work out, per model, whether it can actually be generated with — see
+   * models/runnability.ts.
+   *
+   * Opt-in, and it is opt-in for a reason: answering means reading
+   * `/object_info` off every online backend, which is a megabyte of JSON and up
+   * to 20 seconds on a cold cache. The Create screen calls this route on every
+   * load and must not pay for it; the Models screen asks once and wants it.
+   */
+  runnability: z.coerce.boolean().optional(),
 });
+
+/**
+ * Best-first, so a model that runs on one machine is reported as running even
+ * if another machine is missing its text encoder. "Where it works" is the
+ * useful answer; "where it does not" is a per-backend question this list does
+ * not ask.
+ */
+const STATUS_RANK: Record<RunnabilityStatus, number> = {
+  ready: 0,
+  generic: 1,
+  unknown: 2,
+  'needs-companion': 3,
+  'wrong-folder': 4,
+  'no-workflow': 5,
+  support: 6,
+};
 
 export default async function modelRoutes(app: FastifyInstance) {
   app.get('/models', { onRequest: [app.requireAuth] }, async (req, reply) => {
@@ -37,7 +65,7 @@ export default async function modelRoutes(app: FastifyInstance) {
     if (!parsed.success) {
       return reply.code(400).send({ error: 'invalid_input', message: 'Bad filter.' });
     }
-    const { type, availableOnly, baseModel } = parsed.data;
+    const { type, availableOnly, baseModel, runnability } = parsed.data;
     // Normalised on the way in and in SQL on the way out, so a stored "sdxl"
     // matches a requested "SDXL 1.0" — the same fold the registry does when it
     // looks a template up, and the reason the two can never disagree.
@@ -89,6 +117,70 @@ export default async function modelRoutes(app: FastifyInstance) {
       [type ?? null, availableOnly ?? false],
     );
 
-    return { models, families: familyRows.map((r) => r.base_model) };
+    return {
+      models,
+      families: familyRows.map((r) => r.base_model),
+      runnability: runnability ? await verdicts(models) : undefined,
+    };
   });
+}
+
+/**
+ * "It is installed" and "it works" are different claims, and the installed list
+ * was only ever making the first one. A checkpoint whose family has no workflow,
+ * or whose text encoder nobody downloaded, sat in the list looking available.
+ *
+ * Verdicts are keyed by model id rather than added to `Model`, deliberately:
+ * `Model` is shared with the Create screen and the orchestrator, and a field
+ * that is present on one route and absent on three others is a trap.
+ */
+async function verdicts(models: Model[]): Promise<Record<Uuid, ModelRunnability>> {
+  const backendIds = [...new Set(models.flatMap((model) => model.backendIds))];
+  if (backendIds.length === 0) return {};
+
+  const backends = await query<{ id: string; name: string; base_url: string }>(
+    `SELECT id, name, base_url FROM backends WHERE id = ANY($1::uuid[]) AND status = 'online'`,
+    [backendIds],
+  );
+
+  // One /object_info per backend, shared by every model on it, through
+  // preflight's cache. An offline backend is simply not asked.
+  const info = new Map<string, Awaited<ReturnType<typeof objectInfoFor>> | null>();
+  await Promise.all(
+    backends.map(async (backend) => {
+      try {
+        info.set(backend.id, await objectInfoFor(backend.base_url));
+      } catch {
+        info.set(backend.id, null);
+      }
+    }),
+  );
+
+  const out: Record<Uuid, ModelRunnability> = {};
+  for (const model of models) {
+    for (const backend of backends) {
+      if (!model.backendIds.includes(backend.id)) continue;
+      const verdict = runnabilityFor({
+        filename: model.filename,
+        type: model.type,
+        // `base_model` is our own canonical spelling by this point, which the
+        // catalogue-base table also understands; where it does not, inference
+        // falls through to the filename exactly as it would for a new file.
+        catalogueBase: model.baseModel,
+        // Deliberately unknown. A row's `type` comes from *which loader
+        // reported it*, and UNETLoader reports a diffusion_models file as a
+        // checkpoint — so deriving a folder from the type would invent the one
+        // fact the wrong-folder check exists to establish. /object_info answers
+        // it properly instead.
+        folder: null,
+        info: info.get(backend.id) ?? null,
+        backendId: backend.id,
+        backendName: backend.name,
+        installed: true,
+      });
+      const held = out[model.id];
+      if (!held || STATUS_RANK[verdict.status] < STATUS_RANK[held.status]) out[model.id] = verdict;
+    }
+  }
+  return out;
 }

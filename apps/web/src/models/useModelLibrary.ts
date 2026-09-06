@@ -11,7 +11,7 @@
  * file on a machine, and the installed list is stale until it is re-read.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { Backend, Model, Uuid } from '@comfy/shared';
+import type { Backend, Model, ModelRunnability, Uuid } from '@comfy/shared';
 import type { ModelsApi } from '../lib/api-models';
 
 export interface ModelLibraryState {
@@ -19,6 +19,12 @@ export interface ModelLibraryState {
   models: Model[];
   /** Folded family keys from the API, for the installed view's chips. */
   families: string[];
+  /**
+   * Per model id: whether it can actually be generated with, and why not.
+   * Empty when the API had nothing to say — an offline backend, say — which
+   * the list renders as no badge rather than as a bad one.
+   */
+  runnability: Record<Uuid, ModelRunnability>;
   loading: boolean;
   error: string | null;
   refresh: () => void;
@@ -30,6 +36,7 @@ export function useModelLibrary(api: ModelsApi): ModelLibraryState {
   const [backends, setBackends] = useState<Backend[]>([]);
   const [models, setModels] = useState<Model[]>([]);
   const [families, setFamilies] = useState<string[]>([]);
+  const [runnability, setRunnability] = useState<Record<Uuid, ModelRunnability>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [nonce, setNonce] = useState(0);
@@ -53,6 +60,7 @@ export function useModelLibrary(api: ModelsApi): ModelLibraryState {
         setBackends(backendList);
         setModels(installed.models);
         setFamilies(installed.families);
+        setRunnability(installed.runnability);
         setError(null);
       } catch {
         if (!stopped) setError('Could not load your backends and their models.');
@@ -74,5 +82,5 @@ export function useModelLibrary(api: ModelsApi): ModelLibraryState {
     [],
   );
 
-  return { backends, models, families, loading, error, refresh, backendName };
+  return { backends, models, families, runnability, loading, error, refresh, backendName };
 }

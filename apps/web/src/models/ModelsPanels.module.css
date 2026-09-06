@@ -147,6 +147,44 @@
   color: var(--accent-deep);
 }
 
+/* A segmented control rather than three more chips: these three are mutually
+   exclusive and cover the whole set between them, which is exactly what chips
+   (independent toggles, in the same row as the type chips) would not say. */
+.runFilter {
+  display: inline-flex;
+  align-self: flex-start;
+  padding: 2px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--line-strong);
+  background: var(--surface-2);
+}
+
+.segment {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: calc(var(--models-chip-height) - 4px);
+  padding: 0 14px;
+  border-radius: var(--radius-pill);
+  font-size: 12.5px;
+  color: var(--text-quiet);
+  transition: color var(--transition), background var(--transition);
+}
+
+.segment:hover {
+  color: var(--text-2);
+}
+
+.segmentOn {
+  background: var(--accent-tint);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.segmentOn .chipCount {
+  color: var(--accent-deep);
+}
+
 /* -------------------------------------------------- catalogue grid */
 
 .grid {
@@ -182,6 +220,22 @@
   position: relative;
   height: var(--models-card-art);
   flex-shrink: 0;
+}
+
+/* A card that has a real preview earns a taller band. The 84px in tokens.css is
+   sized for a gradient, which carries a family and nothing else; a photograph
+   at 84px in a 244px column is a letterbox slit. Only cards with an image pay
+   the extra height, so a grid of text encoders stays as compact as it was. */
+.cardArtPhoto {
+  height: 132px;
+  background: #0f0d14;
+}
+
+.cardImage {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
 }
 
 .cardType {
@@ -251,6 +305,102 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.cardDownloads {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  vertical-align: -1px;
+}
+
+/* The verdict line: a chip that says how bad the news is, and the API's own
+   sentence saying why. Two lines maximum — the full text is on the title, and
+   a card that grew to fit a paragraph would break the grid's rhythm. */
+.verdict {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: var(--text-xs);
+}
+
+.verdictChip {
+  align-self: flex-start;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  border: 1px solid var(--line-faint);
+  color: var(--text-4);
+}
+
+.verdictText {
+  color: var(--text-muted);
+  line-height: 1.45;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.verdict_good .verdictChip {
+  color: #7fdca4;
+  background: rgba(95, 208, 138, 0.14);
+  border-color: rgba(95, 208, 138, 0.32);
+}
+
+/* Runs, but on a graph nobody wrote for it. Distinct from the verified green
+   on purpose — see RUNNABILITY_TONE in catalogue.ts. */
+.verdict_soft .verdictChip {
+  color: #9fb8d8;
+  background: rgba(120, 160, 210, 0.12);
+  border-color: rgba(120, 160, 210, 0.3);
+}
+
+.verdict_warn .verdictChip {
+  color: var(--models-warn);
+  background: var(--models-warn-tint);
+  border-color: var(--accent-line);
+}
+
+.verdict_muted .verdictChip {
+  background: var(--surface-2);
+}
+
+/* Licence, model page and picture provenance: the small print, and it reads as
+   small print rather than competing with the verdict. */
+.cardSource {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  font-size: 10.5px;
+  color: var(--text-4);
+}
+
+.licence {
+  font-family: var(--font-mono);
+}
+
+.sourceLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-muted);
+  text-decoration: none;
+  border-bottom: 1px solid var(--line-faint);
+}
+
+.sourceLink:hover {
+  color: var(--accent);
+  border-bottom-color: var(--accent-line);
+}
+
+.borrowed {
+  font-style: italic;
 }
 
 .installButton {
@@ -496,6 +646,23 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* A row's verdict wraps onto its own line under the filename. It only appears
+   for a model that cannot run, so the extra height is paid exactly where the
+   explanation is worth it. */
+.rowVerdict {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 3px 8px;
+  margin-top: 3px;
+  font-size: var(--text-xs);
+}
+
+.rowVerdictText {
+  color: var(--text-muted);
+  min-width: 0;
 }
 
 /* "Which machines have this" — the question this screen exists to answer, so

@@ -43,6 +43,8 @@ interface RawCatalogueEntry {
   description?: string;
   filename?: string;
   url?: string;
+  /** The model *page*: a HuggingFace repo, a Civitai model, a GitHub project. */
+  reference?: string;
   size?: string;
   installed?: string | boolean;
 }
@@ -127,9 +129,19 @@ export class ComfyManagerTransport implements ModelTransport {
         description: raw.description ?? null,
         size: raw.size ?? null,
         url: raw.url,
+        // Manager states this for every entry in its list (562/562 on the live
+        // box) and it is the only handle we have on anything a human wrote
+        // about the model — see models/metadata.ts.
+        reference: raw.reference ?? null,
+        savePath: raw.save_path,
         // Manager reports this as the string "True"/"False" in some versions
         // and a boolean in others.
         installed: raw.installed === true || raw.installed === 'True',
+        // Both are filled in by the route, which is where the cache and the
+        // backend's /object_info live. A transport talks to one backend and
+        // knows nothing about either.
+        info: null,
+        runnability: null,
       });
     }
 

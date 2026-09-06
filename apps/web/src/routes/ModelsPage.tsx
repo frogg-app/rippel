@@ -12,9 +12,10 @@
  *    can install is a property of the machine you are installing onto, and a UI
  *    that offered a registry to search would be promising something the
  *    transport will not do.
- *  - The artboard's cards are photographs with a percentage bar. The catalogue
- *    carries no previews and the transport reports no bytes; see CatalogueCard
- *    and InstallProgress.
+ *  - The artboard's cards are photographs with a percentage bar. There is now a
+ *    photograph on about half of them — the API resolves each entry's model page
+ *    and serves a cached sample image — but never a percentage: the transport
+ *    reports tasks, not bytes. See CatalogueCard and InstallProgress.
  *  - 42 base families is a select, not a chip row. See FilterBar.
  *
  * Route: `/models`, inside the `RequireAuth` + `AppShell` block in App.tsx.
@@ -41,7 +42,9 @@ import {
   filterCatalogue,
   filterInstalled,
   latestByFilename,
+  matchesRunFilter,
   MODEL_TYPES,
+  type RunFilter,
 } from '../models/catalogue';
 import { useCatalogue } from '../models/useCatalogue';
 import { useInstalls } from '../models/useInstalls';
@@ -149,6 +152,7 @@ export function ModelsPage({ api = modelsApi }: ModelsPageProps = {}) {
   const [catType, setCatType] = useState<ModelType | null>(null);
   const [catBase, setCatBase] = useState<string | null>(null);
   const [catQ, setCatQ] = useState('');
+  const [catRun, setCatRun] = useState<RunFilter>('all');
 
   // Filters are per backend: "SDXL" may not be a family the next machine's
   // catalogue even has, and a stale chip would silently show nothing.
@@ -156,13 +160,29 @@ export function ModelsPage({ api = modelsApi }: ModelsPageProps = {}) {
     setCatType(null);
     setCatBase(null);
     setCatQ('');
+    // The verdict is per backend too — a model that runs on one machine may be
+    // missing its text encoder on the next — so this resets with the rest.
+    setCatRun('all');
   }, [backendId]);
 
   const entries = catalogue.state.kind === 'ready' ? catalogue.state.entries : [];
   const catalogueFiltered = useMemo(
-    () => filterCatalogue(entries, { type: catType, base: catBase, q: catQ }),
-    [entries, catType, catBase, catQ],
+    () => filterCatalogue(entries, { type: catType, base: catBase, q: catQ, run: catRun }),
+    [entries, catType, catBase, catQ, catRun],
   );
+
+  // Counts for the runnability segments, taken *under the other filters* and
+  // not under this one: a segment has to say how many rows it would leave, and
+  // a count that changed when you pressed it would be describing the answer
+  // rather than the choice.
+  const runCounts = useMemo(() => {
+    const rest = filterCatalogue(entries, { type: catType, base: catBase, q: catQ, run: 'all' });
+    return {
+      all: rest.length,
+      runs: rest.filter((entry) => matchesRunFilter(entry.runnability, 'runs')).length,
+      blocked: rest.filter((entry) => matchesRunFilter(entry.runnability, 'blocked')).length,
+    };
+  }, [entries, catType, catBase, catQ]);
 
   const backendInstalls = useMemo(
     () => installs.installs.filter((install) => install.backendId === backendId),
@@ -297,6 +317,7 @@ export function ModelsPage({ api = modelsApi }: ModelsPageProps = {}) {
                   models={installedFiltered}
                   backendOrder={backendOrder}
                   selectedBackendId={backendId}
+                  runnability={library.runnability}
                 />
               )}
             </div>
@@ -321,6 +342,9 @@ export function ModelsPage({ api = modelsApi }: ModelsPageProps = {}) {
                 onFamily={setCatBase}
                 shown={catalogueFiltered.length}
                 total={catalogue.state.entries.length}
+                run={catRun}
+                onRun={setCatRun}
+                runCounts={runCounts}
               />
             ) : null}
 
@@ -339,6 +363,7 @@ export function ModelsPage({ api = modelsApi }: ModelsPageProps = {}) {
                   setCatQ('');
                   setCatType(null);
                   setCatBase(null);
+                  setCatRun('all');
                 }}
               />
             </div>

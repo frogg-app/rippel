@@ -16,8 +16,8 @@
  *   GET /api/backends
  *     -> 200 { backends: Backend[] }        requireAuth
  *
- *   GET /api/models
- *     -> 200 { models: Model[]; families: string[] }
+ *   GET /api/models?runnability=1
+ *     -> 200 { models: Model[]; families: string[]; runnability?: Record<Uuid, ModelRunnability> }
  *     **requireAuth, not requireAdmin.** Every signed-in user may see what is
  *     installed; only installing is an operator action. `Model.backendIds`
  *     names the machines that actually hold the file, which is what lets the
@@ -29,18 +29,35 @@
  *     as one filter list. See `foldFamily` in ../models/catalogue.ts.
  *     A filename can carry a subfolder, including a Windows one:
  *     "SDXL\\sd_xl_base_1.0.safetensors". Compare on the basename.
+ *     `runnability` is **opt-in** and keyed by model id, not folded into
+ *     `Model`: answering it costs a `/object_info` read per online backend, and
+ *     the Create screen calls this route on every load. Ask for it here, where
+ *     it is the whole point, and nowhere else.
  *
  *   GET /api/backends/:id/catalogue                     admin only
- *     -> 200 { entries: ModelCatalogEntry[] }
+ *     -> 200 { entries: ModelCatalogEntry[]; pending: number }
  *     -> 501 { error: 'not_implemented', message }  the backend has no install
  *        mechanism at all. The message names the fix ("Install ComfyUI-Manager
  *        into the backend's custom_nodes and restart ComfyUI") and is meant to
  *        be rendered verbatim rather than flattened into "something failed".
  *     -> 502 the transport is there but erroring.
  *     372 entries on the real box, across 6 types and 42 base families, of
- *     which 2 were flagged `installed`. No entry carries a preview image, and
- *     `size` is a human string ("6.94GB") that is sometimes null — so this
- *     cannot be a picture grid and cannot sort by size.
+ *     which 2 were flagged `installed`. `size` is a human string ("6.94GB")
+ *     that is sometimes null, so this still cannot sort by size.
+ *     Each entry now also carries:
+ *       `info`         preview image, licence, downloads — resolved server-side
+ *                      from the entry's model page and cached there. Null until
+ *                      it has been. `info.previewUrl` is a path on **this** API
+ *                      (`/api/model-previews/<id>`); the browser never talks to
+ *                      huggingface.co, which is deliberate — see the API's
+ *                      models/metadata.ts.
+ *       `runnability`  whether it would actually work on this backend. Measured
+ *                      on the live catalogue: 5 ready, 26 generic, 19 needing a
+ *                      companion model, 40 landing in a folder no workflow can
+ *                      read, 55 with no workflow at all, 227 support files.
+ *     `pending` is how many model pages are still being resolved in the
+ *     background. Non-zero means asking again shortly returns more `info`;
+ *     zero means this is as good as it gets and polling is pointless.
  *
  *   POST /api/backends/:id/models  { ref }
  *     -> 202 { install: ModelInstall }
@@ -57,7 +74,14 @@
  * the transport said, and no percentage exists anywhere in the contract.
  * Nothing in this feature may invent one.
  */
-import type { Backend, Model, ModelCatalogEntry, ModelInstall, Uuid } from '@comfy/shared';
+import type {
+  Backend,
+  Model,
+  ModelCatalogEntry,
+  ModelInstall,
+  ModelRunnability,
+  Uuid,
+} from '@comfy/shared';
 import { ApiRequestError } from './api';
 
 const BASE = '/api';
@@ -110,12 +134,24 @@ export interface InstalledModels {
   models: Model[];
   /** Folded family names, e.g. "sdxl". Only ever filters the installed list. */
   families: string[];
+  /**
+   * Verdict per model id, when it was asked for. Empty rather than absent, so
+   * a caller never has to distinguish "not asked" from "nothing to say" —
+   * both mean the same thing to the list.
+   */
+  runnability: Record<Uuid, ModelRunnability>;
+}
+
+export interface CatalogueResult {
+  entries: ModelCatalogEntry[];
+  /** Model pages still being resolved server-side. 0 means nothing to wait for. */
+  pending: number;
 }
 
 export interface ModelsApi {
   backends(signal?: AbortSignal): Promise<Backend[]>;
   installed(signal?: AbortSignal): Promise<InstalledModels>;
-  catalogue(backendId: Uuid, signal?: AbortSignal): Promise<ModelCatalogEntry[]>;
+  catalogue(backendId: Uuid, signal?: AbortSignal): Promise<CatalogueResult>;
   /** 202 on success; the install comes back `queued` and is then polled. */
   install(backendId: Uuid, ref: string): Promise<ModelInstall>;
   installHistory(backendId: Uuid, signal?: AbortSignal): Promise<ModelInstall[]>;
@@ -130,13 +166,25 @@ export const modelsApi: ModelsApi = {
     (await request<{ backends: Backend[] }>('/backends', { signal })).backends ?? [],
 
   installed: async (signal) => {
-    const body = await request<{ models: Model[]; families: string[] }>('/models', { signal });
-    return { models: body.models ?? [], families: body.families ?? [] };
+    const body = await request<{
+      models: Model[];
+      families: string[];
+      runnability?: Record<Uuid, ModelRunnability>;
+    }>('/models?runnability=1', { signal });
+    return {
+      models: body.models ?? [],
+      families: body.families ?? [],
+      runnability: body.runnability ?? {},
+    };
   },
 
-  catalogue: async (backendId, signal) =>
-    (await request<{ entries: ModelCatalogEntry[] }>(`/backends/${backendId}/catalogue`, { signal }))
-      .entries ?? [],
+  catalogue: async (backendId, signal) => {
+    const body = await request<{ entries: ModelCatalogEntry[]; pending?: number }>(
+      `/backends/${backendId}/catalogue`,
+      { signal },
+    );
+    return { entries: body.entries ?? [], pending: body.pending ?? 0 };
+  },
 
   install: async (backendId, ref) =>
     (

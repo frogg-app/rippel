@@ -62,6 +62,21 @@ export const WarningIcon = (props: IconProps) => (
   </Icon>
 );
 
+/** A download *count* — a tray, not the install arrow, which means something else here. */
+export const DownloadCountIcon = (props: IconProps) => (
+  <Icon {...props} strokeWidth={1.7}>
+    <path d="M4 15v3.5A1.5 1.5 0 005.5 20h13a1.5 1.5 0 001.5-1.5V15" />
+    <path d="M12 4v9M8 9.5l4 4 4-4" />
+  </Icon>
+);
+
+/** Leaves the app: on the "Model page" link, so the arrow is the warning. */
+export const LinkIcon = (props: IconProps) => (
+  <Icon {...props} strokeWidth={1.9}>
+    <path d="M14 5h5v5M19 5l-8 8M17 14v4.5A1.5 1.5 0 0115.5 20h-10A1.5 1.5 0 014 18.5v-10A1.5 1.5 0 015.5 7H10" />
+  </Icon>
+);
+
 export const ChevronIcon = (props: IconProps) => (
   <Icon {...props} strokeWidth={1.8}>
     <path d="M6 9l6 6 6-6" />

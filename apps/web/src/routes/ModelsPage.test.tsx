@@ -16,6 +16,11 @@
  *     see would show "no downloads" over a live one.
  *  4. The catalogue filter narrows 100 entries, because it is the only way to
  *     use a 372-entry list at all.
+ *  5. A card says whether the thing will actually run, and the "Will run here"
+ *     filter narrows to those. This is the whole reason the screen is worth
+ *     opening before a download rather than after one.
+ *  6. An installed model that cannot run says why. Two video checkpoints sat in
+ *     that list looking available while every job against them failed.
  *
  * Plus the admin gate, since every install route 403s for a non-admin.
  *
@@ -31,8 +36,11 @@ import { AuthContext, type AuthState } from '../auth/context';
 import { ApiRequestError } from '../lib/api';
 import type { ModelsApi } from '../lib/api-models';
 import {
+  BACKEND_ID,
   installInState,
   makeBackend,
+  makeModel,
+  makeRunnability,
   makeStubApi,
   type StubOptions,
 } from '../models/testing';
@@ -231,6 +239,96 @@ describe('ModelsPage', () => {
       expect(within(installed).queryByRole('button', { name: /Install/ })).not.toBeInTheDocument();
     });
 
+    it('shows the preview and the verdict, and filters down to what will run', async () => {
+      const api = makeStubApi();
+      renderPage(api);
+      await ready();
+      const user = await openTab(/Discover/);
+
+      const sdxl = await screen.findByRole('article', { name: 'SDXL Base 1.0' });
+      // Same-origin, from our own API — never huggingface.co, which is the
+      // whole point of caching these server-side.
+      const image = within(sdxl).getByRole('presentation', { hidden: true });
+      expect(image).toHaveAttribute('src', '/api/model-previews/2f2a1b0c9d8e7f6a5b4c');
+      expect(within(sdxl).getByText('Will run')).toBeInTheDocument();
+      expect(
+        within(sdxl).getByText('An SDXL model, with a workflow written for it.'),
+      ).toBeInTheDocument();
+      expect(within(sdxl).getByText('openrail++')).toBeInTheDocument();
+      // 1,767,210 downloads, in the width a card has for it.
+      expect(within(sdxl).getByText('1.8M')).toBeInTheDocument();
+
+      // One entry in the fixture runs; everything else is a support file, and
+      // a support file is not offered as either working or broken.
+      await user.click(screen.getByRole('button', { name: /Will run here/ }));
+      await waitFor(() => expect(screen.getByText('1 / 100')).toBeInTheDocument());
+      expect(screen.getByRole('article', { name: 'SDXL Base 1.0' })).toBeInTheDocument();
+      expect(screen.queryByRole('article', { name: 'RealESRGAN x2' })).not.toBeInTheDocument();
+    });
+
+    it('falls back to the family gradient when a preview will not load', async () => {
+      const api = makeStubApi();
+      renderPage(api);
+      await ready();
+      await openTab(/Discover/);
+
+      const sdxl = await screen.findByRole('article', { name: 'SDXL Base 1.0' });
+      const image = within(sdxl).getByRole('presentation', { hidden: true });
+      // A cached preview can 404 — the row outlives the bytes if the table is
+      // cleared. One failure, then the gradient, never a broken-image icon.
+      act(() => {
+        image.dispatchEvent(new Event('error'));
+      });
+      await waitFor(() =>
+        expect(within(sdxl).queryByRole('presentation', { hidden: true })).not.toBeInTheDocument(),
+      );
+    });
+
+  });
+
+  describe('the preview fill-in poll', () => {
+    beforeEach(() => {
+      // As above: microtask-driven awaits and user-event keep working, while
+      // the test still jumps the 6s fill-in interval by hand.
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('re-reads while the API is still resolving model pages', async () => {
+      // Previews arrive a minute or so after the first read of a catalogue
+      // nobody has looked at before. Rather than blocking a 372-card grid on
+      // that, the screen paints what it has and fills in.
+      const api = makeStubApi({ cataloguePending: 3 });
+      renderPage(api);
+      await ready();
+      await openTab(/Discover/);
+      await screen.findByRole('article', { name: 'SDXL Base 1.0' });
+
+      const first = api.calls.filter((call) => call === 'catalogue').length;
+      expect(first).toBeGreaterThan(0);
+
+      await act(async () => vi.advanceTimersByTimeAsync(7_000));
+      await waitFor(() =>
+        expect(api.calls.filter((call) => call === 'catalogue').length).toBeGreaterThan(first),
+      );
+    });
+
+    it('asks once and stops when there is nothing left to resolve', async () => {
+      const api = makeStubApi({ cataloguePending: 0 });
+      renderPage(api);
+      await ready();
+      await openTab(/Discover/);
+      await screen.findByRole('article', { name: 'SDXL Base 1.0' });
+
+      const first = api.calls.filter((call) => call === 'catalogue').length;
+      await act(async () => vi.advanceTimersByTimeAsync(30_000));
+      expect(api.calls.filter((call) => call === 'catalogue').length).toBe(first);
+    });
+  });
+
+  describe('a backend with nothing to offer', () => {
     it('says so when a backend’s catalogue is empty', async () => {
       const api = makeStubApi({ entries: [] });
       renderPage(api);
@@ -240,6 +338,60 @@ describe('ModelsPage', () => {
       expect(
         await screen.findByRole('heading', { name: 'This backend offers nothing to install' }),
       ).toBeInTheDocument();
+    });
+  });
+
+  describe('the installed list', () => {
+    it('says why an installed model cannot actually be used', async () => {
+      const ltx = makeModel({
+        id: 'ltx',
+        displayName: 'LTX-Video 2B',
+        filename: 'ltx-video-2b-v0.9.1.safetensors',
+        baseModel: 'ltx-video',
+      });
+      const api = makeStubApi({
+        installed: {
+          models: [ltx],
+          families: ['ltx-video'],
+          runnability: {
+            ltx: makeRunnability({
+              status: 'needs-companion',
+              family: 'ltx-video',
+              backendId: BACKEND_ID,
+              summary: 'Needs another model first',
+              detail:
+                'The LTX-Video workflow also needs a T5 text encoder, "t5xxl_fp16.safetensors", which desktop-6900xt cannot load.',
+              missing: [
+                { filename: 't5xxl_fp16.safetensors', purpose: 'T5 text encoder', loader: 'CLIPLoader' },
+              ],
+            }),
+          },
+        },
+      });
+      renderPage(api);
+      await ready();
+
+      expect(await screen.findByText('LTX-Video 2B')).toBeInTheDocument();
+      expect(screen.getByText('Needs another model')).toBeInTheDocument();
+      // The API's own sentence, naming the file to go and get.
+      expect(screen.getByText(/t5xxl_fp16\.safetensors/)).toBeInTheDocument();
+    });
+
+    it('leaves a model that works unbadged', async () => {
+      const api = makeStubApi({
+        installed: {
+          models: [makeModel({ id: 'sdxl' })],
+          families: ['sdxl'],
+          runnability: { sdxl: makeRunnability({ status: 'ready', summary: 'Will run' }) },
+        },
+      });
+      renderPage(api);
+      await ready();
+
+      expect(await screen.findByText('Sd Xl Base 1.0')).toBeInTheDocument();
+      // No badge on a healthy row: with one on every row the two that matter
+      // would have nowhere to stand out.
+      expect(screen.queryByText('Will run')).not.toBeInTheDocument();
     });
   });
 

@@ -19,7 +19,10 @@ import type {
 import { query, queryOne } from '../db.js';
 import { findTemplate, findTemplateById } from '../workflows/registry.js';
 import type { WorkflowTemplate } from '../workflows/types.js';
-import { ComfyError } from '../lib/comfy.js';
+import { ComfyError, type ObjectInfo } from '../lib/comfy.js';
+import { objectInfoFor } from '../orchestrator/preflight.js';
+import { previewBytes, withCatalogueInfo } from './metadata.js';
+import { folderForSavePath, runnabilityFor } from './runnability.js';
 import {
   activeInstalls,
   InstallConflict,
@@ -51,6 +54,18 @@ export default async function modelInstallRoutes(app: FastifyInstance) {
    * What this backend is able to install. Comes from the backend itself rather
    * than a list we hold, because the transport will refuse anything it does not
    * recognise — see the whitelist note on ComfyManagerTransport.
+   *
+   * Two things are added on top of the transport's answer, and neither of them
+   * is allowed to break it:
+   *
+   *  - `info` — preview image, licence, downloads — merged in from the metadata
+   *    cache. Anything not cached yet is resolved in the background and comes
+   *    back on a later read; `pending` is how many model pages are still being
+   *    resolved, so the UI knows whether re-asking is worth anything.
+   *  - `runnability` — whether the entry would actually work on *this* backend.
+   *    It needs `/object_info`, which is read through preflight's cache. A
+   *    backend that will not answer produces a degraded verdict, never an
+   *    error: this endpoint's job is to list a catalogue.
    */
   app.get<{ Params: { id: string } }>(
     '/backends/:id/catalogue',
@@ -61,11 +76,70 @@ export default async function modelInstallRoutes(app: FastifyInstance) {
 
       try {
         const transport = await requireTransport(backend.base_url);
-        const entries: ModelCatalogEntry[] = await transport.catalogue();
-        return { entries };
+        const raw: ModelCatalogEntry[] = await transport.catalogue();
+
+        const { entries, pending } = await withCatalogueInfo(raw, (message) => req.log.info(message));
+
+        let info: ObjectInfo | null = null;
+        try {
+          info = await objectInfoFor(backend.base_url);
+        } catch {
+          // Fail open. See the note at the top of runnability.ts.
+          info = null;
+        }
+
+        return {
+          entries: entries.map((entry) => ({
+            ...entry,
+            runnability: runnabilityFor({
+              filename: entry.filename,
+              type: entry.type,
+              catalogueBase: entry.base,
+              folder: folderForSavePath(entry.savePath, entry.type),
+              info,
+              backendId: backend.id,
+              backendName: backend.name,
+              installed: entry.installed,
+            }),
+          })),
+          pending,
+        };
       } catch (err) {
         return transportFailure(reply, err);
       }
+    },
+  );
+
+  /**
+   * One cached preview image.
+   *
+   * `requireAuth`, not `requireAdmin`: the catalogue itself is admin-only, but
+   * these bytes are just pictures and the installed list wants them too. They
+   * are served from our own origin on purpose — the browser must never be sent
+   * to huggingface.co once per tile. See metadata.ts.
+   */
+  app.get<{ Params: { previewId: string } }>(
+    '/model-previews/:previewId',
+    { onRequest: [app.requireAuth] },
+    async (req, reply) => {
+      // The id is a hex digest we generated; anything else cannot match a row
+      // and is refused before it reaches the database.
+      if (!/^[0-9a-f]{20}$/.test(req.params.previewId)) {
+        return reply.code(404).send({ error: 'not_found', message: 'No such preview' });
+      }
+      const found = await previewBytes(req.params.previewId);
+      if (!found) return reply.code(404).send({ error: 'not_found', message: 'No such preview' });
+
+      // The bytes for an id change only when the sweep re-reads the model page,
+      // which is monthly, so a long cache with a revalidation tag is right.
+      const etag = `"${req.params.previewId}-${found.fetchedAt.getTime()}"`;
+      if (req.headers['if-none-match'] === etag) return reply.code(304).send();
+
+      return reply
+        .header('content-type', found.contentType)
+        .header('cache-control', 'private, max-age=86400')
+        .header('etag', etag)
+        .send(found.bytes);
     },
   );
 

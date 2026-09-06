@@ -286,6 +286,102 @@ export interface ApiError {
   message: string;
 }
 
+// ---------------------------------------------------------------- model catalogue
+
+/**
+ * What we could find out about a catalogue entry from the place it comes from.
+ *
+ * ComfyUI-Manager's list gives a filename, a size and a sentence. That is not
+ * enough to choose between 145 checkpoints, so the API resolves each entry's
+ * `reference` — a HuggingFace or Civitai *model page* — against that site's
+ * public API and caches the answer. Every field here is therefore third-party
+ * and every one of them is nullable: most entries get some of this, plenty get
+ * none of it, and a UI that assumes otherwise will render holes.
+ *
+ * `previewUrl` is **our own** URL, never the third party's. The bytes are
+ * fetched, downscaled and stored server-side; the browser must never be asked
+ * to fetch a picture from huggingface.co on behalf of 372 tiles.
+ */
+export interface ModelCatalogInfo {
+  /** `/api/model-previews/<id>` on this API, or null when we found no image. */
+  previewUrl: string | null;
+  /**
+   * Where that picture came from, as a human string ("huggingface.co/x/y").
+   * Shown, not linked: provenance for an image we chose out of a repo.
+   */
+  previewFrom: string | null;
+  /**
+   * Set when the picture is of the model this one is *derived from* — a GGUF
+   * quantisation showing the original's sample, say. Names that model, so the
+   * card can say so rather than implying the file itself was rendered here.
+   */
+  previewBorrowedFrom: string | null;
+  /** SPDX-ish licence id as the source states it, e.g. "apache-2.0". */
+  license: string | null;
+  /** Lifetime downloads at the source. A crude but real popularity signal. */
+  downloads: number | null;
+  likes: number | null;
+  /** The source's own task tag, e.g. "text-to-image". */
+  pipelineTag: string | null;
+  /** The model page this came from, for a "read more" link. */
+  referenceUrl: string | null;
+}
+
+/**
+ * Whether a model will actually run here — answered *before* a 7 GB download.
+ *
+ * The gap this closes: the catalogue happily offers files this studio has no
+ * workflow for, files that need a companion model the backend does not have,
+ * and files that install into a folder the workflow's loader cannot read. All
+ * three look identical on a card until the job fails.
+ *
+ *   ready             a hand-authored workflow exists and the backend can load
+ *                     everything it names
+ *   generic           it will run, but on the generic Stable-Diffusion graph
+ *                     rather than one authored for this family
+ *   needs-companion   the workflow exists; the backend is missing something
+ *                     else it needs — a companion model file (`missing` names
+ *                     them) or a custom node (`detail` names it)
+ *   wrong-folder      the file installs somewhere the workflow's loader does
+ *                     not read — the LTX-Video case
+ *   no-workflow       no template for this kind of model yet
+ *   support           not a thing that runs on its own: a VAE, LoRA, CLIP,
+ *                     ControlNet or upscaler that a workflow *uses*
+ *   unknown           the backend could not be asked (offline, /object_info
+ *                     unreadable). Never a refusal — see the fail-open rule.
+ */
+export type RunnabilityStatus =
+  | 'ready'
+  | 'generic'
+  | 'needs-companion'
+  | 'wrong-folder'
+  | 'no-workflow'
+  | 'support'
+  | 'unknown';
+
+export interface MissingCompanion {
+  filename: string;
+  /** "T5 text encoder", "VAE" — what it is for, when we can name it. */
+  purpose: string | null;
+  /** The loader node that would look for it, e.g. "CLIPLoader". */
+  loader: string;
+}
+
+export interface ModelRunnability {
+  status: RunnabilityStatus;
+  /** Our canonical family spelling, e.g. "sdxl", or null if we could not tell. */
+  family: string | null;
+  /** What this model could be used for, if it runs. */
+  capabilities: JobKind[];
+  /** One sentence, written to be rendered verbatim. */
+  summary: string;
+  /** A second sentence with the specifics, when there are any. */
+  detail: string | null;
+  missing: MissingCompanion[];
+  /** The backend this verdict is about; a verdict is never global. */
+  backendId: Uuid | null;
+}
+
 // ---------------------------------------------------------------- model installs
 
 /**
@@ -309,8 +405,27 @@ export interface ModelCatalogEntry {
   size: string | null;
   /** Where the bytes come from; shown so an operator can see what they are pulling. */
   url: string;
+  /**
+   * The model *page* this file belongs to, as the catalogue states it — almost
+   * always a HuggingFace repo, occasionally Civitai or GitHub. Distinct from
+   * `url`, which is the weights themselves, and the key to everything in
+   * `info`: a page has a description, a licence and pictures; a .safetensors
+   * has none of those.
+   */
+  reference: string | null;
+  /**
+   * Where the file lands on the backend, as the catalogue states it, e.g.
+   * "diffusion_models/FLUX1". Its first segment is the ComfyUI model folder,
+   * which is what decides whether a given loader node will ever see the file —
+   * see `runnability`.
+   */
+  savePath: string;
   /** True when this backend already has the file on disk. */
   installed: boolean;
+  /** Resolved from `reference` and cached server-side. Null until it is. */
+  info: ModelCatalogInfo | null;
+  /** Whether this would run on the backend that offered it. */
+  runnability: ModelRunnability | null;
 }
 
 // ---------------------------------------------------------------- readiness

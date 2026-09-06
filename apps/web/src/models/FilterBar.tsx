@@ -10,10 +10,15 @@
  * The families are a `<select>` rather than the chip row the artboard shows for
  * types: the real catalogue has 42 of them, and 42 chips is a wall, not a
  * filter. Types stay chips — there are six.
+ *
+ * The runnability segments are optional and only the catalogue passes them. It
+ * is the one filter here that is not about *what a file is* but about whether
+ * it would work, which is the question people arrive with — "show me what will
+ * actually run" — and it sits first in the row for that reason.
  */
 import { useId } from 'react';
 import type { ModelType } from '@comfy/shared';
-import { TYPE_LABELS } from './catalogue';
+import { RUN_FILTER_LABELS, TYPE_LABELS, type RunFilter } from './catalogue';
 import { ChevronIcon, SearchIcon } from './icons';
 import styles from './ModelsPanels.module.css';
 
@@ -32,7 +37,16 @@ export interface FilterBarProps {
   /** "12 of 372" — shown so a filter that hid everything is legible as such. */
   shown: number;
   total: number;
+  /**
+   * Runnability segments, with the count each would leave. Omitted by the
+   * installed list, which has no catalogue-wide verdict to filter on.
+   */
+  run?: RunFilter;
+  onRun?: (run: RunFilter) => void;
+  runCounts?: Record<RunFilter, number>;
 }
+
+const RUN_ORDER: RunFilter[] = ['all', 'runs', 'blocked'];
 
 export function FilterBar({
   q,
@@ -48,6 +62,9 @@ export function FilterBar({
   onFamily,
   shown,
   total,
+  run,
+  onRun,
+  runCounts,
 }: FilterBarProps) {
   const searchId = useId();
   const familyId = useId();
@@ -92,6 +109,23 @@ export function FilterBar({
           {shown === total ? total : `${shown} / ${total}`}
         </span>
       </div>
+
+      {run && onRun ? (
+        <div className={styles.runFilter} role="group" aria-label="Filter by whether it will run">
+          {RUN_ORDER.map((option) => (
+            <button
+              key={option}
+              type="button"
+              className={`${styles.segment} ${run === option ? styles.segmentOn : ''}`}
+              aria-pressed={run === option}
+              onClick={() => onRun(option)}
+            >
+              {RUN_FILTER_LABELS[option]}
+              {runCounts ? <span className={`mono ${styles.chipCount}`}>{runCounts[option]}</span> : null}
+            </button>
+          ))}
+        </div>
+      ) : null}
 
       <div className={styles.chips} role="group" aria-label="Filter by model type">
         <button

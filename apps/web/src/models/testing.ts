@@ -16,6 +16,7 @@ import type {
   ModelCatalogEntry,
   ModelInstall,
   ModelInstallStatus,
+  ModelRunnability,
 } from '@comfy/shared';
 import { ApiRequestError } from '../lib/api';
 import type { InstalledModels, ModelsApi } from '../lib/api-models';
@@ -60,6 +61,20 @@ export function makeModel(overrides: Partial<Model> = {}): Model {
   };
 }
 
+/** A verdict in the shape the API produces, with its own words. */
+export function makeRunnability(overrides: Partial<ModelRunnability> = {}): ModelRunnability {
+  return {
+    status: 'support',
+    family: null,
+    capabilities: [],
+    summary: 'Support file',
+    detail: 'An upscaling model, used by an upscale workflow rather than a generation one.',
+    missing: [],
+    backendId: BACKEND_ID,
+    ...overrides,
+  };
+}
+
 export function makeEntry(overrides: Partial<ModelCatalogEntry> = {}): ModelCatalogEntry {
   return {
     ref: 'default/RealESRGAN_x2.pth',
@@ -70,7 +85,11 @@ export function makeEntry(overrides: Partial<ModelCatalogEntry> = {}): ModelCata
     description: 'RealESRGAN x2 upscaler model',
     size: '67.1MB',
     url: 'https://huggingface.co/ai-forever/Real-ESRGAN/resolve/main/RealESRGAN_x2.pth',
+    reference: 'https://huggingface.co/ai-forever/Real-ESRGAN',
+    savePath: 'default',
     installed: false,
+    info: null,
+    runnability: makeRunnability(),
     ...overrides,
   };
 }
@@ -108,7 +127,26 @@ export function makeCatalogue(): ModelCatalogEntry[] {
       size: '6.94GB',
       description: 'Stable Diffusion XL base checkpoint',
       url: 'https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/resolve/main/sd_xl_base_1.0.safetensors',
+      reference: 'https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0',
+      savePath: 'checkpoints/SDXL',
       installed: true,
+      info: {
+        previewUrl: '/api/model-previews/2f2a1b0c9d8e7f6a5b4c',
+        previewFrom: 'huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/01.png',
+        previewBorrowedFrom: null,
+        license: 'openrail++',
+        downloads: 1_767_210,
+        likes: 8113,
+        pipelineTag: 'text-to-image',
+        referenceUrl: 'https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0',
+      },
+      runnability: makeRunnability({
+        status: 'ready',
+        family: 'sdxl',
+        capabilities: ['txt2img', 'img2img'],
+        summary: 'Will run',
+        detail: 'An SDXL model, with a workflow written for it.',
+      }),
     }),
     makeEntry({
       ref: 'loras/flux-cinematic.safetensors',
@@ -119,6 +157,7 @@ export function makeCatalogue(): ModelCatalogEntry[] {
       size: '148MB',
       description: 'Analog film grain and halation',
       url: 'https://example.invalid/flux-cinematic.safetensors',
+      savePath: 'loras',
     }),
     makeEntry({
       ref: 'vae/ae.safetensors',
@@ -129,6 +168,7 @@ export function makeCatalogue(): ModelCatalogEntry[] {
       size: '335MB',
       description: null,
       url: 'https://example.invalid/ae.safetensors',
+      savePath: 'vae/FLUX1',
     }),
   ];
   // Filler, so the grid is tested at something like its real size.
@@ -143,6 +183,7 @@ export function makeCatalogue(): ModelCatalogEntry[] {
         size: '96MB',
         description: null,
         url: `https://example.invalid/filler-${index}.safetensors`,
+        savePath: 'loras',
       }),
     );
   }
@@ -153,6 +194,8 @@ export interface StubOptions {
   backends?: Backend[];
   installed?: InstalledModels;
   entries?: ModelCatalogEntry[];
+  /** Model pages the API says it is still resolving; drives the fill-in poll. */
+  cataloguePending?: number;
   /** Thrown by `catalogue`; how the 501 and 403 states are exercised. */
   catalogueError?: ApiRequestError;
   activeInstalls?: ModelInstall[];
@@ -188,12 +231,14 @@ export function makeStubApi(options: StubOptions = {}): StubApi {
     },
     installed: async () => {
       calls.push('installed');
-      return options.installed ?? { models: [makeModel()], families: ['sdxl'] };
+      return (
+        options.installed ?? { models: [makeModel()], families: ['sdxl'], runnability: {} }
+      );
     },
     catalogue: async () => {
       calls.push('catalogue');
       if (options.catalogueError) throw options.catalogueError;
-      return entries;
+      return { entries, pending: options.cataloguePending ?? 0 };
     },
     install: async (backendId, ref) => {
       calls.push(`install:${ref}`);

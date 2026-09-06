@@ -7,7 +7,14 @@
  * carry a Windows subfolder, and that 372 catalogue entries must be narrowed
  * before they are rendered.
  */
-import type { Model, ModelCatalogEntry, ModelInstall, ModelType } from '@comfy/shared';
+import type {
+  Model,
+  ModelCatalogEntry,
+  ModelInstall,
+  ModelRunnability,
+  ModelType,
+  RunnabilityStatus,
+} from '@comfy/shared';
 
 /** Every type the API can hand back, in the order the design lists them. */
 export const MODEL_TYPES: ModelType[] = [
@@ -124,6 +131,82 @@ export function groupInstalled(models: Model[]): ModelGroup[] {
   });
 }
 
+// ------------------------------------------------------------- runnability
+
+/**
+ * How a verdict reads on a card.
+ *
+ * Short, because it sits in a badge over a 244px tile, and *specific*, because
+ * the whole point is that "Install" no longer means the same thing on every
+ * card. The sentence underneath is the API's own — it names the missing file or
+ * the folder, and this screen does not paraphrase it.
+ */
+export const RUNNABILITY_LABEL: Record<RunnabilityStatus, string> = {
+  ready: 'Will run',
+  generic: 'Generic workflow',
+  'needs-companion': 'Needs another model',
+  'wrong-folder': 'Wrong folder',
+  'no-workflow': 'No workflow',
+  support: 'Support file',
+  unknown: 'Unchecked',
+};
+
+export type RunnabilityTone = 'good' | 'soft' | 'warn' | 'muted';
+
+export const RUNNABILITY_TONE: Record<RunnabilityStatus, RunnabilityTone> = {
+  ready: 'good',
+  // Deliberately not "good": it runs, but on a graph nobody wrote for it, and
+  // colouring that the same green as a verified template would be the lie the
+  // `isFallback` flag exists to prevent.
+  generic: 'soft',
+  'needs-companion': 'warn',
+  'wrong-folder': 'warn',
+  'no-workflow': 'warn',
+  support: 'muted',
+  unknown: 'muted',
+};
+
+/** Statuses that mean "this generates images today". */
+export function runs(status: RunnabilityStatus): boolean {
+  return status === 'ready' || status === 'generic';
+}
+
+/**
+ * The three answers worth filtering on.
+ *
+ * Not one per status: "show me what works" and "show me what is broken" are the
+ * two questions people actually have, and a seven-way status filter would make
+ * them hunt for the right word to express either.
+ */
+export type RunFilter = 'all' | 'runs' | 'blocked';
+
+export const RUN_FILTER_LABELS: Record<RunFilter, string> = {
+  all: 'Everything',
+  runs: 'Will run here',
+  blocked: 'Needs work first',
+};
+
+export function matchesRunFilter(
+  runnability: ModelRunnability | null,
+  filter: RunFilter,
+): boolean {
+  if (filter === 'all') return true;
+  // No verdict means the API could not say. Neither answer is honest, so an
+  // unjudged entry stays out of both narrowed lists rather than being counted
+  // as working.
+  if (!runnability) return false;
+  if (filter === 'runs') return runs(runnability.status);
+  // "Needs work" excludes support files: a VAE is not broken, it is a VAE.
+  return !runs(runnability.status) && runnability.status !== 'support';
+}
+
+/** "1.8M", "8.1k", "412". A download count, in the width a card has for it. */
+export function formatCount(value: number): string {
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(value >= 10_000_000 ? 0 : 1)}M`;
+  if (value >= 1_000) return `${(value / 1_000).toFixed(value >= 10_000 ? 0 : 1)}k`;
+  return String(value);
+}
+
 // ---------------------------------------------------------------- catalogue
 
 export interface CatalogueFilters {
@@ -131,12 +214,19 @@ export interface CatalogueFilters {
   /** The catalogue's own spelling of a family, or null. */
   base: string | null;
   q: string;
+  /** "Show me what will actually work" — the query people came here with. */
+  run: RunFilter;
 }
 
-export const EMPTY_CATALOGUE_FILTERS: CatalogueFilters = { type: null, base: null, q: '' };
+export const EMPTY_CATALOGUE_FILTERS: CatalogueFilters = {
+  type: null,
+  base: null,
+  q: '',
+  run: 'all',
+};
 
 export function hasCatalogueFilter(filters: CatalogueFilters): boolean {
-  return Boolean(filters.type || filters.base || filters.q.trim());
+  return Boolean(filters.type || filters.base || filters.q.trim() || filters.run !== 'all');
 }
 
 /**
@@ -154,6 +244,7 @@ export function filterCatalogue(
   return entries.filter((entry) => {
     if (filters.type && entry.type !== filters.type) return false;
     if (filters.base && entry.base !== filters.base) return false;
+    if (!matchesRunFilter(entry.runnability, filters.run)) return false;
     if (!q) return true;
     return (
       entry.name.toLowerCase().includes(q) ||
@@ -213,11 +304,13 @@ export function latestByFilename(installs: ModelInstall[]): Map<string, ModelIns
 /**
  * A deterministic hue for a model, used for its card's art.
  *
- * The artboard gives every card a photographic preview. The catalogue has no
- * preview URLs at all — see the contract note in lib/api-models.ts — so rather
- * than leave a hole or fake a thumbnail, each card gets a gradient derived from
- * its family. Same family, same colour, which makes the grid scannable by
- * family and never pretends to be a picture of the model.
+ * The artboard gives every card a photographic preview, and about half of them
+ * now have one: the API resolves each entry's model page and caches a sample
+ * image from the author's own repo (`info.previewUrl`). The other half never
+ * will — a T5 encoder's repo contains weights and nothing else — so this is the
+ * floor: a gradient derived from the family. Same family, same colour, which
+ * keeps the grid scannable and never pretends to be a picture of the model.
+ * It is also what a preview that fails to load falls back to.
  */
 export function familyHue(base: string): number {
   let hash = 0;
