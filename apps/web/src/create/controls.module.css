@@ -391,3 +391,74 @@
   color: var(--text-muted);
   margin-top: -2px;
 }
+
+/* ------------------------------------------------------------ hint
+   A label with an optional "?" after it; the sentence itself lives in a
+   portalled tooltip (see Hint in Controls.tsx). */
+.labelRow {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.hintButton {
+  flex-shrink: 0;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  border: 1px solid var(--line-input);
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition:
+    color var(--transition),
+    border-color var(--transition),
+    background var(--transition),
+    transform var(--dur-slow) var(--ease-spring);
+}
+
+.hintButton:hover,
+.hintButtonOn {
+  color: var(--accent);
+  border-color: var(--accent-line);
+  background: var(--accent-tint);
+  transform: scale(1.12);
+}
+
+.tooltip {
+  position: fixed;
+  z-index: 80;
+  width: 280px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--glass-line);
+  background: var(--glass-panel-strong);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  box-shadow: var(--shadow-pop);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--text-2);
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(-4px) scale(0.98);
+  transform-origin: top left;
+  transition:
+    opacity var(--dur) var(--ease-out),
+    transform var(--dur) var(--ease-out);
+}
+
+.tooltip strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.tooltipOn {
+  opacity: 1;
+  transform: none;
+}

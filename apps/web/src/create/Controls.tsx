@@ -7,10 +7,11 @@
  * native elements and keyboard and screen-reader behaviour is not achievable
  * without them.
  */
-import type { CSSProperties, ReactNode } from 'react';
-import { useId } from 'react';
-import { ChevronDownIcon } from '../components/icons';
-import styles from './controls.module.css';
+import type { CSSProperties, ReactNode } from "react";
+import { useId, useState } from "react";
+import { createPortal } from "react-dom";
+import { ChevronDownIcon } from "../components/icons";
+import styles from "./controls.module.css";
 
 // ---------------------------------------------------------------- group
 
@@ -76,12 +77,14 @@ export function Segmented<T extends string>({
       aria-label={label}
       // The sliding thumb is positioned from these two numbers in CSS, so it
       // glides between segments rather than switching.
-      style={{ '--seg-i': activeIndex, '--seg-n': options.length } as CSSProperties}
+      style={
+        { "--seg-i": activeIndex, "--seg-n": options.length } as CSSProperties
+      }
       onKeyDown={(event) => {
-        if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
+        if (event.key === "ArrowRight" || event.key === "ArrowDown") {
           event.preventDefault();
           move(1);
-        } else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
+        } else if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
           event.preventDefault();
           move(-1);
         }
@@ -96,7 +99,11 @@ export function Segmented<T extends string>({
             role="radio"
             aria-checked={selected}
             tabIndex={selected ? 0 : -1}
-            className={selected ? `${styles.segment} ${styles.segmentOn}` : styles.segment}
+            className={
+              selected
+                ? `${styles.segment} ${styles.segmentOn}`
+                : styles.segment
+            }
             onClick={() => onChange(option.value)}
           >
             {option.label}
@@ -130,7 +137,9 @@ export function Chips<T extends string>({
             type="button"
             role="radio"
             aria-checked={selected}
-            className={selected ? `${styles.chip} ${styles.chipOn}` : styles.chip}
+            className={
+              selected ? `${styles.chip} ${styles.chipOn}` : styles.chip
+            }
             onClick={() => onChange(option.value)}
           >
             {option.label}
@@ -149,6 +158,88 @@ export function Chips<T extends string>({
  * itself (`--fill`), so there is no second element to keep in sync with the
  * thumb.
  */
+// ---------------------------------------------------------------- hint
+
+/**
+ * The sentence that used to sit under every control, folded behind a small
+ * "?" so the drawer reads as a list of settings rather than a page of prose.
+ * Hover or focus shows it; a click or tap pins it. The tooltip itself portals
+ * to the body, because every ancestor here clips overflow.
+ *
+ * It stays in the DOM whether shown or not, so `aria-describedby` from the
+ * control still resolves to real text.
+ */
+export function Hint({ text, id }: { text: ReactNode; id?: string }) {
+  const own = useId();
+  const tipId = id ?? own;
+  const [pinned, setPinned] = useState(false);
+  const [hover, setHover] = useState(false);
+  const [rect, setRect] = useState<{ left: number; top: number } | null>(null);
+  const shown = pinned || hover;
+
+  const place = (el: HTMLElement) => {
+    const r = el.getBoundingClientRect();
+    const width = 280;
+    const left = Math.max(
+      8,
+      Math.min(r.left - 8, window.innerWidth - width - 12),
+    );
+    setRect({ left, top: r.bottom + 8 });
+  };
+
+  return (
+    <>
+      <button
+        type="button"
+        className={
+          shown
+            ? `${styles.hintButton} ${styles.hintButtonOn}`
+            : styles.hintButton
+        }
+        aria-label="What this does"
+        aria-describedby={tipId}
+        data-still
+        onMouseEnter={(event) => {
+          place(event.currentTarget);
+          setHover(true);
+        }}
+        onMouseLeave={() => setHover(false)}
+        onFocus={(event) => {
+          place(event.currentTarget);
+          setHover(true);
+        }}
+        onBlur={() => {
+          setHover(false);
+          setPinned(false);
+        }}
+        onClick={(event) => {
+          place(event.currentTarget);
+          setPinned((was) => !was);
+        }}
+      >
+        ?
+      </button>
+      {typeof document === "undefined"
+        ? null
+        : createPortal(
+            <span
+              role="tooltip"
+              id={tipId}
+              className={
+                shown && rect
+                  ? `${styles.tooltip} ${styles.tooltipOn}`
+                  : styles.tooltip
+              }
+              style={rect ? { left: rect.left, top: rect.top } : undefined}
+            >
+              {text}
+            </span>,
+            document.body,
+          )}
+    </>
+  );
+}
+
 export function Slider({
   label,
   value,
@@ -192,12 +283,17 @@ export function Slider({
   return (
     <div className={styles.slider}>
       <div className={styles.sliderHead}>
-        <label htmlFor={id} className={styles.sliderLabel}>
-          {label}
-        </label>
+        <span className={styles.labelRow}>
+          <label htmlFor={id} className={styles.sliderLabel}>
+            {label}
+          </label>
+          {hint ? <Hint id={hintId} text={hint} /> : null}
+        </span>
         <span className={styles.sliderValue}>
           {reading ? <span className={styles.reading}>{reading}</span> : null}
-          <span className={`mono ${accent ? styles.valueAccent : styles.value}`}>
+          <span
+            className={`mono ${accent ? styles.valueAccent : styles.value}`}
+          >
             {display ?? value}
           </span>
         </span>
@@ -205,8 +301,10 @@ export function Slider({
       <input
         id={id}
         type="range"
-        className={accent ? `${styles.range} ${styles.rangeAccent}` : styles.range}
-        style={{ '--fill': `${fill}%` } as CSSProperties}
+        className={
+          accent ? `${styles.range} ${styles.rangeAccent}` : styles.range
+        }
+        style={{ "--fill": `${fill}%` } as CSSProperties}
         min={min}
         max={max}
         step={step}
@@ -221,11 +319,6 @@ export function Slider({
         <div className={styles.ends} aria-hidden>
           <span>{ends[0]}</span>
           <span>{ends[1]}</span>
-        </div>
-      ) : null}
-      {hint ? (
-        <div id={hintId} className={styles.hint}>
-          {hint}
         </div>
       ) : null}
     </div>
@@ -246,9 +339,11 @@ export interface SelectOption {
 }
 
 /** `['a','b']` and `[{value,label}]` are both accepted; normalise to the latter. */
-function selectOptions(options: readonly (string | SelectOption)[]): SelectOption[] {
+function selectOptions(
+  options: readonly (string | SelectOption)[],
+): SelectOption[] {
   return options.map((option) =>
-    typeof option === 'string' ? { value: option, label: option } : option,
+    typeof option === "string" ? { value: option, label: option } : option,
   );
 }
 
@@ -272,16 +367,23 @@ export function Select({
   const id = useId();
   const descriptionId = useId();
   const entries = selectOptions(options);
-  // A description is a block under the control, so the row has to become a
-  // column to hold it — otherwise it lands as a third item in a flex row.
-  const stacked = wide || Boolean(description);
+  const stacked = wide;
 
   return (
     <div className={stacked ? styles.field : styles.row}>
-      <label htmlFor={id} className={styles.rowLabel}>
-        {label}
-      </label>
-      <div className={stacked ? `${styles.selectWrap} ${styles.selectWide}` : styles.selectWrap}>
+      <span className={styles.labelRow}>
+        <label htmlFor={id} className={styles.rowLabel}>
+          {label}
+        </label>
+        {description ? <Hint id={descriptionId} text={description} /> : null}
+      </span>
+      <div
+        className={
+          stacked
+            ? `${styles.selectWrap} ${styles.selectWide}`
+            : styles.selectWrap
+        }
+      >
         <select
           id={id}
           className={stacked ? styles.select : `mono ${styles.select}`}
@@ -297,21 +399,27 @@ export function Select({
         </select>
         <ChevronDownIcon size={12} className={styles.selectChevron} />
       </div>
-      {description ? (
-        <div id={descriptionId} className={styles.hint}>
-          {description}
-        </div>
-      ) : null}
     </div>
   );
 }
 
 // ---------------------------------------------------------------- row
 
-export function Row({ label, children }: { label: string; children: ReactNode }) {
+export function Row({
+  label,
+  hint,
+  children,
+}: {
+  label: string;
+  hint?: ReactNode;
+  children: ReactNode;
+}) {
   return (
     <div className={styles.row}>
-      <span className={styles.rowLabel}>{label}</span>
+      <span className={styles.labelRow}>
+        <span className={styles.rowLabel}>{label}</span>
+        {hint ? <Hint text={hint} /> : null}
+      </span>
       <div className={styles.rowControls}>{children}</div>
     </div>
   );
@@ -335,7 +443,9 @@ export function IconButton({
       title={title}
       aria-label={title}
       aria-pressed={on || undefined}
-      className={on ? `${styles.iconButton} ${styles.iconButtonOn}` : styles.iconButton}
+      className={
+        on ? `${styles.iconButton} ${styles.iconButtonOn}` : styles.iconButton
+      }
       onClick={onClick}
     >
       {children}

@@ -163,10 +163,29 @@
 
 /* The lock's effect in words. Not a colour, not a glyph: a sentence, because
    "which padlock means locked" is a puzzle nobody should have to solve. */
-.seedState {
-  font-size: var(--text-xs);
-  line-height: 1.5;
-  color: var(--text-4);
+/* Announced, never shown. */
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.labelRow {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.expertHeadRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 /* ------------------------------------------------------------ expert */
