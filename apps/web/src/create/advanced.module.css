@@ -20,9 +20,22 @@
   border-bottom: 1px solid var(--line);
 }
 
+.headText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
 .title {
   font-size: var(--text-base);
   color: var(--text-2);
+}
+
+/* The permission to ignore the whole drawer, given before it is opened. */
+.subtitle {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
 }
 
 .headRight {
@@ -34,6 +47,11 @@
 .overrides {
   font-size: var(--text-xs);
   color: var(--accent);
+  padding: 3px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--accent-tint);
+  border: 1px solid var(--accent-line);
+  white-space: nowrap;
 }
 
 .chevron {
@@ -54,6 +72,108 @@
 
 .overridable {
   position: relative;
+}
+
+/* What the drawer is doing right now: following the preset, or not. */
+.presetNote {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--gap-xs);
+  padding: 10px 11px;
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+}
+
+.presetText {
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  color: var(--text-3);
+}
+
+.presetText strong {
+  color: var(--text-2);
+  font-weight: 600;
+}
+
+.resetAll {
+  font-size: var(--text-xs);
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.resetAll:hover {
+  color: var(--accent-hover);
+}
+
+/* A sentence under a control saying what it does at the value it is on. */
+.hint {
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.hint strong {
+  color: var(--text-3);
+  font-weight: 600;
+}
+
+/* ------------------------------------------------------------ seed */
+
+.seedBlock {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-xs);
+}
+
+/* The lock's effect in words. Not a colour, not a glyph: a sentence, because
+   "which padlock means locked" is a puzzle nobody should have to solve. */
+.seedState {
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  color: var(--text-4);
+}
+
+/* ------------------------------------------------------------ expert */
+
+.expert {
+  border-top: 1px solid var(--line);
+  padding-top: var(--gap);
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-sm);
+}
+
+.expertHead {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-xs);
+  font-size: var(--text-sm);
+  color: var(--text-3);
+  text-align: left;
+}
+
+.expertHead:hover {
+  color: var(--text-2);
+}
+
+.expertTag {
+  font-size: 10px;
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--text-muted);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-pill);
+  padding: 2px 7px;
+}
+
+.expertBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  padding-left: 19px;
 }
 
 /* A pinned control gets a way back to the preset, rather than the user having

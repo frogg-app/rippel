@@ -11,7 +11,13 @@
  * tells us whether to keep waiting.
  */
 
-import type { ModelInstall, ModelInstallStatus, ModelType, Uuid } from '@comfy/shared';
+import type {
+  ModelCatalogEntry,
+  ModelInstall,
+  ModelInstallStatus,
+  ModelType,
+  Uuid,
+} from '@comfy/shared';
 import { query, queryOne } from '../db.js';
 import { ComfyClient } from '../lib/comfy.js';
 import { ComfyManagerTransport } from './transports/comfy-manager.js';
@@ -104,16 +110,49 @@ export async function backendHasFile(
   folder: string,
   filename: string,
 ): Promise<boolean> {
+  const files = await listBackendFolder(baseUrl, folder);
+  if (!files) return false;
+
+  const target = basename(filename);
+  return files.some((f) => basename(f) === target);
+}
+
+/**
+ * The files in one of ComfyUI's model folders, or `null` when the folder does
+ * not exist on that backend (a stock install has no `unet/`, and asking for one
+ * is a 404 rather than an empty list).
+ *
+ * Extracted from `backendHasFile` so the readiness check can ask the *other*
+ * question — not "is my file here" but "where on this machine is it?" — without
+ * a second copy of the listing call. Deliberately not cached: it is a few
+ * hundred bytes, and the whole point of a readiness screen is that it tells the
+ * truth about the moment you asked.
+ */
+export async function listBackendFolder(
+  baseUrl: string,
+  folder: string,
+): Promise<string[] | null> {
   const res = await fetch(`${baseUrl}/api/models/${folder}`, {
     signal: AbortSignal.timeout(10_000),
   });
-  if (!res.ok) return false;
+  if (!res.ok) return null;
 
   const files = (await res.json()) as unknown;
-  if (!Array.isArray(files)) return false;
+  if (!Array.isArray(files)) return null;
+  return files.filter((f): f is string => typeof f === 'string');
+}
 
-  const target = basename(filename);
-  return files.some((f) => typeof f === 'string' && basename(f) === target);
+/**
+ * Which model folders this backend actually has. `GET /api/models` with no
+ * folder returns the list, which is how we avoid 404ing our way through a scan
+ * for a file that could be anywhere.
+ */
+export async function listBackendFolders(baseUrl: string): Promise<string[]> {
+  const res = await fetch(`${baseUrl}/api/models`, { signal: AbortSignal.timeout(10_000) });
+  if (!res.ok) return [];
+  const folders = (await res.json()) as unknown;
+  if (!Array.isArray(folders)) return [];
+  return folders.filter((f): f is string => typeof f === 'string');
 }
 
 /** Last path segment, for either separator — the backend may be Windows. */
@@ -279,4 +318,77 @@ export async function createInstall(params: {
     ],
   );
   return row!;
+}
+
+/**
+ * A refusal the *caller* caused: already installed, or already downloading.
+ *
+ * Its own class rather than a 409 built at the route, because two routes now
+ * start installs — the operator picking an entry out of the catalogue, and the
+ * readiness screen closing a workflow's gaps in one click — and "this one is
+ * already on its way" is a normal, expected outcome for the second. A batch
+ * install must be able to skip it and carry on.
+ */
+export class InstallConflict extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'InstallConflict';
+  }
+}
+
+/**
+ * Queue one catalogue entry for download on one backend.
+ *
+ * The whole sequence, in the order that keeps the records true: record the
+ * install first, *then* tell the backend to start — a failure to record would
+ * otherwise leave a multi-gigabyte download running that nothing tracks — and
+ * mark the row failed if the transport refuses.
+ *
+ * This is the only path that puts a file on a backend. Both install routes go
+ * through it; there is deliberately no second downloader.
+ */
+export async function startInstall(params: {
+  backendId: Uuid;
+  backendName: string;
+  requestedBy: Uuid;
+  entry: ModelCatalogEntry;
+  transport: ModelTransport;
+}): Promise<ModelInstall> {
+  const { entry } = params;
+  if (entry.installed) {
+    throw new InstallConflict(`${entry.filename} is already installed`);
+  }
+
+  let row: InstallRow;
+  try {
+    row = await createInstall({
+      backendId: params.backendId,
+      requestedBy: params.requestedBy,
+      entry,
+    });
+  } catch (err) {
+    // The partial unique index on (backend_id, filename) for live rows.
+    if (isUniqueViolation(err)) {
+      throw new InstallConflict(
+        `${entry.filename} is already being installed on ${params.backendName}`,
+      );
+    }
+    throw err;
+  }
+
+  try {
+    await params.transport.install(requestFromRow(row));
+  } catch (err) {
+    await query(
+      `UPDATE model_installs SET status = 'failed', error = $2, finished_at = now() WHERE id = $1`,
+      [row.id, err instanceof Error ? err.message : String(err)],
+    );
+    throw err;
+  }
+
+  return toModelInstall(row);
+}
+
+function isUniqueViolation(err: unknown): boolean {
+  return typeof err === 'object' && err !== null && (err as { code?: string }).code === '23505';
 }

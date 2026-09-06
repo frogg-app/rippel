@@ -27,9 +27,17 @@ vi.mock('../db.js', () => ({
   })),
 }));
 
+import type { ModelCatalogEntry } from '@comfy/shared';
 import { ComfyManagerTransport } from './transports/comfy-manager.js';
 import { TransportError } from './transport.js';
-import { backendHasFile, folderForType, refreshInstall } from './installs.js';
+import type { InstallRequest, ModelTransport } from './transport.js';
+import {
+  backendHasFile,
+  folderForType,
+  InstallConflict,
+  refreshInstall,
+  startInstall,
+} from './installs.js';
 import type { InstallRow } from './installs.js';
 
 const BASE = 'http://backend:8188';
@@ -303,5 +311,113 @@ describe('refreshInstall completion rule', () => {
     const install = await refreshInstall(row, BASE);
     // Retryable: still in flight, not failed.
     expect(install.status).toBe('downloading');
+  });
+});
+
+/**
+ * The install path the readiness screen drives.
+ *
+ * Exercised against a stub transport rather than the live backend on purpose:
+ * the entries involved are gigabytes. What is worth pinning down is the
+ * *sequence* — record the row, then start the download, never the other way
+ * round — plus the two refusals a batch install has to survive without aborting.
+ */
+describe('startInstall', () => {
+  const entry: ModelCatalogEntry = {
+    ref: 'text_encoders/t5/t5xxl_fp16.safetensors',
+    name: 'comfyanonymous/flux_text_encoders - t5xxl (fp16)',
+    filename: 't5xxl_fp16.safetensors',
+    type: 'clip',
+    base: 't5',
+    description: 'Text Encoders for FLUX (fp16)',
+    size: '9.79GB',
+    url: 'https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/t5xxl_fp16.safetensors',
+    installed: false,
+  };
+
+  function stubTransport(install: ModelTransport['install']): ModelTransport {
+    return {
+      kind: 'stub',
+      available: async () => true,
+      catalogue: async () => [entry],
+      install,
+      progress: async () => ({ state: 'queued' as const, detail: null }),
+    };
+  }
+
+  it('records the install and then asks the backend to start it', async () => {
+    const seen: InstallRequest[] = [];
+    const result = await startInstall({
+      backendId: 'b1',
+      backendName: 'workshop',
+      requestedBy: 'u1',
+      entry,
+      transport: stubTransport(async (req) => {
+        seen.push(req);
+      }),
+    });
+
+    expect(result.id).toBe('i1');
+    // Recorded first: a download the database does not know about is one
+    // nothing will ever poll, cancel or report.
+    expect(seen).toHaveLength(1);
+    expect(seen[0]!.url).toBe(dbRow.url);
+  });
+
+  it('refuses an entry the catalogue already calls installed', async () => {
+    await expect(
+      startInstall({
+        backendId: 'b1',
+        backendName: 'workshop',
+        requestedBy: 'u1',
+        entry: { ...entry, installed: true },
+        transport: stubTransport(async () => {
+          throw new Error('must not be called');
+        }),
+      }),
+    ).rejects.toBeInstanceOf(InstallConflict);
+  });
+
+  it('marks the row failed when the transport refuses, and rethrows', async () => {
+    const { query: queryFn } = await import('../db.js');
+    const queryMock = vi.mocked(queryFn);
+    queryMock.mockClear();
+
+    await expect(
+      startInstall({
+        backendId: 'b1',
+        backendName: 'workshop',
+        requestedBy: 'u1',
+        entry,
+        transport: stubTransport(async () => {
+          throw new TransportError('ComfyUI-Manager does not recognise this model');
+        }),
+      }),
+    ).rejects.toBeInstanceOf(TransportError);
+
+    // Without this the row sits in 'queued' forever with nothing downloading.
+    expect(
+      queryMock.mock.calls.some(([sql]) => String(sql).includes("status = 'failed'")),
+    ).toBe(true);
+  });
+
+  it('a conflict is recoverable, so a batch can skip one entry and carry on', async () => {
+    const results: string[] = [];
+    for (const candidate of [{ ...entry, installed: true }, entry]) {
+      try {
+        await startInstall({
+          backendId: 'b1',
+          backendName: 'workshop',
+          requestedBy: 'u1',
+          entry: candidate,
+          transport: stubTransport(async () => {}),
+        });
+        results.push('queued');
+      } catch (err) {
+        if (!(err instanceof InstallConflict)) throw err;
+        results.push('skipped');
+      }
+    }
+    expect(results).toEqual(['skipped', 'queued']);
   });
 });

@@ -11,6 +11,8 @@
 import type { Uuid } from '@comfy/shared';
 import { compile, TemplateError, ValidationError } from '../compiler/index.js';
 import { sendStoredInitImageToBackend, withInitImage } from '../workflows/init-image.js';
+import { withResolvedRequirements } from '../workflows/requirements.js';
+import { objectInfoFor } from './preflight.js';
 import type { ResolvedValues } from '../compiler/index.js';
 import { findTemplate } from '../workflows/registry.js';
 import { queryOne } from '../db.js';
@@ -164,6 +166,15 @@ export async function dispatch(job: JobRow, clientId: string): Promise<Dispatche
   // to choose a *different* backend than the one the route checked.
   const problem = await preflight(graph, backend);
   if (problem) throw new DispatchError(problem, false);
+
+  // Companion models — a T5 text encoder, a standalone VAE — are named in the
+  // graph as literals that were only ever a best guess at a filename. Resolve
+  // them against what this backend actually reports before submitting, so a
+  // user who installed *an* encoder gets theirs used rather than ours.
+  // preflight awaits the same cached /object_info a few lines later, so this
+  // costs nothing.
+  const info = await objectInfoFor(backend.base_url).catch(() => null);
+  if (info) graph = withResolvedRequirements(graph, template, info);
 
   const res = await fetch(`${backend.base_url}/prompt`, {
     method: 'POST',

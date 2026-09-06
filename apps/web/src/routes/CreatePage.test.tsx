@@ -213,7 +213,7 @@ describe('CreatePage', () => {
 
     // The dice changes the number on screen without submitting anything.
     const before = seedOf();
-    await user.click(screen.getByRole('button', { name: /randomise the seed/i }));
+    await user.click(screen.getByRole('button', { name: /roll a new starting number/i }));
     expect(seedOf()).not.toBe(before);
     expect(created).toHaveLength(0);
 
@@ -501,18 +501,96 @@ describe('progress detail', () => {
   });
 
   it('shows where the job is in the queue', async () => {
+    // Without the /queue endpoint all we have is `Job.queuePosition`, which
+    // counts only *this user's* jobs ahead. The wording says so rather than
+    // implying a place in the global line — the stage takes that from the queue
+    // snapshot when there is one (see lib/api-queue.test.ts).
     const user = userEvent.setup();
     await startJob(user);
 
     act(() =>
       emit?.({ type: 'job.status', jobId: 'job-1', status: 'queued', queuePosition: 2 }),
     );
-    await screen.findByText('position 3');
+    await screen.findByText('2 of your jobs ahead');
 
     act(() =>
       emit?.({ type: 'job.status', jobId: 'job-1', status: 'queued', queuePosition: 0 }),
     );
-    await screen.findByText('next up');
+    await screen.findByText('Next up');
+  });
+});
+
+describe('the Advanced drawer', () => {
+  /**
+   * The load-bearing property: opening the drawer, reading it, and even
+   * unfolding the expert section must not change a single byte of the request.
+   * Everything the user has not touched stays with the quality preset, which is
+   * what makes the drawer safe to open out of curiosity.
+   */
+  it('sends nothing extra just because the drawer was opened', async () => {
+    const user = userEvent.setup();
+    render(<CreatePage />);
+    await screen.findByRole('radio', { name: /SDXL Base/i });
+    await user.type(screen.getByRole('textbox', { name: /prompt/i }), 'neon');
+
+    await openAdvanced(user);
+    // ...including the second, expert disclosure.
+    await user.click(screen.getByRole('button', { name: /sampling method/i }));
+    expect(screen.getByLabelText('Sampler')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /^generate$/i }));
+    await waitFor(() => expect(created).toHaveLength(1));
+    expect(Object.keys(created[0]!.advanced ?? {}).sort()).toEqual(['seed', 'seedLocked']);
+  });
+
+  it('sends a setting once it is pinned, and stops when it is handed back', async () => {
+    const user = userEvent.setup();
+    render(<CreatePage />);
+    await screen.findByRole('radio', { name: /SDXL Base/i });
+    await user.type(screen.getByRole('textbox', { name: /prompt/i }), 'neon');
+    await openAdvanced(user);
+    await user.click(screen.getByRole('button', { name: /sampling method/i }));
+
+    await user.selectOptions(screen.getByLabelText('Sampler'), 'ddim');
+    // The header says so with the drawer shut, so an override is never invisible.
+    expect(screen.getByText('1 changed')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /^generate$/i }));
+    await waitFor(() => expect(created).toHaveLength(1));
+    expect(created[0]!.advanced?.sampler).toBe('ddim');
+
+    // Let the first job finish, or Generate is disabled for being busy.
+    act(() => emit?.({ type: 'job.complete', jobId: 'job-1', assets: [] }));
+    await screen.findByText('Done');
+
+    // "Use preset" is the way back, and it really does omit the field again —
+    // it does not send the preset's value, which would pin it just as hard.
+    await user.click(screen.getByRole('button', { name: /use the quality preset.s sampler/i }));
+    await user.click(screen.getByRole('button', { name: /^generate$/i }));
+    await waitFor(() => expect(created).toHaveLength(2));
+    expect('sampler' in (created[1]!.advanced ?? {})).toBe(false);
+  });
+
+  it('says what a value means, not just what it is', async () => {
+    // The whole point of the rewrite: a number with no consequence attached is
+    // not a control a non-technical user can use.
+    const user = userEvent.setup();
+    render(<CreatePage />);
+    await screen.findByRole('radio', { name: /SDXL Base/i });
+    await openAdvanced(user);
+
+    const guidance = screen.getByLabelText(/how closely to follow your prompt/i);
+    expect(guidance).toHaveAttribute('aria-valuetext', expect.stringContaining('Balanced'));
+
+    const steps = screen.getByLabelText(/how much detail/i);
+    expect(steps).toHaveAttribute('aria-valuetext', expect.stringContaining('28 steps'));
+    // ...and the cost of that setting, in seconds, beside it.
+    expect(screen.getByText(/about 8 seconds/i)).toBeInTheDocument();
+
+    // The seed's lock is explained in words, not by which padlock is lit.
+    expect(screen.getByText(/a new number each time/i)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /lock the seed/i }));
+    expect(screen.getByText(/reuses this number/i)).toBeInTheDocument();
   });
 });
 

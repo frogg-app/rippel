@@ -147,42 +147,6 @@ export interface Job {
   assets: Asset[];
 }
 
-// ---------------------------------------------------------------- queue
-
-/**
- * A job as the shared queue shows it.
- *
- * Identical to `Job` except that `params` can be withheld. There is one GPU and
- * several people, so the queue is visible to everyone — but only its owner (and
- * an admin) may read what somebody typed into it. `null` is that withholding,
- * made explicit in the type rather than left as a field that mysteriously
- * disappears: a client can tell "not allowed to see this" from "empty".
- */
-export type QueueJob = Omit<Job, 'params'> & { params: GenerationParams | null };
-
-/** A `Job` plus who owns it and where it sits. */
-export interface QueueEntry {
-  job: QueueJob;
-  /**
-   * Global place in the queue, 1 = next to be dispatched. Deliberately not the
-   * same number as `Job.queuePosition`, which is per-user and 0-based: one
-   * answers "how busy is the machine", the other "how long until *mine*".
-   */
-  position: number;
-  ownerName: string | null;
-  ownerId: Uuid;
-}
-
-/**
- * What `GET /queue` returns. `running` is the job on the GPU right now, which
- * is not in `entries` — it is no longer waiting — and is null when the box is
- * idle. A job caught mid-dispatch appears in exactly one of the two.
- */
-export interface QueueView {
-  entries: QueueEntry[];
-  running: QueueEntry | null;
-}
-
 // ---------------------------------------------------------------- assets
 
 export interface Asset {
@@ -349,6 +313,139 @@ export interface ModelCatalogEntry {
   installed: boolean;
 }
 
+// ---------------------------------------------------------------- readiness
+
+/**
+ * Whether one thing a workflow needs is actually usable on a backend.
+ *
+ * The three states are not a severity scale, they are three *different repairs*:
+ *
+ *  - `satisfied`  — nothing to do.
+ *  - `missing`    — the backend does not have the file. We can fix this: hand
+ *                   the user a list of catalogue entries and an install button.
+ *  - `misfiled`   — the backend has the file, in a folder the loader that needs
+ *                   it does not read. **We cannot fix this from here.** ComfyUI
+ *                   exposes no API that moves a file, and ComfyUI-Manager's
+ *                   installer is the only writer we have — and it will refuse
+ *                   to re-fetch a file it already believes is installed. So the
+ *                   only honest answer is an instruction for a human, which is
+ *                   what `MisfiledModel` carries.
+ */
+export type RequirementStatus = 'satisfied' | 'missing' | 'misfiled';
+
+/**
+ * A file the backend has *somewhere* but not where the workflow's loader reads
+ * from. This is the LTX-Video case on the reference machine, verbatim: the
+ * weights are in `models/diffusion_models/`, only `UNETLoader` can see them,
+ * and `CheckpointLoaderSimple` — the loader that also yields the VAE inside
+ * that same file — cannot.
+ */
+export interface MisfiledModel {
+  /** As the backend reports it, subfolder included. */
+  filename: string;
+  /** ComfyUI folders that do list this file today, e.g. ["diffusion_models"]. */
+  foundInFolders: string[];
+  /** The folder the loader that needs it reads from, e.g. "checkpoints". */
+  requiredFolder: string;
+  /** The loader that cannot see it, e.g. "CheckpointLoaderSimple". */
+  loaderClass: string;
+  /**
+   * The catalogue entry that claims to have installed it, when there is one.
+   * Its presence is why re-installing will not help: ComfyUI-Manager matched
+   * the filename somewhere, marked the entry installed, and now refuses to
+   * download it again.
+   */
+  catalogueRef: string | null;
+  /** Where the catalogue's own entry says the file belongs. */
+  catalogueSavePath: string | null;
+  /** One sentence naming the file, the folder it is in, and where to put it. */
+  instruction: string;
+}
+
+/** One thing a workflow needs, and whether this backend can supply it. */
+export interface ModelRequirementReport {
+  /** Stable within a template. `checkpoint` is always the user's chosen model. */
+  id: string;
+  label: string;
+  /** Why the workflow needs it, in plain words. */
+  why: string;
+  type: ModelType;
+  /** The node class that loads it, and the input it reads. */
+  loaderClass: string;
+  loaderInput: string;
+  status: RequirementStatus;
+  /**
+   * The filename that satisfies it. For a resolved companion model this is the
+   * file the graph will actually name — which is frequently *not* the literal
+   * the template ships with, and that is the point.
+   */
+  resolved: string | null;
+  /** Everything the backend offers for that loader input. Empty means nothing. */
+  available: string[];
+  misfiled: MisfiledModel | null;
+  /**
+   * Catalogue entries that would close this gap, best first. Empty for a
+   * non-admin (installs are an operator action) and for a backend with no
+   * install transport; `BackendReadiness.catalogueError` says which.
+   */
+  offers: ModelCatalogEntry[];
+}
+
+/**
+ * What a given model + capability needs on a given backend, what is there, what
+ * is not, and what would fix it.
+ *
+ * Answered per backend rather than globally because every part of it is a
+ * property of one machine: which files it has, which folders they are in, and
+ * which catalogue its transport offers.
+ */
+export interface BackendReadiness {
+  backendId: Uuid;
+  backendName: string;
+  templateId: string;
+  templateLabel: string;
+  capability: JobKind;
+  /** True when the graph is a generic best guess rather than authored. */
+  isFallback: boolean;
+  /** Null when readiness was asked about a template rather than a model. */
+  modelId: Uuid | null;
+  modelLabel: string | null;
+  /** True only when every requirement is satisfied and no node class is absent. */
+  ready: boolean;
+  requirements: ModelRequirementReport[];
+  /** Custom nodes the backend has never heard of. No download here fixes these. */
+  missingNodeClasses: string[];
+  /**
+   * The *recommended* download for each `missing` gap — one entry per gap, best
+   * first, and exactly what `POST /backends/:id/readiness/install` queues when
+   * it is given no `refs`. This is the "fix it for me" list, so it is short on
+   * purpose: the alternatives live on each requirement's `offers`, and asking
+   * for one of those is a deliberate act with an explicit ref.
+   *
+   * A `misfiled` gap contributes nothing here. Downloading a different build of
+   * the model the user picked is not the repair; moving the file is, and that
+   * is in `manualSteps`.
+   */
+  installable: ModelCatalogEntry[];
+  /**
+   * Things only a person at the backend's keyboard can do: move a misfiled
+   * file, install a custom node. Each is one actionable sentence.
+   */
+  manualSteps: string[];
+  /** Why `offers` is empty, when it is: no Manager, no permission, a 502. */
+  catalogueError: string | null;
+}
+
+/** The result of asking a backend to close its gaps. */
+export interface ReadinessInstallResult {
+  /** Installs queued by this call, plus any already in flight it found. */
+  installs: ModelInstall[];
+  /** Gaps this call could not queue, each with the reason in plain words. */
+  skipped: { ref: string; filename: string; reason: string }[];
+  /** Carried through so a UI can re-render the gap list from one response. */
+  manualSteps: string[];
+}
+
 export type ModelInstallStatus =
   | 'queued'
   | 'downloading'
@@ -381,4 +478,40 @@ export interface ModelInstall {
   createdAt: string;
   startedAt: string | null;
   finishedAt: string | null;
+}
+
+// ---------------------------------------------------------------- queue
+
+/**
+ * A job as the shared queue shows it.
+ *
+ * Identical to `Job` except that `params` can be withheld. There is one GPU and
+ * several people, so the queue is visible to everyone — but only its owner (and
+ * an admin) may read what somebody typed into it. `null` is that withholding,
+ * made explicit in the type rather than left as a field that mysteriously
+ * disappears: a client can tell "not allowed to see this" from "empty".
+ */
+export type QueueJob = Omit<Job, 'params'> & { params: GenerationParams | null };
+
+/** A `Job` plus who owns it and where it sits. */
+export interface QueueEntry {
+  job: QueueJob;
+  /**
+   * Global place in the queue, 1 = next to be dispatched. Deliberately not the
+   * same number as `Job.queuePosition`, which is per-user and 0-based: one
+   * answers "how busy is the machine", the other "how long until *mine*".
+   */
+  position: number;
+  ownerName: string | null;
+  ownerId: Uuid;
+}
+
+/**
+ * What `GET /queue` returns. `running` is the job on the GPU right now, which
+ * is not in `entries` — it is no longer waiting — and is null when the box is
+ * idle. A job caught mid-dispatch appears in exactly one of the two.
+ */
+export interface QueueView {
+  entries: QueueEntry[];
+  running: QueueEntry | null;
 }

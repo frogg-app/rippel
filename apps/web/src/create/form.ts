@@ -82,6 +82,63 @@ export const SCHEDULERS = [
   'beta',
 ] as const;
 
+/**
+ * What to call a sampler and a schedule in a list a human reads.
+ *
+ * `dpmpp_2m` is a filename, not a name. The value we send is unchanged — these
+ * are only the words in the dropdown — but "DPM++ 2M · smooth, the safe choice"
+ * lets someone who has never read a diffusion paper make a choice they can
+ * reason about instead of picking at random. Anything the server offers that is
+ * not listed here still renders, under its raw id: an unknown sampler must
+ * appear, not vanish.
+ */
+export const SAMPLER_LABELS: Record<string, string> = {
+  euler: 'Euler · plain and predictable',
+  euler_ancestral: 'Euler ancestral · re-rolls detail each step',
+  heun: 'Heun · slower, a little cleaner',
+  dpm_2: 'DPM 2 · older, steady',
+  dpmpp_2m: 'DPM++ 2M · smooth, the safe choice',
+  dpmpp_2m_sde: 'DPM++ 2M SDE · grainier, more texture',
+  dpmpp_3m_sde: 'DPM++ 3M SDE · more texture, slower',
+  dpmpp_sde: 'DPM++ SDE · good when steps are few',
+  ddim: 'DDIM · old faithful, very stable',
+  uni_pc: 'UniPC · fast at low step counts',
+};
+
+export const SCHEDULER_LABELS: Record<string, string> = {
+  normal: "Normal · the model's own default",
+  karras: 'Karras · smoother, the usual choice',
+  exponential: 'Exponential · softer fine detail',
+  sgm_uniform: 'SGM uniform · for turbo/lightning models',
+  simple: 'Simple · evenly spaced',
+  beta: 'Beta · experimental',
+};
+
+/** A dropdown entry: the value we send, and the words beside it. */
+export interface ChoiceOption {
+  value: string;
+  label: string;
+}
+
+export function samplerOptions(current: string): readonly ChoiceOption[] {
+  return choiceOptions(SAMPLERS, SAMPLER_LABELS, current);
+}
+
+export function schedulerOptions(current: string): readonly ChoiceOption[] {
+  return choiceOptions(SCHEDULERS, SCHEDULER_LABELS, current);
+}
+
+function choiceOptions(
+  values: readonly string[],
+  labels: Record<string, string>,
+  current: string,
+): readonly ChoiceOption[] {
+  // The preset may resolve to something this list does not know — the server
+  // owns the real list. Show it rather than silently selecting a neighbour.
+  const all = values.includes(current) ? values : [current, ...values];
+  return all.map((value) => ({ value, label: labels[value] ?? value }));
+}
+
 /** What each quality preset resolves to, shown as the Advanced placeholders. */
 export const PRESET_DEFAULTS: Record<
   QualityPreset,
@@ -123,6 +180,32 @@ export interface AdvancedState {
   seed: number;
   /** When false, Generate rolls a fresh seed first (see `prepareSubmit`). */
   seedLocked: boolean;
+}
+
+/**
+ * How many knobs the user has pinned away from the preset.
+ *
+ * The seed is excluded on purpose: it always has a value, so counting it would
+ * make the drawer permanently claim an override and rob the count of the one
+ * thing it is for — telling you, with the drawer shut, that the picture you get
+ * is no longer the one the preset would have made.
+ */
+export function overrideCount(state: AdvancedState): number {
+  return [state.steps, state.guidance, state.sampler, state.scheduler].filter(
+    (entry) => entry !== null,
+  ).length;
+}
+
+/**
+ * Hand every knob back to the quality preset, keeping the seed.
+ *
+ * "Undo everything I fiddled with" is a thing people need after exploring, and
+ * resetting four controls one at a time is not it. The seed stays because it is
+ * not an override — it is the number on screen, and silently rerolling it here
+ * would break the one promise the lock makes.
+ */
+export function resetAdvanced(state: AdvancedState): AdvancedState {
+  return { ...state, steps: null, guidance: null, sampler: null, scheduler: null };
 }
 
 export interface CreateFormState {
@@ -374,11 +457,106 @@ export function fromGenerationParams(
 // ---------------------------------------------------------------- estimate
 
 /**
- * The line under Generate. Deliberately vague — it is a step count times a
- * guess at seconds-per-step, not a promise — so it is worded "about".
+ * Seconds a run of this many steps is likely to take.
+ *
+ * A step count times a guess at seconds-per-step — honest enough to answer
+ * "what does this cost me?" beside the Detail slider, which is the only
+ * question a step count actually means to a non-technical user, and nowhere
+ * near precise enough to state without the word "about".
+ */
+const SECONDS_PER_STEP = 0.28;
+
+export function secondsForSteps(steps: number, batchSize: number): number {
+  return Math.max(2, Math.round(steps * SECONDS_PER_STEP * batchSize));
+}
+
+/**
+ * The line under Generate. Deliberately vague — see above — so it is worded
+ * "about".
  */
 export function estimateSeconds(state: CreateFormState): number {
   const steps = state.advanced.steps ?? PRESET_DEFAULTS[state.quality].steps;
-  const SECONDS_PER_STEP = 0.28;
-  return Math.max(2, Math.round(steps * SECONDS_PER_STEP * state.batchSize));
+  return secondsForSteps(steps, state.batchSize);
+}
+
+// ------------------------------------------------------- plain-English readings
+
+/**
+ * What a control is *doing*, in words, at the value it is currently set to.
+ *
+ * These exist because "cfg 7.0" and "28 steps" are not information to most
+ * people: they are jargon that happens to be a number. A reading turns each
+ * one into the two things a user actually wants — what this changes about the
+ * picture, and what it costs — and is kept here, pure, so the wording is
+ * unit-testable and the drawer stays a layout.
+ */
+export interface Reading {
+  /** Two or three words for the value, e.g. "Fairly literal". */
+  word: string;
+  /** A sentence about what that means for the image. */
+  hint: string;
+}
+
+/** Guidance: how literally the model is made to follow the prompt. */
+export function guidanceReading(value: number): Reading {
+  if (value <= 3) {
+    return {
+      word: 'Very loose',
+      hint: 'The model mostly does its own thing. Dreamlike, often beautiful, frequently not what you asked for.',
+    };
+  }
+  if (value <= 5.5) {
+    return {
+      word: 'Loose',
+      hint: 'Your prompt is a strong suggestion. Softer, more natural images with room for invention.',
+    };
+  }
+  if (value <= 8) {
+    return {
+      word: 'Balanced',
+      hint: 'Follows your words, still fills in the details you did not mention. Where most images look best.',
+    };
+  }
+  if (value <= 12) {
+    return {
+      word: 'Literal',
+      hint: 'Sticks closely to the prompt. Good for a specific subject, at the cost of some subtlety.',
+    };
+  }
+  return {
+    word: 'Very literal',
+    hint: 'Forces the prompt hard. Contrast and colour usually go harsh and over-baked past this point.',
+  };
+}
+
+/** Steps: detail bought with time. */
+export function stepsReading(steps: number, batchSize: number): Reading {
+  const seconds = secondsForSteps(steps, batchSize);
+  const time = `about ${seconds} second${seconds === 1 ? '' : 's'}`;
+
+  if (steps <= 12) {
+    return {
+      word: 'Quick',
+      hint: `Rough and fast — ${time}. Fine for trying out an idea before committing.`,
+    };
+  }
+  if (steps <= 24) {
+    return { word: 'Normal', hint: `A finished-looking image in ${time}.` };
+  }
+  if (steps <= 40) {
+    return { word: 'Detailed', hint: `Cleaner edges and finer texture, ${time}.` };
+  }
+  return {
+    word: 'Very detailed',
+    hint: `${time[0]!.toUpperCase()}${time.slice(1)}, and past about 40 steps the extra detail is hard to see.`,
+  };
+}
+
+/** LoRA weight: how much of the add-on style to mix in. */
+export function loraReading(weight: number): Reading {
+  if (weight <= 0) return { word: 'Off', hint: 'At zero this style is not applied at all.' };
+  if (weight < 0.4) return { word: 'A hint', hint: 'Barely there — a flavour rather than a look.' };
+  if (weight <= 0.9) return { word: 'Usual', hint: 'The strength most of these are trained for.' };
+  if (weight <= 1.3) return { word: 'Strong', hint: 'The style leads the image.' };
+  return { word: 'Overdone', hint: 'This far up, the style usually breaks anatomy and detail.' };
 }

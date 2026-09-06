@@ -134,13 +134,13 @@ describe('labels', () => {
     // Inside the sampler before step 1 is the weights reaching the device.
     expect(preparingLabel(CTX, '3')).toBe('Loading SDXL 1.0 into memory');
     // Nothing executing yet: on a shared box that is a queue, not a load.
-    expect(preparingLabel(CTX, null)).toBe('Queued on desktop-6900xt');
+    expect(preparingLabel(CTX, null)).toBe('Getting ready on desktop-6900xt');
   });
 
   it('names the slow decode, which is most of the wall clock on this hardware', () => {
-    expect(decodingLabel(CTX, '8')).toBe('Decoding image');
-    expect(decodingLabel({ ...CTX, isVideo: true, totalFrames: 97 }, '8')).toBe('Decoding 97 frames');
-    expect(decodingLabel({ ...CTX, batchSize: 4 }, '8')).toBe('Decoding 4 images');
+    expect(decodingLabel(CTX, '8')).toBe('Finishing the image');
+    expect(decodingLabel({ ...CTX, isVideo: true, totalFrames: 97 }, '8')).toBe('Finishing 97 frames');
+    expect(decodingLabel({ ...CTX, batchSize: 4 }, '8')).toBe('Finishing 4 images');
     expect(decodingLabel(CTX, '9')).toBe('Writing the image on desktop-6900xt');
   });
 
@@ -151,8 +151,8 @@ describe('labels', () => {
   });
 
   it('counts our own storing pass from one', () => {
-    expect(savingLabel(1, 1)).toBe('Storing the result');
-    expect(savingLabel(1, 2)).toBe('Storing 1 of 2');
+    expect(savingLabel(1, 1)).toBe('Saving the image');
+    expect(savingLabel(1, 2)).toBe('Saving image 1 of 2');
   });
 
   it('degrades without node classes rather than lying', () => {

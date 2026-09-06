@@ -42,6 +42,7 @@ import { useAdvancedOpen } from '../create/useAdvancedOpen';
 import { useJobStage } from '../create/useJobStage';
 import { useModels } from '../create/useModels';
 import { modelSupported } from '../lib/api-jobs';
+import { placeInQueue, refreshQueue, useQueue } from '../lib/api-queue';
 import { isTerminal } from '../create/jobProgress';
 import styles from './CreatePage.module.css';
 
@@ -51,6 +52,11 @@ export function CreatePage() {
   const [mode, setMode] = useCreateMode();
   const { checkpoints, loras, capabilities, loading, error } = useModels();
   const stage = useJobStage();
+  // The queue is shared state (the top bar shows the same snapshot), so this is
+  // a subscription, not a second fetch. Its only job here is to turn "queued"
+  // into "3rd in line" — the difference between waiting and reloading.
+  const queue = useQueue();
+  const place = placeInQueue(queue, stage.job?.id ?? null);
 
   const patch = useCallback(
     (next: Partial<CreateFormState>) => setForm((prev) => ({ ...prev, ...next })),
@@ -105,7 +111,12 @@ export function CreatePage() {
     // what the sampler gets. `prepareSubmit` re-rolls it unless it is locked.
     const submitted = prepareSubmit(form);
     setForm(submitted);
-    void stage.submit(toGenerationParams(submitted));
+    void stage.submit(toGenerationParams(submitted)).then(() => {
+      // Ask straight away rather than waiting out the poll: the job you just
+      // started should appear in the line while your finger is still on the
+      // button.
+      refreshQueue();
+    });
   }, [form, stage, submittable.ok]);
 
   const remix = useCallback(
@@ -190,6 +201,7 @@ export function CreatePage() {
             open={advancedOpen}
             onOpenChange={setAdvancedOpen}
             quality={form.quality}
+            batchSize={form.batchSize}
             value={form.advanced}
             onChange={(advanced) => patch({ advanced })}
             loras={form.loras}
@@ -228,6 +240,7 @@ export function CreatePage() {
         submitting={stage.submitting}
         submitError={stage.submitError}
         disconnected={stage.connection !== 'open'}
+        place={place}
         onCancel={stage.cancel}
         onRemix={remix}
         onDismiss={stage.clear}

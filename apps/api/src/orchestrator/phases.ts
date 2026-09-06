@@ -103,7 +103,7 @@ export function preparingLabel(ctx: PhaseContext, nodeId: string | null): string
   // Nothing executing yet is a queue on the backend, not a load — on a shared
   // box that is usually somebody else's job still running, and saying "loading"
   // would be a guess dressed up as a fact.
-  if (nodeId === null) return `Queued on ${ctx.backendName}`;
+  if (nodeId === null) return `Getting ready on ${ctx.backendName}`;
 
   const className = classOf(ctx, nodeId);
   // A node whose class we do not know: a job re-adopted after a restart.
@@ -133,11 +133,11 @@ export function decodingLabel(ctx: PhaseContext, nodeId: string | null): string 
   const className = classOf(ctx, nodeId);
   if (className === null) return 'Finishing up';
 
-  // "Decoding image" for one, "Decoding 4 images" for a batch: the batch is
+  // "Finishing the image" for one, "Finishing 4 images" for a batch: the batch is
   // four times the wait, and a user who cannot see why deserves to be told.
   if (DECODE.test(className)) {
-    if (ctx.isVideo) return `Decoding ${ctx.totalFrames ? `${ctx.totalFrames} frames` : 'the clip'}`;
-    return ctx.batchSize > 1 ? `Decoding ${ctx.batchSize} images` : 'Decoding image';
+    if (ctx.isVideo) return `Finishing ${ctx.totalFrames ? `${ctx.totalFrames} frames` : 'the clip'}`;
+    return ctx.batchSize > 1 ? `Finishing ${ctx.batchSize} images` : 'Finishing the image';
   }
   if (SAVE.test(className)) {
     return ctx.isVideo ? 'Encoding the video file' : `Writing the image on ${ctx.backendName}`;
@@ -148,8 +148,8 @@ export function decodingLabel(ctx: PhaseContext, nodeId: string | null): string 
 
 /** Our own download/thumbnail pass. 1-based, because a user counts from one. */
 export function savingLabel(index: number, total: number): string {
-  if (total <= 1) return 'Storing the result';
-  return `Storing ${index} of ${total}`;
+  if (total <= 1) return 'Saving the image';
+  return `Saving image ${index} of ${total}`;
 }
 
 /**

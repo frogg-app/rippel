@@ -243,11 +243,27 @@ export function extractModels(info: ObjectInfo): DiscoveredModel[] {
 }
 
 /** "flux1-dev-fp8.safetensors" -> "Flux1 Dev Fp8" */
+/**
+ * Words that are acronyms or product names, not English, and must not be
+ * title-cased. Without this, "sd_xl_base_1.0" becomes "Sd Xl Base 1.0", which
+ * reads as a typo — and it is the largest text on screen while a model loads.
+ */
+const KEEP_UPPERCASE = new Set([
+  'sd', 'sdxl', 'xl', 'vae', 'clip', 'lora', 'ltx', 'ltxv', 't5', 'fp8', 'fp16',
+  'bf16', 'gguf', 'ip', 'esrgan', 'nsfw', 'ai', '3d', 'hd', 'v1', 'v2', 'v3',
+]);
+
 export function prettyModelName(filename: string): string {
   const base = filename.replace(/\.[^.]+$/, '').split(/[\\/]/).pop() ?? filename;
   return base
     .replace(/[_-]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
-    .replace(/\b\w/g, (c) => c.toUpperCase());
+    .split(' ')
+    .map((word) =>
+      KEEP_UPPERCASE.has(word.toLowerCase())
+        ? word.toUpperCase()
+        : word.replace(/^\w/, (c) => c.toUpperCase()),
+    )
+    .join(' ');
 }

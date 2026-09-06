@@ -17,7 +17,7 @@
  * with a bare 400, so the shape is asserted in the unit tests.
  */
 
-import type { AspectRatio, JobKind, QualityPreset } from '@comfy/shared';
+import type { AspectRatio, JobKind, ModelType, QualityPreset } from '@comfy/shared';
 
 // ---------------------------------------------------------------- graph shape
 
@@ -140,6 +140,91 @@ export interface ManifestInput {
   readonly required: boolean;
 }
 
+// ------------------------------------------------------- companion models
+
+/**
+ * How to recognise a file that would satisfy a requirement.
+ *
+ * Two independent halves, because they answer two different questions against
+ * two different sources:
+ *
+ *  - `filename` is matched against what the backend **already has** — the option
+ *    list ComfyUI reports for that loader's input. It is what turns "some T5"
+ *    into a concrete filename to write into the graph.
+ *  - `catalogueBase` / `catalogueFilename` are matched against a backend's
+ *    *install catalogue* (`ModelCatalogEntry`), and are what let us answer the
+ *    second half of the question: here is what you could install to fix it.
+ *
+ * Both are patterns rather than filenames on purpose. ComfyUI-Manager files T5s
+ * under `text_encoders/t5/`, and ComfyUI reports the subfolder as part of the
+ * name — `t5/t5xxl_fp16.safetensors`, or `t5\\t5xxl_fp16.safetensors` on a
+ * Windows backend. Matching on equality finds neither, which is precisely the
+ * bug this mechanism exists to remove.
+ */
+export interface RequirementMatch {
+  /** Matched against each filename the backend offers for the loader input. */
+  readonly filename?: RegExp;
+  /** Catalogue `base` values, compared case-insensitively. */
+  readonly catalogueBase?: readonly string[];
+  /** Matched against a catalogue entry's filename. */
+  readonly catalogueFilename?: RegExp;
+}
+
+/**
+ * A companion model this graph needs that the user never picks.
+ *
+ * The user chooses a *checkpoint*. Everything else a graph loads — a text
+ * encoder, a standalone VAE — is a property of the family, and until now was a
+ * bare literal in the hand-authored graph. That is the honest bug behind every
+ * "the video models do not work" report: `txt2vid-ltxv` hardcoded
+ * `t5xxl_fp16.safetensors`, so an operator who installed a perfectly good T5
+ * through ComfyUI-Manager — which files it as `text_encoders/t5/…` — still had
+ * a graph naming a file that does not exist on their machine.
+ *
+ * So a requirement states the *kind* of file, the address of the literal it
+ * fills, why a person should care, and how to recognise a candidate.
+ * Resolution happens against the backend that is about to run the job, so
+ * whichever T5 the operator actually installed is the one written in.
+ *
+ * **This is the general mechanism, not an LTX special case.** FLUX will need
+ * exactly this and more of it: a FLUX txt2img graph loads a `DualCLIPLoader`
+ * (CLIP-L *and* a T5 — two requirements pointing at `clip_name1` and
+ * `clip_name2` of the same node) plus a standalone `VAELoader` for
+ * `ae.safetensors`. None of those three is chosen by the user, all three live
+ * under folder and file names that differ by who packaged them, and adding the
+ * family should therefore be three more entries in a `requires` array rather
+ * than another round of this.
+ *
+ * The loader class and input name are deliberately *not* fields here: both are
+ * already in the graph at `path`, and repeating them would be a second place to
+ * get them wrong. See `requirementSite` in requirements.ts, which reads them
+ * back out of the graph.
+ */
+export interface ModelRequirement {
+  /** Stable within a manifest; the key the API's reports and the UI use. */
+  readonly id: string;
+  /**
+   * Dot path to the *literal* this fills, `<nodeId>.inputs.<inputName>` — the
+   * same grammar `ManifestInput.path` uses, resolved by the same parser and
+   * asserted by the same tests. Unlike a `ManifestInput` this is never
+   * user-supplied: the value comes from what the backend actually has.
+   */
+  readonly path: string;
+  /** Our own model vocabulary, so catalogue entries can be matched by type. */
+  readonly modelType: ModelType;
+  /** Short human name — "T5 text encoder". The heading in the UI's gap list. */
+  readonly label: string;
+  /** Why the graph needs it, in plain words. The sentence under the heading. */
+  readonly why: string;
+  readonly match: RequirementMatch;
+  /**
+   * Filenames to prefer when the backend offers several matches, best first,
+   * compared on basename. A *preference*, never a filter: a backend holding
+   * only `t5xxl_fp8_e4m3fn.safetensors` still resolves to it.
+   */
+  readonly preferred?: readonly string[];
+}
+
 // ---------------------------------------------------------------- manifest
 
 
@@ -205,6 +290,16 @@ export interface WorkflowManifest {
    * template per capability may claim it.
    */
   readonly appliesToUnknownFamily?: boolean;
+  /**
+   * Companion models this graph loads that the user does not choose — a text
+   * encoder, a standalone VAE. Resolved against the backend's own file list
+   * before the graph is dispatched; see {@link ModelRequirement} and
+   * requirements.ts.
+   *
+   * Omitted by every graph whose checkpoint carries everything it needs, which
+   * is all four of the SD/SDXL templates.
+   */
+  readonly requires?: readonly ModelRequirement[];
   /**
    * Node classes the backend must have registered for this graph to run. The
    * orchestrator can check this against the backend's `/object_info` before

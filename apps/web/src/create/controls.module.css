@@ -287,3 +287,51 @@
   background: var(--accent-tint);
   color: var(--accent);
 }
+
+/* ------------------------------------------------------------ field
+   A label stacked above a full-width control, for options whose text is a
+   sentence rather than a token — the expert selects in Advanced. */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.selectWide {
+  width: 100%;
+  height: var(--control-height);
+}
+
+.selectWide .select {
+  width: 100%;
+  max-width: none;
+  font-size: var(--text-sm);
+  color: var(--text-2);
+}
+
+/* ------------------------------------------------------------ readings
+   The value in words beside the value in figures. The word is what most people
+   read; the number is kept because it is what an experienced user recognises
+   and what the seed/params record. */
+
+.sliderValue {
+  display: flex;
+  align-items: baseline;
+  gap: var(--gap-xs);
+}
+
+.reading {
+  font-size: var(--text-sm);
+  color: var(--text-2);
+}
+
+/* The two ends of a rail, named, so "more" has a direction before you drag. */
+.ends {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  margin-top: -2px;
+}

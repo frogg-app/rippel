@@ -149,6 +149,9 @@ export function Slider({
   step = 1,
   accent = false,
   display,
+  reading,
+  ends,
+  valueText,
   hint,
   onChange,
 }: {
@@ -158,11 +161,24 @@ export function Slider({
   max: number;
   step?: number;
   accent?: boolean;
+  /** The number, in the mono face — what the value literally is. */
   display?: string;
+  /** The same value in words, beside the number: "Balanced", "Detailed". */
+  reading?: string;
+  /** What the two ends of the rail mean, e.g. ['Looser', 'More literal']. */
+  ends?: readonly [string, string];
+  /**
+   * What a screen reader announces instead of the bare number. A range input
+   * announces "7" by default, which is exactly as useless spoken as it is
+   * printed; `aria-valuetext` is how the words the sighted user reads beside
+   * the rail reach someone who cannot see them.
+   */
+  valueText?: string;
   hint?: string;
   onChange: (value: number) => void;
 }) {
   const id = useId();
+  const hintId = useId();
   const fill = ((value - min) / (max - min)) * 100;
 
   return (
@@ -171,8 +187,11 @@ export function Slider({
         <label htmlFor={id} className={styles.sliderLabel}>
           {label}
         </label>
-        <span className={`mono ${accent ? styles.valueAccent : styles.value}`}>
-          {display ?? value}
+        <span className={styles.sliderValue}>
+          {reading ? <span className={styles.reading}>{reading}</span> : null}
+          <span className={`mono ${accent ? styles.valueAccent : styles.value}`}>
+            {display ?? value}
+          </span>
         </span>
       </div>
       <input
@@ -184,9 +203,23 @@ export function Slider({
         max={max}
         step={step}
         value={value}
+        aria-valuetext={valueText}
+        aria-describedby={hint ? hintId : undefined}
         onChange={(event) => onChange(Number(event.target.value))}
       />
-      {hint ? <div className={styles.hint}>{hint}</div> : null}
+      {/* The rail's ends, named. A slider with no labelled extremes asks the
+          user to discover which way is "more" by dragging it and regenerating. */}
+      {ends ? (
+        <div className={styles.ends} aria-hidden>
+          <span>{ends[0]}</span>
+          <span>{ends[1]}</span>
+        </div>
+      ) : null}
+      {hint ? (
+        <div id={hintId} className={styles.hint}>
+          {hint}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -199,38 +232,68 @@ export function Slider({
  * keeps the OS popup — a hand-rolled listbox here would be worse in every way
  * that matters.
  */
+export interface SelectOption {
+  value: string;
+  label: string;
+}
+
+/** `['a','b']` and `[{value,label}]` are both accepted; normalise to the latter. */
+function selectOptions(options: readonly (string | SelectOption)[]): SelectOption[] {
+  return options.map((option) =>
+    typeof option === 'string' ? { value: option, label: option } : option,
+  );
+}
+
 export function Select({
   label,
   value,
   options,
+  description,
+  wide = false,
   onChange,
 }: {
   label: string;
   value: string;
-  options: readonly string[];
+  options: readonly (string | SelectOption)[];
+  /** A sentence under the row saying what choosing here does. */
+  description?: string;
+  /** Stack the label above a full-width control, for long option text. */
+  wide?: boolean;
   onChange: (value: string) => void;
 }) {
   const id = useId();
+  const descriptionId = useId();
+  const entries = selectOptions(options);
+  // A description is a block under the control, so the row has to become a
+  // column to hold it — otherwise it lands as a third item in a flex row.
+  const stacked = wide || Boolean(description);
+
   return (
-    <div className={styles.row}>
+    <div className={stacked ? styles.field : styles.row}>
       <label htmlFor={id} className={styles.rowLabel}>
         {label}
       </label>
-      <div className={styles.selectWrap}>
+      <div className={stacked ? `${styles.selectWrap} ${styles.selectWide}` : styles.selectWrap}>
         <select
           id={id}
-          className={`mono ${styles.select}`}
+          className={stacked ? styles.select : `mono ${styles.select}`}
           value={value}
+          aria-describedby={description ? descriptionId : undefined}
           onChange={(event) => onChange(event.target.value)}
         >
-          {options.map((option) => (
-            <option key={option} value={option}>
-              {option}
+          {entries.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
             </option>
           ))}
         </select>
         <ChevronDownIcon size={12} className={styles.selectChevron} />
       </div>
+      {description ? (
+        <div id={descriptionId} className={styles.hint}>
+          {description}
+        </div>
+      ) : null}
     </div>
   );
 }

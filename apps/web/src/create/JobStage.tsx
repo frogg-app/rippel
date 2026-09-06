@@ -26,6 +26,7 @@
  */
 import { useEffect, useState } from 'react';
 import type { Asset, Job, JobProgress } from '@comfy/shared';
+import { type QueuePlace, ordinal } from '../lib/api-queue';
 import { SparkIcon } from '../components/icons';
 import { DownloadIcon, PlayIcon, RemixIcon } from './icons';
 import { isTerminal } from './jobProgress';
@@ -36,6 +37,7 @@ export function JobStage({
   submitting,
   submitError,
   disconnected,
+  place,
   onCancel,
   onRemix,
   onDismiss,
@@ -45,6 +47,16 @@ export function JobStage({
   submitError: string | null;
   /** The socket is down. Shown quietly; the job itself is unaffected. */
   disconnected: boolean;
+  /**
+   * Where this job sits in the *global* line, when the queue endpoint can tell
+   * us. `Job.queuePosition` counts only the user's own jobs ahead of it, which
+   * on a shared GPU answers the wrong question — "queued" with four strangers
+   * in front is a five-minute wait, and the user is entitled to know that
+   * before deciding whether to sit and watch. Null when the endpoint is
+   * missing or the job is no longer waiting; the row then falls back to what it
+   * always showed.
+   */
+  place?: QueuePlace | null;
   onCancel: () => void;
   onRemix: (job: Job) => void;
   onDismiss: () => void;
@@ -68,6 +80,7 @@ export function JobStage({
           job={job}
           submitting={submitting}
           disconnected={disconnected}
+          place={place ?? null}
           onCancel={onCancel}
           onDismiss={onDismiss}
         />
@@ -93,7 +106,7 @@ export function JobStage({
               <span className={styles.previewBadge}>LIVE PREVIEW</span>
             </>
           ) : (
-            <Waiting job={job} />
+            <Waiting job={job} place={place ?? null} />
           )}
         </div>
 
@@ -136,12 +149,14 @@ function StatusRow({
   job,
   submitting,
   disconnected,
+  place,
   onCancel,
   onDismiss,
 }: {
   job: Job | null;
   submitting: boolean;
   disconnected: boolean;
+  place: QueuePlace | null;
   onCancel: () => void;
   onDismiss: () => void;
 }) {
@@ -177,14 +192,12 @@ function StatusRow({
       <span className={isTerminal(status) ? styles.dotDone : styles.dot} />
       <span className={styles.statusLabel}>{STATUS_LABEL[status]}</span>
 
-      {/* Queue position whenever the server reports one: it can still be set on
-          a job that has left 'queued' in one frame and not the other, and
-          "where am I in the line" is the only thing worth reading while
-          nothing else is happening yet. */}
-      {queuePosition !== null && !isTerminal(status) ? (
-        <span className={`mono ${styles.metric}`}>
-          {queuePosition === 0 ? 'next up' : `position ${queuePosition + 1}`}
-        </span>
+      {/* Where am I in the line — the only thing worth reading while nothing
+          else is happening yet. The global place is preferred when the queue
+          endpoint answers; otherwise the per-user position, worded so it cannot
+          be mistaken for a global one. */}
+      {!isTerminal(status) ? (
+        <QueuePlaceLabel place={place} queuePosition={queuePosition} />
       ) : null}
 
       {/* Outside sampling the phase label *is* the progress report. */}
@@ -256,6 +269,38 @@ const PHASE_FALLBACK_LABEL: Record<NonNullable<NonNullable<JobProgress['phase']>
   decoding: 'Decoding image',
   saving: 'Saving to your library',
 };
+
+/**
+ * "3rd in line", or nothing.
+ *
+ * Deliberately plain English rather than "position 3": a queue is a line of
+ * people, everyone already knows how one works, and "position" is the word a
+ * database would choose. The two numbers are never mixed — a global place says
+ * "in line", the per-user fallback says "of yours" — because conflating them
+ * would tell someone with two of their own jobs queued behind six strangers
+ * that they are next.
+ */
+function QueuePlaceLabel({
+  place,
+  queuePosition,
+}: {
+  place: QueuePlace | null;
+  queuePosition: number | null;
+}) {
+  if (place) {
+    return (
+      <span className={styles.phase}>
+        {place.ahead === 0 ? 'Next in line' : `${ordinal(place.ordinal)} in line`}
+      </span>
+    );
+  }
+  if (queuePosition === null) return null;
+  return (
+    <span className={styles.phase}>
+      {queuePosition === 0 ? 'Next up' : `${queuePosition} of your jobs ahead`}
+    </span>
+  );
+}
 
 const STATUS_LABEL: Record<Job['status'], string> = {
   queued: 'Queued',
@@ -330,7 +375,7 @@ function ResultActions({
 
 // ---------------------------------------------------------------- pieces
 
-function Waiting({ job }: { job: Job }) {
+function Waiting({ job, place }: { job: Job; place: QueuePlace | null }) {
   const phase = job.progress.phase ?? null;
   const phaseLabel = job.progress.phaseLabel ?? (phase ? PHASE_FALLBACK_LABEL[phase] : null);
 
@@ -352,7 +397,7 @@ function Waiting({ job }: { job: Job }) {
         : phase === 'saving'
           ? 'Generated. The image is being stored in your library.'
           : job.status === 'queued'
-            ? 'The job is compiled and queued. The preview appears as soon as a backend picks it up.'
+            ? queueSentence(place)
             : 'The first preview frame arrives a few steps in.';
 
   return (
@@ -362,6 +407,26 @@ function Waiting({ job }: { job: Job }) {
       <p className={styles.messageBody}>{body}</p>
     </div>
   );
+}
+
+/**
+ * What waiting actually means right now.
+ *
+ * "Queued" is a status; "two generations are ahead of yours" answers the
+ * question the person is really asking, which is whether to stay on this
+ * screen. With no queue endpoint we say the honest weaker thing rather than
+ * inventing a number.
+ */
+function queueSentence(place: QueuePlace | null): string {
+  if (!place) {
+    return 'The job is compiled and queued. The preview appears as soon as a backend picks it up.';
+  }
+  if (place.ahead === 0) {
+    return 'Yours is next. It starts as soon as the backend is free, and the preview follows a few steps after that.';
+  }
+  return `${
+    place.ahead === 1 ? 'One generation is' : `${place.ahead} generations are`
+  } ahead of yours. There is one GPU, so they run in order — you can leave this page and the result still lands in your library.`;
 }
 
 function Message({

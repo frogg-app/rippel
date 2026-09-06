@@ -36,6 +36,7 @@
 import type { ManifestInput, WorkflowManifest, WorkflowTemplate, ComfyApiGraph } from './types.js';
 import {
   LTXV_BASE_MODELS,
+  LTXV_REQUIREMENTS,
 } from './txt2vid-ltxv.js';
 import {
   LTXV_FRAME_QUANTUM,
@@ -192,6 +193,9 @@ export const img2vidLtxvManifest: WorkflowManifest = {
   label: 'Image to video (LTX-Video)',
   capability: 'img2vid',
   baseModels: LTXV_BASE_MODELS,
+  // The same object txt2vid uses: node 12 is the same CLIPLoader in both
+  // graphs, so sharing it is what stops the two drifting apart.
+  requires: LTXV_REQUIREMENTS,
   requiredNodeClasses: [
     'CheckpointLoaderSimple',
     'CLIPLoader',

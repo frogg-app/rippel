@@ -19,12 +19,15 @@
  *  - **The text encoder is a separate file.** An LTX-Video checkpoint holds the
  *    transformer and the VAE but no text encoder, so `CheckpointLoaderSimple`'s
  *    CLIP output is null and node 12 loads T5-XXL with `type: "ltxv"` instead.
- *    That filename is a graph literal rather than a manifest input, and it is
- *    the one genuine wart in this template: `GenerationParams` has no field for
- *    a text encoder, so an operator whose T5 lives in a subfolder
+ *    That filename is a graph literal rather than a manifest input, because
+ *    `GenerationParams` has no field for a text encoder and should not gain
+ *    one — the user picks a checkpoint, not an encoder. It used to be a plain
+ *    hardcoded string, which meant an operator whose T5 lived in a subfolder
  *    (`t5/t5xxl_fp8_e4m3fn.safetensors`, which is where ComfyUI-Manager files
- *    it) has to edit this graph. A `textEncoderFilename` binding is the honest
- *    fix and belongs with the next family that needs one.
+ *    it) had a graph naming a file they did not have. It is now backed by a
+ *    `ModelRequirement` — see `LTXV_TEXT_ENCODER_REQUIREMENT` below and
+ *    requirements.ts — so the literal is only the last-resort default and the
+ *    encoder actually loaded is whichever one the backend reports.
  *  - **`LTXVConditioning` (13) sits between the encodes and the sampler.** The
  *    model conditions on the frame rate it is generating for, so `fps` is not
  *    only a property of the container — a clip conditioned at 25 and muxed at 8
@@ -73,7 +76,13 @@
  * ---------------------------------------------------------------------------
  */
 
-import type { ManifestInput, WorkflowManifest, WorkflowTemplate, ComfyApiGraph } from './types.js';
+import type {
+  ComfyApiGraph,
+  ManifestInput,
+  ModelRequirement,
+  WorkflowManifest,
+  WorkflowTemplate,
+} from './types.js';
 import {
   LTXV_FRAME_QUANTUM,
   LTXV_MAX_FPS,
@@ -101,6 +110,56 @@ export const txt2vidLtxvGraph = rawGraph as unknown as ComfyApiGraph;
  * filenames say.
  */
 export const LTXV_BASE_MODELS = ['ltx-video', 'ltxv'] as const;
+
+/**
+ * The T5 this family cannot run without.
+ *
+ * Shared by both LTX-Video templates: node 12 is the same `CLIPLoader` in
+ * txt2vid and img2vid, so the requirement is the same object and cannot drift
+ * between them.
+ *
+ * This entry replaces the wart the header of this file used to describe. The
+ * graph literal `t5xxl_fp16.safetensors` stays as the last-resort default — the
+ * graph doubles as its own defaults everywhere else in this directory too — but
+ * it is no longer what actually gets loaded: `withResolvedRequirements` looks at
+ * what the backend offers for `CLIPLoader.clip_name` and writes that in. An
+ * operator who installed the fp8 build, or whose Manager filed the fp16 one
+ * under `text_encoders/t5/`, now gets the file they have.
+ *
+ * `type: "ltxv"` on node 12 is *not* a requirement: it is a mode switch on the
+ * loader, not a file, and every T5-XXL build works under it.
+ */
+export const LTXV_TEXT_ENCODER_REQUIREMENT: ModelRequirement = {
+  id: 'text-encoder',
+  path: '12.inputs.clip_name',
+  modelType: 'clip',
+  label: 'T5 text encoder',
+  why:
+    'An LTX-Video checkpoint holds the transformer and the VAE but no text encoder, ' +
+    'so there is nothing to turn the prompt into conditioning without a separate T5.',
+  match: {
+    // Loose on purpose: `t5xxl_fp16.safetensors`, `t5/t5xxl_fp8_e4m3fn.safetensors`
+    // and `t5\t5xxl_fp16.safetensors` must all match, because all three are
+    // spellings the same file arrives under.
+    filename: /t5/i,
+    // ComfyUI-Manager's catalogue files every T5-XXL build under base "t5",
+    // including the ones it describes as "Text Encoders for FLUX" — the same
+    // weights, and what LTX-Video's own reference workflow uses.
+    catalogueBase: ['t5'],
+    catalogueFilename: /t5xxl/i,
+  },
+  // fp16 is the reference build; the fp8s are the ones that fit on a 16 GB card
+  // alongside the transformer, and are ordered after it only because a backend
+  // that has both should use the better one.
+  preferred: [
+    't5xxl_fp16.safetensors',
+    't5xxl_fp8_e4m3fn_scaled.safetensors',
+    't5xxl_fp8_e4m3fn.safetensors',
+  ],
+};
+
+/** Every companion model the LTX-Video graphs load. */
+export const LTXV_REQUIREMENTS: readonly ModelRequirement[] = [LTXV_TEXT_ENCODER_REQUIREMENT];
 
 const INPUTS: readonly ManifestInput[] = [
   {
@@ -237,6 +296,7 @@ export const txt2vidLtxvManifest: WorkflowManifest = {
   label: 'Text to video (LTX-Video)',
   capability: 'txt2vid',
   baseModels: LTXV_BASE_MODELS,
+  requires: LTXV_REQUIREMENTS,
   requiredNodeClasses: [
     'CheckpointLoaderSimple',
     'CLIPLoader',

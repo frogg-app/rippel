@@ -9,18 +9,36 @@ export type {
   ComfyApiGraph,
   ComfyApiNode,
   ManifestInput,
+  ModelRequirement,
   NodeInputValue,
   NodeLink,
   ParamConstraint,
   ParamSource,
   PresetDefaults,
   PresetTable,
+  RequirementMatch,
   Resolution,
   ResolutionTable,
   WidgetValue,
   WorkflowManifest,
   WorkflowTemplate,
 } from './types.js';
+
+/**
+ * Companion-model resolution. The orchestrator calls
+ * `withResolvedRequirements` on a compiled graph; the models screen's readiness
+ * endpoint calls `resolveRequirements` to say what is missing.
+ */
+export type { RequirementSite, ResolvedRequirement } from './requirements.js';
+export {
+  modelBasename,
+  rankCandidates,
+  requirementSite,
+  requirementsOf,
+  resolveRequirements,
+  sameModelFile,
+  withResolvedRequirements,
+} from './requirements.js';
 
 export {
   GENERIC_SD_RESOLUTIONS,
@@ -86,6 +104,8 @@ export {
 
 export {
   LTXV_BASE_MODELS,
+  LTXV_REQUIREMENTS,
+  LTXV_TEXT_ENCODER_REQUIREMENT,
   txt2vidLtxvManifest,
   txt2vidLtxvTemplate,
 } from './txt2vid-ltxv.js';
