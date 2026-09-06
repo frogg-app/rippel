@@ -23,6 +23,9 @@ import { ReferenceImage } from '../create/ReferenceImage';
 import {
   ASPECT_RATIOS,
   type CreateFormState,
+  deriveKind,
+  effectiveKind,
+  modeOfKind,
   MAX_BATCH,
   MIN_BATCH,
   QUALITY_LABELS,
@@ -34,6 +37,7 @@ import {
   prepareSubmit,
   toGenerationParams,
 } from '../create/form';
+import { useCreateMode } from '../create/mode';
 import { useAdvancedOpen } from '../create/useAdvancedOpen';
 import { useJobStage } from '../create/useJobStage';
 import { useModels } from '../create/useModels';
@@ -44,6 +48,7 @@ import styles from './CreatePage.module.css';
 export function CreatePage() {
   const [form, setForm] = useState<CreateFormState>(initialFormState);
   const [advancedOpen, setAdvancedOpen] = useAdvancedOpen();
+  const [mode, setMode] = useCreateMode();
   const { checkpoints, loras, capabilities, loading, error } = useModels();
   const stage = useJobStage();
 
@@ -52,22 +57,41 @@ export function CreatePage() {
     [],
   );
 
+  // The Image/Video toggle lives in the shell's top bar and until now told
+  // nobody: it highlighted itself while the form went on submitting txt2img.
+  // The mode is the base kind; the img2* variant is derived from the starting
+  // image at submit time (`effectiveKind`), so there is still exactly one
+  // source of truth for the capability.
+  useEffect(() => {
+    setForm((prev) => {
+      const base = deriveKind(mode, false);
+      if (prev.kind === base) return prev;
+      // The chosen model almost certainly cannot run the other mode; dropping
+      // it lets the preselect below pick one that can, rather than leaving a
+      // disabled Generate under a model the user did choose.
+      return { ...prev, kind: base, modelId: null };
+    });
+  }, [mode]);
+
+  // What we will actually POST, and therefore what everything on screen must
+  // be judged against: the picker, the Generate button and `toGenerationParams`
+  // all ask this same question.
+  const kind = effectiveKind(form);
+
   // Preselect the first model we can actually generate with. A screen that
   // opens with nothing chosen makes the user do work the app could do, and
   // preselecting an *unrunnable* model would arm a disabled Generate for a
   // reason that is not the user's fault.
   useEffect(() => {
     if (form.modelId || checkpoints.length === 0) return;
-    const first = checkpoints.find((model) => modelSupported(model, form.kind, capabilities));
+    const first = checkpoints.find((model) => modelSupported(model, kind, capabilities));
     if (first) patch({ modelId: first.id });
-  }, [checkpoints, capabilities, form.modelId, form.kind, patch]);
+  }, [checkpoints, capabilities, form.modelId, kind, patch]);
 
   const selectedModel: Model | null =
     checkpoints.find((model) => model.id === form.modelId) ?? null;
 
-  const supported = selectedModel
-    ? modelSupported(selectedModel, form.kind, capabilities)
-    : false;
+  const supported = selectedModel ? modelSupported(selectedModel, kind, capabilities) : false;
 
   const busy = Boolean(stage.job && !isTerminal(stage.job.status)) || stage.submitting;
   const submittable = useMemo(
@@ -86,12 +110,16 @@ export function CreatePage() {
 
   const remix = useCallback(
     (job: Job) => {
+      // A remixed video job has to bring the toggle with it, or the effect
+      // above would immediately drag the form back to the current mode and
+      // throw away the model that job used.
+      setMode(modeOfKind(job.params.kind));
       setForm((prev) => fromGenerationParams(job.params, prev));
       // A remix always touches Advanced (it pins the seed), so open the drawer
       // rather than leaving the change invisible.
       setAdvancedOpen(true);
     },
-    [setAdvancedOpen],
+    [setAdvancedOpen, setMode],
   );
 
   return (
@@ -119,12 +147,13 @@ export function CreatePage() {
           <Group label="Model">
             <ModelPicker
               models={checkpoints}
-              kind={form.kind}
+              kind={kind}
               capabilities={capabilities}
               loading={loading}
               error={error}
               value={form.modelId}
               onChange={(modelId) => patch({ modelId })}
+              onModeChange={setMode}
             />
           </Group>
 

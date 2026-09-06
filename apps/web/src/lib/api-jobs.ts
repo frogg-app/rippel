@@ -132,41 +132,70 @@ export const modelsApi = {
 export interface CapabilityMap {
   /** normalised family -> capabilities we hold a template for. */
   byFamily: Record<string, JobKind[]>;
+  /**
+   * Families whose template is a generic best-guess rather than a
+   * hand-authored one, when the server says so (`isFallback` on a manifest).
+   * Absent on a server that does not report it — treat an empty list as "we
+   * were not told", not as "none".
+   */
+  fallbackFamilies?: string[];
   /** True when this came from the server rather than the fallback below. */
   live: boolean;
 }
 
 /** Mirrors `txt2imgSdxlTemplate.manifest.baseModels`. */
-const FALLBACK_TEMPLATES: { capability: JobKind; baseModels: string[] }[] = [
+const FALLBACK_TEMPLATES: WorkflowManifest[] = [
   { capability: 'txt2img', baseModels: ['sdxl', 'SDXL 1.0', 'pony', 'illustrious'] },
 ];
+
+/**
+ * One template's manifest as `GET /workflows` reports it.
+ *
+ * `isFallback` marks a generic best-guess workflow — a template that will
+ * probably run a checkpoint nobody has written a graph for. It is optional
+ * because the endpoint may not report it yet; nothing here may require it.
+ */
+export interface WorkflowManifest {
+  capability: JobKind;
+  baseModels: string[];
+  isFallback?: boolean;
+}
 
 /** The same fold `normalizeBaseModel()` does on the server. Must not diverge. */
 export function normalizeFamily(baseModel: string): string {
   return baseModel.toLowerCase().replace(/[^a-z0-9]/g, '');
 }
 
-function toMap(
-  manifests: { capability: JobKind; baseModels: string[] }[],
-  live: boolean,
-): CapabilityMap {
+function toMap(manifests: WorkflowManifest[], live: boolean): CapabilityMap {
   const byFamily: Record<string, JobKind[]> = {};
+  const fallbackFamilies = new Set<string>();
+  const authored = new Set<string>();
+
   for (const manifest of manifests) {
     for (const base of manifest.baseModels) {
       const key = normalizeFamily(base);
       const kinds = byFamily[key] ?? (byFamily[key] = []);
       if (!kinds.includes(manifest.capability)) kinds.push(manifest.capability);
+      // A family with any hand-authored template is not a fallback family,
+      // whatever else also matches it.
+      if (manifest.isFallback) fallbackFamilies.add(key);
+      else authored.add(key);
     }
   }
-  return { byFamily, live };
+
+  return {
+    byFamily,
+    fallbackFamilies: [...fallbackFamilies].filter((family) => !authored.has(family)),
+    live,
+  };
 }
 
 export const workflowsApi = {
   capabilities: async (signal?: AbortSignal): Promise<CapabilityMap> => {
     try {
-      const { manifests } = await request<{
-        manifests: { capability: JobKind; baseModels: string[] }[];
-      }>('/workflows', { signal });
+      const { manifests } = await request<{ manifests: WorkflowManifest[] }>('/workflows', {
+        signal,
+      });
       return toMap(manifests, true);
     } catch {
       // A 404 means the endpoint is not built yet. Anything else — unreachable,
@@ -184,8 +213,31 @@ export function modelSupported(
   kind: JobKind,
   capabilities: CapabilityMap,
 ): boolean {
+  return modelKinds(model, capabilities).includes(kind);
+}
+
+/**
+ * Everything this model's family *can* do, whatever we are asking for now.
+ *
+ * This is what turns "No template" into a sentence: a checkpoint blocked for
+ * txt2img because it is a video model is a different problem from one nobody
+ * has written any graph for, and only the first has a fix the user can reach.
+ */
+export function modelKinds(
+  model: Pick<Model, 'baseModel'>,
+  capabilities: CapabilityMap,
+): JobKind[] {
+  if (!model.baseModel) return [];
+  return capabilities.byFamily[normalizeFamily(model.baseModel)] ?? [];
+}
+
+/** Is this family only runnable through a generic best-guess template? */
+export function isFallbackFamily(
+  model: Pick<Model, 'baseModel'>,
+  capabilities: CapabilityMap,
+): boolean {
   if (!model.baseModel) return false;
-  return (capabilities.byFamily[normalizeFamily(model.baseModel)] ?? []).includes(kind);
+  return (capabilities.fallbackFamilies ?? []).includes(normalizeFamily(model.baseModel));
 }
 
 // ---------------------------------------------------------------- jobs

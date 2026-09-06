@@ -14,9 +14,18 @@
  * the bar, `step`/`totalSteps` the counter, `etaSeconds` the time. When the
  * backend reports none of them, the row honestly says so rather than animating
  * a fake bar.
+ *
+ * `fraction` is only meaningful *within sampling* (API_CONTRACT.md, "Progress
+ * detail"). Most of a run is not sampling — a cold checkpoint takes minutes to
+ * load and the VAE decodes on the CPU here — so when `phase` says we are
+ * somewhere else the row shows an indeterminate bar and the backend's own
+ * `phaseLabel` instead of a number. A bar frozen at 100% through a slow decode
+ * reads as a hang, which is the whole reason the phase exists. `phase` is
+ * optional: when it is absent (an older API) everything falls back to the
+ * step/fraction behaviour this screen has always had.
  */
 import { useEffect, useState } from 'react';
-import type { Asset, Job } from '@comfy/shared';
+import type { Asset, Job, JobProgress } from '@comfy/shared';
 import { SparkIcon } from '../components/icons';
 import { DownloadIcon, PlayIcon, RemixIcon } from './icons';
 import { isTerminal } from './jobProgress';
@@ -148,32 +157,58 @@ function StatusRow({
   }
 
   const status = job?.status ?? 'queued';
-  const { step, totalSteps, fraction, etaSeconds } = job?.progress ?? {
-    step: null,
-    totalSteps: null,
-    fraction: 0,
-    etaSeconds: null,
-  };
+  const progress = job?.progress;
+  const step = progress?.step ?? null;
+  const totalSteps = progress?.totalSteps ?? null;
+  const fraction = progress?.fraction ?? 0;
+  const etaSeconds = progress?.etaSeconds ?? null;
+  const phase = progress?.phase ?? null;
   const running = status === 'running' || status === 'dispatched' || status === 'uploading';
+
+  // No phase at all is the older API: trust `fraction` exactly as this screen
+  // always did. With a phase, only `sampling` has a number worth drawing.
+  const measurable = running && (phase === null || phase === 'sampling');
+  const indeterminate = running && phase !== null && phase !== 'sampling';
+  const phaseLabel = progress?.phaseLabel ?? (phase ? PHASE_FALLBACK_LABEL[phase] : null);
+  const queuePosition = job?.queuePosition ?? null;
 
   return (
     <div className={styles.statusRow}>
       <span className={isTerminal(status) ? styles.dotDone : styles.dot} />
       <span className={styles.statusLabel}>{STATUS_LABEL[status]}</span>
 
-      {status === 'queued' && job?.queuePosition !== null && job?.queuePosition !== undefined ? (
+      {/* Queue position whenever the server reports one: it can still be set on
+          a job that has left 'queued' in one frame and not the other, and
+          "where am I in the line" is the only thing worth reading while
+          nothing else is happening yet. */}
+      {queuePosition !== null && !isTerminal(status) ? (
         <span className={`mono ${styles.metric}`}>
-          {job.queuePosition === 0 ? 'next up' : `position ${job.queuePosition + 1}`}
+          {queuePosition === 0 ? 'next up' : `position ${queuePosition + 1}`}
         </span>
       ) : null}
 
-      {running && step !== null && totalSteps !== null ? (
+      {/* Outside sampling the phase label *is* the progress report. */}
+      {indeterminate && phaseLabel ? <span className={styles.phase}>{phaseLabel}</span> : null}
+
+      {measurable && step !== null && totalSteps !== null ? (
         <span className={`mono ${styles.metric}`}>
           step {step} / {totalSteps}
         </span>
       ) : null}
 
-      {running || status === 'complete' ? (
+      {indeterminate ? (
+        <div
+          className={styles.bar}
+          role="progressbar"
+          aria-label="Generation progress"
+          aria-valuetext={phaseLabel ?? 'Working'}
+          aria-busy
+        >
+          {/* No aria-valuenow: an indeterminate bar sweeps rather than fills,
+              so it cannot be misread as "nearly done". */}
+          <div className={styles.barSweep} />
+        </div>
+      ) : measurable || status === 'complete' ? (
         <div className={styles.bar}>
           <div
             className={styles.barFill}
@@ -189,7 +224,7 @@ function StatusRow({
         <div className={styles.spacer} />
       )}
 
-      {running && etaSeconds !== null ? (
+      {measurable && etaSeconds !== null ? (
         <span className={`mono ${styles.metric}`}>~{etaSeconds}s</span>
       ) : null}
 
@@ -207,6 +242,20 @@ function StatusRow({
     </div>
   );
 }
+
+/**
+ * What to say when a frame carries a `phase` but no `phaseLabel`.
+ *
+ * The server's own words are preferred — it knows *which* checkpoint it is
+ * loading — but the phase alone still beats silence.
+ */
+const PHASE_FALLBACK_LABEL: Record<NonNullable<NonNullable<JobProgress['phase']>>, string> = {
+  queued: 'Waiting for a backend',
+  preparing: 'Loading the model',
+  sampling: 'Generating',
+  decoding: 'Decoding image',
+  saving: 'Saving to your library',
+};
 
 const STATUS_LABEL: Record<Job['status'], string> = {
   queued: 'Queued',
@@ -282,17 +331,35 @@ function ResultActions({
 // ---------------------------------------------------------------- pieces
 
 function Waiting({ job }: { job: Job }) {
+  const phase = job.progress.phase ?? null;
+  const phaseLabel = job.progress.phaseLabel ?? (phase ? PHASE_FALLBACK_LABEL[phase] : null);
+
+  // The phase, when the backend reports one, is a better headline than a guess
+  // made from the status: "Loading SDXL" for two minutes is honest, where
+  // "Warming up" is the same sentence whatever is actually happening.
+  const title =
+    phase && phase !== 'queued' && phaseLabel
+      ? phaseLabel
+      : job.status === 'queued'
+        ? 'Waiting for a backend'
+        : 'Warming up';
+
+  const body =
+    phase === 'preparing'
+      ? 'The backend is loading weights. A cold checkpoint takes a minute or two, and the first preview follows a few steps after that.'
+      : phase === 'decoding'
+        ? 'Sampling has finished. The VAE decode runs on the CPU here, so this part is slow — the image appears the moment it lands.'
+        : phase === 'saving'
+          ? 'Generated. The image is being stored in your library.'
+          : job.status === 'queued'
+            ? 'The job is compiled and queued. The preview appears as soon as a backend picks it up.'
+            : 'The first preview frame arrives a few steps in.';
+
   return (
     <div className={styles.message}>
       <span className={styles.spinner} aria-hidden />
-      <p className={styles.messageTitle}>
-        {job.status === 'queued' ? 'Waiting for a backend' : 'Warming up'}
-      </p>
-      <p className={styles.messageBody}>
-        {job.status === 'queued'
-          ? 'The job is compiled and queued. The preview appears as soon as a backend picks it up.'
-          : 'The first preview frame arrives a few steps in.'}
-      </p>
+      <p className={styles.messageTitle}>{title}</p>
+      <p className={styles.messageBody}>{body}</p>
     </div>
   );
 }
@@ -312,7 +379,14 @@ function Message({
       <p className={tone === 'danger' ? `${styles.messageTitle} ${styles.danger}` : styles.messageTitle}>
         {title}
       </p>
-      <p className={styles.messageBody}>{body}</p>
+      {/*
+        A failure body is the backend's own words — "VAEDecode failed: CUDA
+        error: invalid kernel file" — shown verbatim, because that string is
+        the only thing that says what actually went wrong. So it gets a
+        monospace block that wraps anywhere and can be selected for a bug
+        report, rather than being softened into prose.
+      */}
+      <p className={tone === 'danger' ? styles.errorBody : styles.messageBody}>{body}</p>
     </div>
   );
 }

@@ -18,6 +18,9 @@ import {
   initialFormState,
   prepareSubmit,
   toGenerationParams,
+  effectiveKind,
+  deriveKind,
+  modeOfKind,
 } from './form';
 
 function form(overrides: Partial<ReturnType<typeof initialFormState>> = {}) {
@@ -244,9 +247,36 @@ describe('a starting image', () => {
     const params = toGenerationParams(withInit());
     const restored = fromGenerationParams(params, initialFormState());
 
-    expect(restored.kind).toBe('img2img');
+    // The form holds the *base* kind and re-derives the variant from the
+    // starting image, so what round-trips is the effective capability.
+    expect(restored.kind).toBe('txt2img');
+    expect(effectiveKind(restored)).toBe('img2img');
+    expect(toGenerationParams(restored).kind).toBe('img2img');
     expect(restored.initImage?.influence).toBe(0.45);
     // The params only carry ids, so the URL has to be derived again.
     expect(restored.initImage?.previewUrl).toMatch(/^\/api\/uploads\/.+\/thumb$/);
+  });
+});
+
+describe('deriveKind', () => {
+  it('maps mode and starting image onto the four capabilities', () => {
+    expect(deriveKind('image', false)).toBe('txt2img');
+    expect(deriveKind('image', true)).toBe('img2img');
+    expect(deriveKind('video', false)).toBe('txt2vid');
+    expect(deriveKind('video', true)).toBe('img2vid');
+  });
+
+  it('reads a mode back off any of them', () => {
+    expect(modeOfKind('txt2img')).toBe('image');
+    expect(modeOfKind('img2img')).toBe('image');
+    expect(modeOfKind('txt2vid')).toBe('video');
+    expect(modeOfKind('img2vid')).toBe('video');
+  });
+
+  it('submits the video capability once the mode says video', () => {
+    // The bug this pins: the toggle changed nothing, so a video job was
+    // POSTed as txt2img and compiled against an image template.
+    const state = { ...initialFormState(), kind: deriveKind('video', false), modelId: 'm', prompt: 'a wave' };
+    expect(toGenerationParams(state).kind).toBe('txt2vid');
   });
 });

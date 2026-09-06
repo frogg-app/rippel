@@ -104,7 +104,21 @@ export interface JobProgress {
   etaSeconds: number | null;
   /** Data URL of the latest live preview frame, when the backend sends one. */
   previewUrl: string | null;
+  /**
+   * Which part of the run this is, when the backend reports it.
+   *
+   * Added by API_CONTRACT.md "Progress detail". Optional and additive: a
+   * client must tolerate its absence, and must not treat `fraction` as
+   * meaningful outside `sampling` — most of a run's wall clock is spent
+   * loading weights and decoding the VAE, where there is no number to show.
+   */
+  phase?: JobPhase | null;
+  /** Human text for the phase, e.g. "Loading SDXL", "Decoding image". */
+  phaseLabel?: string | null;
 }
+
+/** The phases a job passes through; see API_CONTRACT.md, "Progress detail". */
+export type JobPhase = 'queued' | 'preparing' | 'sampling' | 'decoding' | 'saving';
 
 export interface Job {
   id: Uuid;

@@ -153,6 +153,71 @@ describe('applyJobEvent', () => {
     expect(done?.assets).toEqual([asset]);
   });
 
+  it('applies job.complete after the status frame that already said complete', () => {
+    // The orchestrator's own order (`setStatus(id, 'complete')` publishes
+    // `job.status`, and only then does it publish `job.complete` with the
+    // assets). A reducer that refuses every frame once the status is terminal
+    // throws the results away, and the image only appears on reload.
+    const running = job({ status: 'running', progress: progress(28, 28) });
+    const said = applyJobEvent(running, {
+      type: 'job.status',
+      jobId: JOB_ID,
+      status: 'complete',
+      queuePosition: null,
+    });
+    expect(said?.status).toBe('complete');
+    expect(said?.assets).toEqual([]);
+
+    const done = applyJobEvent(said, { type: 'job.complete', jobId: JOB_ID, assets: [asset] });
+    expect(done?.assets).toEqual([asset]);
+    expect(done).not.toBe(said); // a new object, so React re-renders
+    expect(done?.progress.fraction).toBe(1);
+    expect(done?.progress.previewUrl).toBeNull();
+  });
+
+  it('is idempotent when job.complete is re-delivered after a reconnect', () => {
+    const done = applyJobEvent(job({ status: 'running' }), {
+      type: 'job.complete',
+      jobId: JOB_ID,
+      assets: [asset],
+    });
+    expect(applyJobEvent(done, { type: 'job.complete', jobId: JOB_ID, assets: [asset] })).toBe(done);
+  });
+
+  it('applies job.failed after the status frame that already said failed', () => {
+    // `failJob` does the same two-step: setStatus('failed') then `job.failed`
+    // carrying the message. Without this the stage says "Failed" with no reason.
+    const said = applyJobEvent(job({ status: 'running' }), {
+      type: 'job.status',
+      jobId: JOB_ID,
+      status: 'failed',
+      queuePosition: null,
+    });
+    const failed = applyJobEvent(said, {
+      type: 'job.failed',
+      jobId: JOB_ID,
+      error: 'VAEDecode failed: CUDA error: invalid kernel file',
+    });
+    expect(failed?.error).toBe('VAEDecode failed: CUDA error: invalid kernel file');
+    expect(failed).not.toBe(said);
+  });
+
+  it('does not let a completion overwrite a failure, or the reverse', () => {
+    const failed = applyJobEvent(job({ status: 'running' }), {
+      type: 'job.failed',
+      jobId: JOB_ID,
+      error: 'boom',
+    });
+    expect(applyJobEvent(failed, { type: 'job.complete', jobId: JOB_ID, assets: [asset] })).toBe(failed);
+
+    const done = applyJobEvent(job({ status: 'running' }), {
+      type: 'job.complete',
+      jobId: JOB_ID,
+      assets: [asset],
+    });
+    expect(applyJobEvent(done, { type: 'job.failed', jobId: JOB_ID, error: 'too late' })).toBe(done);
+  });
+
   it('ignores frames for a different job', () => {
     const mine = job({ status: 'running' });
     const events: JobEvent[] = [
@@ -214,6 +279,87 @@ describe('applyJobEvent', () => {
     expect(current?.status).toBe('running');
     expect(current?.progress.step).toBe(24);
     expect(current?.progress.previewUrl).toBe('data:x');
+  });
+});
+
+describe('phase', () => {
+  it('carries phase and label through a merge', () => {
+    const next = applyJobEvent(job({ status: 'dispatched' }), {
+      type: 'job.progress',
+      jobId: JOB_ID,
+      progress: { ...emptyProgress(), phase: 'preparing', phaseLabel: 'Loading SDXL' },
+    });
+    expect(next?.progress.phase).toBe('preparing');
+    expect(next?.progress.phaseLabel).toBe('Loading SDXL');
+  });
+
+  it('lets a new phase through even when its fraction goes backwards', () => {
+    // `fraction` is only defined within sampling, so the frame that says
+    // "decoding now" is entitled to reset it. Dropping it as an out-of-order
+    // frame would leave the row claiming to still be sampling for the length
+    // of a CPU VAE decode.
+    const sampling = applyJobEvent(job({ status: 'running' }), {
+      type: 'job.progress',
+      jobId: JOB_ID,
+      progress: { ...progress(28, 28), phase: 'sampling', phaseLabel: 'Generating' },
+    });
+    const decoding = applyJobEvent(sampling, {
+      type: 'job.progress',
+      jobId: JOB_ID,
+      progress: { ...emptyProgress(), fraction: 0, phase: 'decoding', phaseLabel: 'Decoding image' },
+    });
+    expect(decoding?.progress.phase).toBe('decoding');
+    expect(decoding?.progress.phaseLabel).toBe('Decoding image');
+  });
+
+  it('does not carry a label across a phase change', () => {
+    const preparing = applyJobEvent(job({ status: 'running' }), {
+      type: 'job.progress',
+      jobId: JOB_ID,
+      progress: { ...emptyProgress(), phase: 'preparing', phaseLabel: 'Loading SDXL' },
+    });
+    const sampling = applyJobEvent(preparing, {
+      type: 'job.progress',
+      jobId: JOB_ID,
+      progress: { ...progress(1, 28), phase: 'sampling' },
+    });
+    expect(sampling?.progress.phaseLabel).toBeNull();
+  });
+
+  it('keeps the phase when a later frame omits it', () => {
+    const sampling = applyJobEvent(job({ status: 'running' }), {
+      type: 'job.progress',
+      jobId: JOB_ID,
+      progress: { ...progress(4, 28), phase: 'sampling', phaseLabel: 'Generating' },
+    });
+    const next = applyJobEvent(sampling, {
+      type: 'job.progress',
+      jobId: JOB_ID,
+      progress: progress(5, 28),
+    });
+    expect(next?.progress.phase).toBe('sampling');
+    expect(next?.progress.phaseLabel).toBe('Generating');
+  });
+
+  it('is inert on an API that never sends a phase', () => {
+    const next = applyJobEvent(job({ status: 'running' }), {
+      type: 'job.progress',
+      jobId: JOB_ID,
+      progress: progress(9, 28),
+    });
+    expect(next?.progress.phase ?? null).toBeNull();
+    expect(next?.progress.step).toBe(9);
+  });
+
+  it('drops the phase when the job completes', () => {
+    const sampling = applyJobEvent(job({ status: 'running' }), {
+      type: 'job.progress',
+      jobId: JOB_ID,
+      progress: { ...progress(28, 28), phase: 'sampling', phaseLabel: 'Generating' },
+    });
+    const done = applyJobEvent(sampling, { type: 'job.complete', jobId: JOB_ID, assets: [asset] });
+    expect(done?.progress.phase).toBeNull();
+    expect(done?.progress.phaseLabel).toBeNull();
   });
 });
 

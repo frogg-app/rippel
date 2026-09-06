@@ -17,7 +17,7 @@
   transition: border-color var(--transition), transform var(--transition);
 }
 
-.tile:hover:not(:disabled) {
+.tile:hover:not([aria-disabled="true"]) {
   transform: translateY(-1px);
 }
 
@@ -102,4 +102,46 @@
 .noteIcon {
   flex-shrink: 0;
   margin-top: 2px;
+}
+
+/* The tile whose reason is currently spelled out under the grid: outlined, so
+   the sentence and the tile it belongs to are visibly connected. */
+.tileExplained {
+  border-style: solid;
+  border-color: var(--line-input);
+}
+
+/* "generic" — a family running on a best-guess workflow rather than a
+   hand-authored one. Quieter than the blocked badge: it is a caveat, not a
+   refusal. */
+.badgeSoft {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  padding: 2px 6px;
+  border-radius: 5px;
+  background: var(--scrim);
+  border: 1px solid var(--line);
+  font-size: 9.5px;
+  letter-spacing: 0.03em;
+  color: var(--text-4);
+}
+
+.noteStrong {
+  color: var(--text-3);
+  font-weight: 600;
+}
+
+/* The fix, offered inline in the note. A button, because it acts on the app
+   rather than navigating. */
+.link {
+  color: var(--accent);
+  font-size: var(--text-xs);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  white-space: nowrap;
+}
+
+.link:hover {
+  color: var(--text);
 }

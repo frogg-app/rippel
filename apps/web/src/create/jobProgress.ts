@@ -36,6 +36,8 @@ export function emptyProgress(): JobProgress {
     fraction: 0,
     etaSeconds: null,
     previewUrl: null,
+    phase: null,
+    phaseLabel: null,
   };
 }
 
@@ -49,8 +51,18 @@ export function emptyProgress(): JobProgress {
  *  1. A frame for another job is not ours. Ignore it. (`job.created` is the
  *     exception — the caller decides whether to adopt a new job; see
  *     `adoptCreated`.)
- *  2. Nothing moves a terminal job. `complete` is the end; a straggling
- *     `progress` frame from before the completion must not resurrect it.
+ *  2. Nothing *rewinds* a terminal job: a straggling `progress` or `status`
+ *     frame from before the end must not resurrect it. The two frames that
+ *     carry an outcome's payload — `job.complete` (the assets) and
+ *     `job.failed` (the message) — are the exception, because the server
+ *     announces the outcome twice and the payload arrives second. `setStatus`
+ *     publishes `job.status: complete` and only *then* is `job.complete`
+ *     published with the assets; `failJob` does the same with the message.
+ *     Refusing them because the status is already terminal is how a finished
+ *     job ends up on screen saying "Done" with an empty canvas. A payload
+ *     frame is still refused when it contradicts an outcome already recorded
+ *     (no completing a failed job), and returns the same object when it
+ *     carries nothing new, so a reconnect's re-delivery is a no-op.
  *  3. Status only moves forward through the lifecycle.
  *  4. Progress only moves forward *within a status*: a lower `fraction` is a
  *     reordered frame. A preview URL is taken from any in-order frame, since a
@@ -90,22 +102,36 @@ export function applyJobEvent(job: Job | null, event: JobEvent | { type: string 
 
     case 'job.complete': {
       if (frame.jobId !== job.id) return job;
-      if (isTerminal(job.status)) return job;
+      // A different outcome has already been recorded; a completion cannot
+      // undo it.
+      if (job.status === 'failed' || job.status === 'cancelled') return job;
+      // Already complete with these exact assets: a re-delivery after a
+      // reconnect. Return the same object so React skips the render.
+      if (job.status === 'complete' && sameAssets(job.assets, frame.assets)) return job;
       return {
         ...job,
         status: 'complete',
         queuePosition: null,
         assets: frame.assets,
         finishedAt: job.finishedAt ?? new Date().toISOString(),
-        // Snap the bar to full and drop the preview: the real image is here,
-        // and a stale preview under a finished result reads as a bug.
-        progress: { ...job.progress, fraction: 1, etaSeconds: 0, previewUrl: null },
+        // Snap the bar to full and drop the preview and the phase: the real
+        // image is here, and a stale preview — or a row still saying "Decoding
+        // image" — under a finished result reads as a bug.
+        progress: {
+          ...job.progress,
+          fraction: 1,
+          etaSeconds: 0,
+          previewUrl: null,
+          phase: null,
+          phaseLabel: null,
+        },
       };
     }
 
     case 'job.failed': {
       if (frame.jobId !== job.id) return job;
-      if (isTerminal(job.status)) return job;
+      if (job.status === 'complete' || job.status === 'cancelled') return job;
+      if (job.status === 'failed' && job.error === frame.error) return job;
       return {
         ...job,
         status: 'failed',
@@ -123,6 +149,14 @@ export function applyJobEvent(job: Job | null, event: JobEvent | { type: string 
   }
 }
 
+/** Same results, in the same order — the test for a re-delivered completion. */
+function sameAssets(current: Asset[], incoming: Asset[]): boolean {
+  return (
+    current.length === incoming.length &&
+    current.every((asset, index) => asset.id === incoming[index]?.id)
+  );
+}
+
 /**
  * Merge a progress frame, refusing to go backwards.
  *
@@ -130,9 +164,24 @@ export function applyJobEvent(job: Job | null, event: JobEvent | { type: string 
  * and not steps, and `fraction` is the contract's "our best single number".
  * Equal fractions still merge — a frame can carry a new preview at the same
  * step — but return the original object when literally nothing changed.
+ *
+ * A frame that announces a *new phase* is exempt from the backwards guard.
+ * `fraction` is only defined within sampling, so the frame that says "decoding
+ * now" is entitled to reset it; dropping that frame for going backwards would
+ * leave the screen claiming to still be sampling for the length of a CPU VAE
+ * decode, which is the exact failure the phase was added to fix.
  */
 export function mergeProgress(current: JobProgress, incoming: JobProgress): JobProgress {
-  if (incoming.fraction < current.fraction) return current;
+  const phaseChanged = incoming.phase != null && incoming.phase !== current.phase;
+  if (!phaseChanged && incoming.fraction < current.fraction) return current;
+
+  // A label belongs to its phase: when the phase moves on, a frame that carries
+  // no label of its own has no label, rather than inheriting the last one and
+  // saying "Loading SDXL" through the decode.
+  const phase = incoming.phase ?? current.phase ?? null;
+  const phaseLabel = phaseChanged
+    ? incoming.phaseLabel ?? null
+    : incoming.phaseLabel ?? current.phaseLabel ?? null;
 
   const next: JobProgress = {
     step: incoming.step ?? current.step,
@@ -142,6 +191,8 @@ export function mergeProgress(current: JobProgress, incoming: JobProgress): JobP
     fraction: incoming.fraction,
     etaSeconds: incoming.etaSeconds,
     previewUrl: incoming.previewUrl ?? current.previewUrl,
+    phase,
+    phaseLabel,
   };
 
   const unchanged =
@@ -151,7 +202,9 @@ export function mergeProgress(current: JobProgress, incoming: JobProgress): JobP
     next.totalFrames === current.totalFrames &&
     next.fraction === current.fraction &&
     next.etaSeconds === current.etaSeconds &&
-    next.previewUrl === current.previewUrl;
+    next.previewUrl === current.previewUrl &&
+    next.phase === (current.phase ?? null) &&
+    next.phaseLabel === (current.phaseLabel ?? null);
 
   return unchanged ? current : next;
 }

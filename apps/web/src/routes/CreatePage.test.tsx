@@ -13,9 +13,17 @@
 import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { GenerationParams, Job, JobEvent, Model } from '@comfy/shared';
+import type { GenerationParams, Job, JobEvent, JobProgress, Model } from '@comfy/shared';
 
-const capabilities = { byFamily: { sdxl: ['txt2img'] }, live: true };
+const capabilities = {
+  byFamily: {
+    sdxl: ['txt2img'],
+    // The box this runs on: two of the three checkpoints are video models,
+    // which is what made the picker read as broken.
+    hunyuanvideo: ['txt2vid'],
+  },
+  live: true,
+};
 
 const checkpoints: Model[] = [
   {
@@ -23,6 +31,18 @@ const checkpoints: Model[] = [
     type: 'checkpoint',
     filename: 'sd_xl_base_1.0.safetensors',
     displayName: 'SDXL Base 1.0',
+    baseModel: 'sdxl',
+    previewUrl: null,
+    sizeBytes: null,
+    source: 'local',
+    sourceRef: null,
+    backendIds: ['backend-1'],
+  },
+  {
+    id: 'model-sdxl-2',
+    type: 'checkpoint',
+    filename: 'juggernaut_xl.safetensors',
+    displayName: 'Juggernaut XL',
     baseModel: 'sdxl',
     previewUrl: null,
     sizeBytes: null,
@@ -107,11 +127,14 @@ vi.mock('../lib/api-jobs', async () => {
 });
 
 const { CreatePage } = await import('./CreatePage');
+const { ModeToggle } = await import('../shell/ModeToggle');
+const { resetCreateMode } = await import('../create/mode');
 
 beforeEach(() => {
   created.length = 0;
   localStorage.clear();
   sessionStorage.clear();
+  resetCreateMode();
 });
 
 afterEach(() => {
@@ -133,16 +156,27 @@ describe('CreatePage', () => {
     expect(screen.getByText('Write a prompt first.')).toBeInTheDocument();
   });
 
-  it('will not let a model with no template be chosen', async () => {
+  it('will not let a model with no template be chosen, and says why', async () => {
+    const user = userEvent.setup();
     render(<CreatePage />);
     const blocked = await screen.findByRole('radio', { name: /Hunyuan/i });
-    expect(blocked).toBeDisabled();
-    expect(screen.getByText(/no workflow template/i)).toBeInTheDocument();
+
+    // `aria-disabled`, not `disabled`: a disabled button takes no click and
+    // shows no tooltip, so the explanation is unreachable by the person who
+    // needs it. Pressing it must not select it, and must answer.
+    expect(blocked).toHaveAttribute('aria-disabled', 'true');
+    await user.click(blocked);
+    expect(blocked).toHaveAttribute('aria-checked', 'false');
+    expect(await screen.findByText(/is a video model/i)).toBeInTheDocument();
 
     // ...and the runnable one is preselected, so the screen opens usable.
-    expect(screen.getByRole('radio', { name: /SDXL Base/i })).toHaveAttribute(
-      'aria-checked',
-      'true',
+    // Preselection waits on the capabilities fetch, so this waits too — read
+    // eagerly it passes or fails depending on promise scheduling.
+    await waitFor(() =>
+      expect(screen.getByRole('radio', { name: /SDXL Base/i })).toHaveAttribute(
+        'aria-checked',
+        'true',
+      ),
     );
   });
 
@@ -260,6 +294,68 @@ describe('CreatePage', () => {
     expect(screen.getByRole('button', { name: /animate/i })).toBeDisabled();
   });
 
+  it('shows the finished image when job.status complete arrives before job.complete', async () => {
+    // Exactly the order the orchestrator publishes in: `setStatus('complete')`
+    // fires `job.status`, and only then does `job.complete` carry the assets.
+    // The bug this pins: the stage said "Done" but stayed empty until reload.
+    const user = userEvent.setup();
+    render(<CreatePage />);
+    await screen.findByRole('radio', { name: /SDXL Base/i });
+    await user.type(screen.getByRole('textbox', { name: /prompt/i }), 'neon');
+    await user.click(screen.getByRole('button', { name: /^generate$/i }));
+    await waitFor(() => expect(created).toHaveLength(1));
+
+    act(() => {
+      emit?.({ type: 'job.status', jobId: 'job-1', status: 'complete', queuePosition: null });
+      emit?.({
+        type: 'job.complete',
+        jobId: 'job-1',
+        assets: [
+          {
+            id: 'asset-7',
+            jobId: 'job-1',
+            kind: 'image',
+            url: '/api/assets/asset-7',
+            thumbUrl: '/api/assets/asset-7/thumb',
+            width: 1024,
+            height: 1024,
+            duration: null,
+            starred: false,
+            createdAt: '2026-09-06T10:01:00.000Z',
+          },
+        ],
+      });
+    });
+
+    await screen.findByText('Done');
+    await waitFor(() =>
+      expect(screen.getByRole('link', { name: /save/i })).toHaveAttribute(
+        'href',
+        '/api/assets/asset-7',
+      ),
+    );
+  });
+
+  it('shows the backend’s own message when a job fails', async () => {
+    const user = userEvent.setup();
+    render(<CreatePage />);
+    await screen.findByRole('radio', { name: /SDXL Base/i });
+    await user.type(screen.getByRole('textbox', { name: /prompt/i }), 'neon');
+    await user.click(screen.getByRole('button', { name: /^generate$/i }));
+    await waitFor(() => expect(created).toHaveLength(1));
+
+    act(() => {
+      emit?.({ type: 'job.status', jobId: 'job-1', status: 'failed', queuePosition: null });
+      emit?.({
+        type: 'job.failed',
+        jobId: 'job-1',
+        error: 'VAEDecode failed: CUDA error: invalid kernel file',
+      });
+    });
+
+    await screen.findByText('VAEDecode failed: CUDA error: invalid kernel file');
+  });
+
   it('remembers the Advanced drawer between mounts', async () => {
     const user = userEvent.setup();
     const first = render(<CreatePage />);
@@ -306,6 +402,204 @@ describe('CreatePage', () => {
         name: /seed locked/i,
       }),
     ).toHaveAttribute('aria-pressed', 'true');
+  });
+});
+
+/** Get a job running, so the stage is showing the progress row. */
+async function startJob(user: ReturnType<typeof userEvent.setup>) {
+  render(<CreatePage />);
+  await screen.findByRole('radio', { name: /SDXL Base/i });
+  await user.type(screen.getByRole('textbox', { name: /prompt/i }), 'neon');
+  await user.click(screen.getByRole('button', { name: /^generate$/i }));
+  await waitFor(() => expect(created).toHaveLength(1));
+}
+
+function progressFrame(progress: Partial<JobProgress>): JobEvent {
+  return {
+    type: 'job.progress',
+    jobId: 'job-1',
+    progress: {
+      step: null,
+      totalSteps: null,
+      frame: null,
+      totalFrames: null,
+      fraction: 0,
+      etaSeconds: null,
+      previewUrl: null,
+      ...progress,
+    },
+  };
+}
+
+describe('progress detail', () => {
+  it('shows an indeterminate bar and the phase label outside sampling', async () => {
+    // The VAE decode is the case that matters: it is slow, it has no fraction,
+    // and a bar left at 100% through it reads as a hang.
+    const user = userEvent.setup();
+    await startJob(user);
+
+    act(() =>
+      emit?.(
+        progressFrame({
+          step: 28,
+          totalSteps: 28,
+          fraction: 1,
+          phase: 'decoding',
+          phaseLabel: 'Decoding image',
+        }),
+      ),
+    );
+
+    const label = await screen.findAllByText('Decoding image');
+    expect(label.length).toBeGreaterThan(0);
+
+    const bar = screen.getByRole('progressbar', { name: /generation progress/i });
+    expect(bar).not.toHaveAttribute('aria-valuenow'); // indeterminate, not 100%
+    expect(bar).toHaveAttribute('aria-valuetext', 'Decoding image');
+    // No number is meaningful here, so none is shown.
+    expect(screen.queryByText('step 28 / 28')).not.toBeInTheDocument();
+  });
+
+  it('shows the bar, the step count and the ETA while sampling', async () => {
+    const user = userEvent.setup();
+    await startJob(user);
+
+    act(() =>
+      emit?.(
+        progressFrame({
+          step: 14,
+          totalSteps: 28,
+          fraction: 0.5,
+          etaSeconds: 21,
+          phase: 'sampling',
+          phaseLabel: 'Generating',
+          previewUrl: 'data:image/png;base64,AAA',
+        }),
+      ),
+    );
+
+    await screen.findByText('step 14 / 28');
+    expect(screen.getByText('~21s')).toBeInTheDocument();
+    expect(
+      screen.getByRole('progressbar', { name: /generation progress/i }),
+    ).toHaveAttribute('aria-valuenow', '50');
+
+    // The live preview frame is on the canvas while sampling.
+    expect(screen.getByText('LIVE PREVIEW')).toBeInTheDocument();
+  });
+
+  it('falls back to the old behaviour when the API sends no phase', async () => {
+    const user = userEvent.setup();
+    await startJob(user);
+
+    act(() => emit?.(progressFrame({ step: 7, totalSteps: 28, fraction: 0.25, etaSeconds: 30 })));
+
+    await screen.findByText('step 7 / 28');
+    expect(
+      screen.getByRole('progressbar', { name: /generation progress/i }),
+    ).toHaveAttribute('aria-valuenow', '25');
+  });
+
+  it('shows where the job is in the queue', async () => {
+    const user = userEvent.setup();
+    await startJob(user);
+
+    act(() =>
+      emit?.({ type: 'job.status', jobId: 'job-1', status: 'queued', queuePosition: 2 }),
+    );
+    await screen.findByText('position 3');
+
+    act(() =>
+      emit?.({ type: 'job.status', jobId: 'job-1', status: 'queued', queuePosition: 0 }),
+    );
+    await screen.findByText('next up');
+  });
+});
+
+describe('mode toggle', () => {
+  it('drives the capability the form submits', async () => {
+    // The bug: the toggle was local state, so switching to Video changed the
+    // highlight and nothing else — a video job went out as txt2img.
+    const user = userEvent.setup();
+    render(
+      <>
+        <ModeToggle />
+        <CreatePage />
+      </>,
+    );
+    await screen.findByRole('radio', { name: /SDXL Base/i });
+    await user.type(screen.getByRole('textbox', { name: /prompt/i }), 'a wave breaking');
+
+    await user.click(screen.getByRole('radio', { name: 'Video' }));
+
+    // The video checkpoint is now the selectable one, and the image ones are not.
+    await waitFor(() =>
+      expect(screen.getByRole('radio', { name: /Hunyuan/i })).toHaveAttribute(
+        'aria-disabled',
+        'false',
+      ),
+    );
+    expect(screen.getByRole('radio', { name: /SDXL Base/i })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
+
+    await user.click(screen.getByRole('radio', { name: /Hunyuan/i }));
+    await user.click(screen.getByRole('button', { name: /^generate$/i }));
+
+    await waitFor(() => expect(created).toHaveLength(1));
+    expect(created[0]!.kind).toBe('txt2vid');
+    expect(created[0]!.modelId).toBe('model-hunyuan');
+  });
+
+  it('offers the switch when nothing in this mode can run', async () => {
+    const user = userEvent.setup();
+    render(
+      <>
+        <ModeToggle />
+        <CreatePage />
+      </>,
+    );
+    await screen.findByRole('radio', { name: /SDXL Base/i });
+
+    // In video mode the only runnable checkpoint is the Hunyuan one; block it
+    // by asking about the image models and check the picker points the way
+    // back rather than leaving the user stuck.
+    await user.click(screen.getByRole('radio', { name: 'Video' }));
+    await user.click(await screen.findByRole('radio', { name: /SDXL Base/i }));
+
+    const back = await screen.findByRole('button', { name: /switch to image mode/i });
+    await user.click(back);
+
+    await waitFor(() =>
+      expect(screen.getByRole('radio', { name: 'Image' })).toHaveAttribute('aria-checked', 'true'),
+    );
+    expect(screen.getByRole('radio', { name: /SDXL Base/i })).toHaveAttribute(
+      'aria-disabled',
+      'false',
+    );
+  });
+});
+
+describe('model picker', () => {
+  it('lets you change between models that do qualify', async () => {
+    // The user reported "I can't change models". Two SDXL checkpoints both
+    // qualify for txt2img, so switching between them must work.
+    const user = userEvent.setup();
+    render(<CreatePage />);
+    const first = await screen.findByRole('radio', { name: /SDXL Base/i });
+    await waitFor(() => expect(first).toHaveAttribute('aria-checked', 'true'));
+
+    const second = screen.getByRole('radio', { name: /Juggernaut/i });
+    await user.click(second);
+
+    expect(second).toHaveAttribute('aria-checked', 'true');
+    expect(first).toHaveAttribute('aria-checked', 'false');
+
+    await user.type(screen.getByRole('textbox', { name: /prompt/i }), 'neon');
+    await user.click(screen.getByRole('button', { name: /^generate$/i }));
+    await waitFor(() => expect(created).toHaveLength(1));
+    expect(created[0]!.modelId).toBe('model-sdxl-2');
   });
 });
 

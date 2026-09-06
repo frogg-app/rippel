@@ -16,6 +16,7 @@ import type {
   LoraSelection,
   QualityPreset,
 } from '@comfy/shared';
+import type { CreateMode } from './mode';
 
 /**
  * The unions, once, as values.
@@ -157,6 +158,34 @@ export interface InitImageState {
   influence: number;
 }
 
+/**
+ * Mode + starting image -> the capability we are asking the server for.
+ *
+ * Four squares of one table, and the only place the mapping exists. The mode
+ * toggle picks the row; whether the panel holds a starting image picks the
+ * column. `upscale` is not reachable from this screen.
+ */
+export function deriveKind(mode: CreateMode, hasInitImage: boolean): JobKind {
+  if (mode === 'video') return hasInitImage ? 'img2vid' : 'txt2vid';
+  return hasInitImage ? 'img2img' : 'txt2img';
+}
+
+/** Which mode a job's capability belongs to — the inverse, for Remix. */
+export function modeOfKind(kind: JobKind): CreateMode {
+  return kind === 'txt2vid' || kind === 'img2vid' ? 'video' : 'image';
+}
+
+/**
+ * The capability this form would submit right now.
+ *
+ * Everything that asks "can this model run what I am about to ask for?" — the
+ * picker, the Generate button, `toGenerationParams` — must ask the same
+ * question, or the screen offers a model the request then rejects.
+ */
+export function effectiveKind(state: CreateFormState): JobKind {
+  return deriveKind(modeOfKind(state.kind), state.initImage !== null);
+}
+
 export function initialFormState(): CreateFormState {
   return {
     kind: 'txt2img',
@@ -233,10 +262,11 @@ export function toGenerationParams(state: CreateFormState): GenerationParams {
   }
 
   const params: GenerationParams = {
-    // An init image *is* the difference between the two capabilities, so the
-    // kind is derived from the form rather than tracked beside it — the two
-    // could otherwise disagree, and the server would refuse the job.
-    kind: state.initImage ? 'img2img' : state.kind,
+    // The capability is derived, never stored beside the form: the mode says
+    // image or video, an init image says txt2* or img2*, and the two together
+    // are the only thing that decides. Tracking `kind` separately lets it
+    // disagree with what the panel shows, and the server refuses the job.
+    kind: effectiveKind(state),
     prompt: state.prompt.trim(),
     modelId: state.modelId,
     quality: state.quality,
@@ -314,7 +344,10 @@ export function fromGenerationParams(
   const advanced = params.advanced ?? {};
   return {
     ...previous,
-    kind: params.kind,
+    // The stored kind may be an img2* variant; the form holds the *base* kind
+    // and re-derives the variant from the starting image, so a remixed
+    // img2img job whose reference is dropped becomes txt2img by itself.
+    kind: deriveKind(modeOfKind(params.kind), false),
     prompt: params.prompt,
     negativePrompt: params.negativePrompt ?? '',
     negativeOpen: Boolean(params.negativePrompt),
