@@ -11,11 +11,47 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+// The completion-rule tests exercise decision logic, not SQL. Mocking the db
+// module keeps them free of a live Postgres while still running the real
+// branching in refreshInstall; each helper echoes the row back with the fields
+// the UPDATE would have set.
+vi.mock('../db.js', () => ({
+  query: vi.fn(async (_sql: string, params: unknown[] = []) => [
+    { ...dbRow, status: params[1], detail: params[2] },
+  ]),
+  queryOne: vi.fn(async (_sql: string, params: unknown[] = []) => ({
+    ...dbRow,
+    status: String(_sql).includes("'failed'") ? 'failed' : params[1],
+    detail: params[2] ?? null,
+    error: String(_sql).includes("'failed'") ? params[1] : null,
+  })),
+}));
+
 import { ComfyManagerTransport } from './transports/comfy-manager.js';
 import { TransportError } from './transport.js';
-import { backendHasFile, folderForType } from './installs.js';
+import { backendHasFile, folderForType, refreshInstall } from './installs.js';
+import type { InstallRow } from './installs.js';
 
 const BASE = 'http://backend:8188';
+
+/** Shared by the db mock above; declared here and read lazily inside it. */
+const dbRow = {
+  id: 'i1',
+  backend_id: 'b1',
+  requested_by: 'u1',
+  filename: 'sd_xl_base_1.0.safetensors',
+  display_name: 'sd_xl_base_1.0.safetensors',
+  model_type: 'checkpoint',
+  base_model: 'SDXL',
+  url: 'https://huggingface.co/x/sd_xl_base_1.0.safetensors',
+  save_path: 'checkpoints/SDXL',
+  status: 'downloading',
+  detail: null,
+  error: null,
+  created_at: new Date(),
+  started_at: new Date(),
+  finished_at: null,
+};
 
 /** Stub fetch with a handler keyed on the path. */
 function stubFetch(handler: (path: string, init?: RequestInit) => Response | Promise<Response>) {
@@ -216,5 +252,56 @@ describe('backendHasFile', () => {
   it('is false rather than throwing when the backend errors', async () => {
     stubFetch(() => new Response('', { status: 500 }));
     expect(await backendHasFile(BASE, 'checkpoints', 'x.safetensors')).toBe(false);
+  });
+});
+
+describe('refreshInstall completion rule', () => {
+  // The bug this guards against, observed against the real backend:
+  // ComfyUI-Manager downloads in place, so ComfyUI lists the file seconds after
+  // the download starts and keeps listing it, half-written, for the next twenty
+  // minutes. Presence alone is not completion.
+  const row = dbRow as InstallRow;
+
+  it('does not complete while the queue is still working, even though ComfyUI already lists the file', async () => {
+    stubFetch((path) => {
+      if (path.startsWith('/api/models/')) {
+        // Present, but only partially written.
+        return json(['SDXL\\sd_xl_base_1.0.safetensors']);
+      }
+      return json({ total_count: 1, done_count: 0, in_progress_count: 1, is_processing: true });
+    });
+
+    const install = await refreshInstall(row, BASE);
+    expect(install.status).toBe('downloading');
+  });
+
+  it('completes only once the queue is idle and the file is there', async () => {
+    stubFetch((path) =>
+      path.startsWith('/api/models/')
+        ? json(['SDXL\\sd_xl_base_1.0.safetensors'])
+        : json({ total_count: 1, done_count: 1, in_progress_count: 0, is_processing: false }),
+    );
+
+    const install = await refreshInstall(row, BASE);
+    expect(install.status).toBe('complete');
+  });
+
+  it('fails a download whose queue finished without producing the file', async () => {
+    stubFetch((path) =>
+      path.startsWith('/api/models/')
+        ? json(['hunyuan_video_720p_fp8_e4m3fn.safetensors'])
+        : json({ total_count: 1, done_count: 1, in_progress_count: 0, is_processing: false }),
+    );
+
+    const install = await refreshInstall(row, BASE);
+    expect(install.status).toBe('failed');
+    expect(install.error).toMatch(/not present/i);
+  });
+
+  it('leaves the row alone when the backend is unreachable', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('ECONNREFUSED'); }));
+    const install = await refreshInstall(row, BASE);
+    // Retryable: still in flight, not failed.
+    expect(install.status).toBe('downloading');
   });
 });

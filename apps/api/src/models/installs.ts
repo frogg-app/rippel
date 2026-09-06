@@ -138,31 +138,26 @@ export function folderForType(type: string): string | null {
 /**
  * Advance one in-flight install.
  *
- * Called on a timer. Deliberately does the cheap authoritative check first: if
- * ComfyUI can already see the file we are done regardless of what the queue
- * says, which also covers the case where the API was restarted mid-download and
- * missed the transition entirely.
+ * The completion rule is subtler than it looks, and the obvious version is
+ * wrong. ComfyUI-Manager downloads *in place* rather than to a temporary name,
+ * and ComfyUI lists whatever is in the folder — so the file appears in
+ * `/api/models/checkpoints` within seconds of the download starting and stays
+ * there, half-written, for the next twenty minutes. Presence alone therefore
+ * proves nothing, and treating it as proof marks a 7 GB download complete when
+ * roughly none of it has arrived. (Observed against the real backend: the file
+ * was listed while Manager still reported `is_processing: true`.)
+ *
+ * So both signals are required: Manager's queue must be idle *and* ComfyUI must
+ * be able to see the file. The queue is checked first because it is the one
+ * that can veto.
  */
 export async function refreshInstall(row: InstallRow, baseUrl: string): Promise<ModelInstall> {
-  const folder = folderForType(row.model_type);
-
-  if (folder) {
-    try {
-      if (await backendHasFile(baseUrl, folder, row.filename)) {
-        return finish(row.id, 'complete', 'Installed and visible to ComfyUI');
-      }
-    } catch {
-      // The backend being unreachable is not an install failure; the next tick
-      // will try again. Falling through to the queue check would only produce a
-      // second error from the same cause.
-      return toModelInstall(row);
-    }
-  }
-
   let progress;
   try {
     progress = await transportFor(baseUrl).progress(requestFromRow(row));
   } catch (err) {
+    // Unreachable is not failed: the next tick tries again. Only a definite,
+    // non-retryable answer from the transport ends an install.
     if (err instanceof TransportError && err.retryable) return toModelInstall(row);
     return fail(row.id, err instanceof Error ? err.message : String(err));
   }
@@ -171,7 +166,47 @@ export async function refreshInstall(row: InstallRow, baseUrl: string): Promise<
     return fail(row.id, progress.error ?? 'The backend reported the download failed');
   }
 
-  const status: ModelInstallStatus = progress.state === 'downloading' ? 'downloading' : 'queued';
+  // Manager's queue is global rather than per-task, so a busy queue may be
+  // working on somebody else's download while ours has already finished. That
+  // makes this conservative — an install can sit in 'downloading' until the
+  // whole queue drains — which is the right way to be wrong: reporting a
+  // half-written checkpoint as ready would hand it to the job scheduler.
+  if (progress.state === 'downloading') {
+    return update(row, 'downloading', progress.detail);
+  }
+
+  const folder = folderForType(row.model_type);
+  if (folder) {
+    try {
+      if (await backendHasFile(baseUrl, folder, row.filename)) {
+        return finish(row.id, 'complete', 'Installed and visible to ComfyUI');
+      }
+    } catch {
+      // Backend unreachable; try again next tick rather than inventing a state.
+      return toModelInstall(row);
+    }
+
+    // An idle queue with no file means the download never produced anything —
+    // Manager logs its own failures to its console and does not expose them
+    // over HTTP, so this is as specific as we can honestly be.
+    if (row.status === 'downloading') {
+      return fail(
+        row.id,
+        'The backend finished its install queue but the file is not present. ' +
+          "Check ComfyUI-Manager's console output on the backend for the reason.",
+      );
+    }
+  }
+
+  return update(row, 'queued', progress.detail);
+}
+
+/** Write back a still-in-flight state, stamping started_at on the first move. */
+async function update(
+  row: InstallRow,
+  status: ModelInstallStatus,
+  detail: string | null,
+): Promise<ModelInstall> {
   const rows = await query<InstallRow>(
     `UPDATE model_installs
         SET status = $2,
@@ -179,7 +214,7 @@ export async function refreshInstall(row: InstallRow, baseUrl: string): Promise<
             started_at = COALESCE(started_at, CASE WHEN $2 = 'downloading' THEN now() END)
       WHERE id = $1
       RETURNING *`,
-    [row.id, status, progress.detail],
+    [row.id, status, detail],
   );
   return toModelInstall(rows[0] ?? row);
 }
