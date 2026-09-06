@@ -10,9 +10,9 @@ type Mode = 'login' | 'register';
 /**
  * Sign in and sign up, one component because they differ by two fields and a
  * verb. Validation deliberately stays thin: the API is the authority on what a
- * valid password is (10 characters, per its zod schema) and duplicating that
- * rule here is how the two drift apart. The client checks only what it can know
- * without asking — that the fields are filled in.
+ * valid password is, and duplicating its rules here is how the two drift apart.
+ * The client checks only what it can know without asking — that the fields are
+ * filled in.
  */
 export function AuthPage({ mode }: { mode: Mode }) {
   const { signIn, signUp, allowRegistration } = useAuth();
@@ -97,7 +97,6 @@ export function AuthPage({ mode }: { mode: Mode }) {
             id={`${fieldId}-password`}
             label="Password"
             type="password"
-            hint={isRegister ? 'At least 10 characters' : undefined}
             value={password}
             onChange={setPassword}
             autoComplete={isRegister ? 'new-password' : 'current-password'}

@@ -7,9 +7,14 @@ import { createSession, destroySession, toUser } from '../auth/sessions.js';
 
 const credentials = z.object({
   email: z.string().trim().email('Enter a valid email address.').max(254),
+  // No complexity or length floor beyond "not empty". This is self-hosted
+  // software on a LAN: the operator is the user, and a rule they cannot turn
+  // off only makes them fight their own password manager. The upper bound
+  // stays — it is not a strength rule but a guard against someone posting a
+  // megabyte of text into an intentionally slow hash.
   password: z
     .string()
-    .min(10, 'Use at least 10 characters.')
+    .min(1, 'Enter a password.')
     .max(200, 'That password is too long.'),
   displayName: z.string().trim().min(1).max(60).optional(),
 });
