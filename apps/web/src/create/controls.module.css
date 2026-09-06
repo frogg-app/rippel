@@ -123,11 +123,22 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 10px;
   font-size: var(--text-sm);
+  /* One line, always: the label yields (ellipsis) before the value wraps. */
+  white-space: nowrap;
+}
+
+.sliderHead .labelRow {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .sliderLabel {
   color: var(--text-3);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .value {
@@ -376,6 +387,8 @@
   display: flex;
   align-items: baseline;
   gap: var(--gap-xs);
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .reading {

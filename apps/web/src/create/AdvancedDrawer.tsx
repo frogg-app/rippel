@@ -180,7 +180,7 @@ export function AdvancedDrawer({
             label="prompt faithfulness"
           >
             <Slider
-              label="How closely to follow your prompt"
+              label="Follow the prompt"
               min={1}
               max={20}
               step={0.5}
@@ -200,7 +200,7 @@ export function AdvancedDrawer({
             label="detail"
           >
             <Slider
-              label="How much detail to work in"
+              label="Detail"
               min={1}
               max={80}
               value={steps}

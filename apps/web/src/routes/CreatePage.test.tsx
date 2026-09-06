@@ -594,10 +594,10 @@ describe('the Advanced drawer', () => {
     await screen.findByRole('radio', { name: /SDXL Base/i });
     await openAdvanced(user);
 
-    const guidance = screen.getByLabelText(/how closely to follow your prompt/i);
+    const guidance = screen.getByLabelText(/follow the prompt/i);
     expect(guidance).toHaveAttribute('aria-valuetext', expect.stringContaining('Balanced'));
 
-    const steps = screen.getByLabelText(/how much detail/i);
+    const steps = screen.getByLabelText(/^detail$/i);
     expect(steps).toHaveAttribute('aria-valuetext', expect.stringContaining('28 steps'));
     // ...and the cost of that setting, in seconds, beside it.
     expect(screen.getByText(/about 8 seconds/i)).toBeInTheDocument();
