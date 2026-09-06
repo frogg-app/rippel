@@ -207,3 +207,46 @@ describe('fromGenerationParams (remix)', () => {
     expect(rebuilt).toEqual({ ...original, advanced: { ...original.advanced, seedLocked: true } });
   });
 });
+
+describe('a starting image', () => {
+  const UPLOAD_ID = '00000000-0000-4000-8000-00000000a001';
+  const withInit = () =>
+    form({
+      initImage: {
+        source: { from: 'upload', uploadId: UPLOAD_ID },
+        previewUrl: `/api/uploads/${UPLOAD_ID}/thumb`,
+        influence: 0.45,
+      },
+    });
+
+  it('switches the job to img2img without a mode being set anywhere', () => {
+    // The capability follows from the request, not from a toggle the user has
+    // to remember to flip. A form that sent kind: 'txt2img' with an init
+    // reference would be refused by the server, and rightly.
+    expect(toGenerationParams(form()).kind).toBe('txt2img');
+    expect(toGenerationParams(withInit()).kind).toBe('img2img');
+  });
+
+  it('sends the image as a single init reference carrying its influence', () => {
+    const params = toGenerationParams(withInit());
+    expect(params.references).toEqual([
+      { source: { from: 'upload', uploadId: expect.any(String) }, role: 'init', influence: 0.45 },
+    ]);
+  });
+
+  it('omits references entirely when there is no starting image', () => {
+    // Not an empty array: an absent key is what "pure txt2img" means, and the
+    // compiler's denoise binding keys off the reference being missing.
+    expect(toGenerationParams(form())).not.toHaveProperty('references');
+  });
+
+  it('round-trips through remix, rebuilding the preview from the source', () => {
+    const params = toGenerationParams(withInit());
+    const restored = fromGenerationParams(params, initialFormState());
+
+    expect(restored.kind).toBe('img2img');
+    expect(restored.initImage?.influence).toBe(0.45);
+    // The params only carry ids, so the URL has to be derived again.
+    expect(restored.initImage?.previewUrl).toMatch(/^\/api\/uploads\/.+\/thumb$/);
+  });
+});

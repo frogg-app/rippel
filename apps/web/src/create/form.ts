@@ -11,6 +11,7 @@ import type {
   AdvancedParams,
   AspectRatio,
   GenerationParams,
+  ImageSource,
   JobKind,
   LoraSelection,
   QualityPreset,
@@ -135,6 +136,25 @@ export interface CreateFormState {
   batchSize: number;
   loras: LoraSelection[];
   advanced: AdvancedState;
+  /**
+   * The starting image, when there is one. Its presence is what makes a job
+   * img2img rather than txt2img — the user picks a picture, not a mode, which
+   * is the whole point of the capability/manifest split.
+   */
+  initImage: InitImageState | null;
+}
+
+/**
+ * A chosen starting image, in the two forms PLAN.md §6 insists are equal
+ * citizens: something already in your library, or a file you just dropped.
+ * `previewUrl` is whichever endpoint serves its bytes, so the panel can show a
+ * thumbnail without caring which of the two it is.
+ */
+export interface InitImageState {
+  source: ImageSource;
+  previewUrl: string;
+  /** 0..1. For an init image this is denoise: how far from the original to go. */
+  influence: number;
 }
 
 export function initialFormState(): CreateFormState {
@@ -148,6 +168,7 @@ export function initialFormState(): CreateFormState {
     aspect: '1:1',
     batchSize: 1,
     loras: [],
+    initImage: null,
     advanced: {
       steps: null,
       guidance: null,
@@ -212,7 +233,10 @@ export function toGenerationParams(state: CreateFormState): GenerationParams {
   }
 
   const params: GenerationParams = {
-    kind: state.kind,
+    // An init image *is* the difference between the two capabilities, so the
+    // kind is derived from the form rather than tracked beside it — the two
+    // could otherwise disagree, and the server would refuse the job.
+    kind: state.initImage ? 'img2img' : state.kind,
     prompt: state.prompt.trim(),
     modelId: state.modelId,
     quality: state.quality,
@@ -227,6 +251,16 @@ export function toGenerationParams(state: CreateFormState): GenerationParams {
   // compiler build a loader node for no effect.
   const loras = state.loras.filter((lora) => lora.weight !== 0);
   if (loras.length > 0) params.loras = loras;
+
+  if (state.initImage) {
+    params.references = [
+      {
+        source: state.initImage.source,
+        role: 'init',
+        influence: state.initImage.influence,
+      },
+    ];
+  }
 
   const advanced = toAdvancedParams(state.advanced);
   if (advanced) params.advanced = advanced;
@@ -258,6 +292,21 @@ function toAdvancedParams(state: AdvancedState): AdvancedParams | undefined {
  * different one because the seed re-rolled is the single most annoying possible
  * behaviour here. Unlock is one click away.
  */
+/** Rebuild the panel's init-image state from a job's stored params. */
+function initImageFrom(params: GenerationParams): InitImageState | null {
+  const init = params.references?.find((ref) => ref.role === 'init');
+  if (!init) return null;
+
+  return {
+    source: init.source,
+    previewUrl:
+      init.source.from === 'asset'
+        ? `/api/assets/${init.source.assetId}/thumb`
+        : `/api/uploads/${init.source.uploadId}/thumb`,
+    influence: init.influence,
+  };
+}
+
 export function fromGenerationParams(
   params: GenerationParams,
   previous: CreateFormState,
@@ -274,6 +323,10 @@ export function fromGenerationParams(
     aspect: params.aspect,
     batchSize: params.batchSize,
     loras: params.loras ? [...params.loras] : [],
+    // Remixing an img2img job keeps its starting image. The preview URL is
+    // rebuilt from the source rather than carried in the params, which only
+    // ever hold ids.
+    initImage: initImageFrom(params),
     advanced: {
       steps: advanced.steps ?? null,
       guidance: advanced.guidance ?? null,

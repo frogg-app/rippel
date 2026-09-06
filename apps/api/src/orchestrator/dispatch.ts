@@ -10,6 +10,7 @@
 
 import type { Uuid } from '@comfy/shared';
 import { compile, TemplateError, ValidationError } from '../compiler/index.js';
+import { sendStoredInitImageToBackend, withInitImage } from '../workflows/init-image.js';
 import type { ResolvedValues } from '../compiler/index.js';
 import { findTemplate } from '../workflows/registry.js';
 import { queryOne } from '../db.js';
@@ -25,6 +26,37 @@ export class DispatchError extends Error {
     super(message);
     this.name = 'DispatchError';
   }
+}
+
+/**
+ * Where the bytes of an `init` reference live in our own storage.
+ *
+ * A reference is either an existing generation or a file the user dropped, and
+ * the two are equal citizens by design (see `ImageSource` in the shared types).
+ * They live in different tables, hence the two lookups; both are scoped to the
+ * job's owner, so a crafted request cannot use somebody else's image as an init
+ * frame.
+ */
+async function initImageKey(job: JobRow): Promise<string | null> {
+  const init = job.params.references?.find((r) => r.role === 'init');
+  if (!init) return null;
+
+  if (init.source.from === 'asset') {
+    const row = await queryOne<{ storage_key: string }>(
+      `SELECT storage_key FROM assets
+        WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL`,
+      [init.source.assetId, job.user_id],
+    );
+    if (!row) throw new DispatchError('That reference image is no longer in your library.', false);
+    return row.storage_key;
+  }
+
+  const row = await queryOne<{ storage_key: string }>(
+    'SELECT storage_key FROM uploads WHERE id = $1 AND user_id = $2',
+    [init.source.uploadId, job.user_id],
+  );
+  if (!row) throw new DispatchError('That uploaded image could not be found.', false);
+  return row.storage_key;
 }
 
 /** The model family a job's checkpoint belongs to, for template lookup. */
@@ -84,10 +116,35 @@ export async function dispatch(job: JobRow, clientId: string): Promise<Dispatche
     throw err;
   }
 
+  // An img2img graph names a file on the *backend's* disk, which only exists
+  // once we put it there. This has to happen after compiling (the graph must
+  // exist to be pointed at) and before submitting (ComfyUI validates the path
+  // when the prompt is queued, not when the node runs).
+  let graph = compiled.graph;
+  const storageKey = await initImageKey(job);
+  if (storageKey) {
+    try {
+      const transferred = await sendStoredInitImageToBackend({
+        backendUrl: backend.base_url,
+        storageKey,
+      });
+      graph = withInitImage(graph, transferred.reference);
+    } catch (err) {
+      // The backend refusing an upload is usually transient — it is the same
+      // machine we are about to ask to run the job.
+      throw new DispatchError(
+        `Could not send the reference image to ${backend.name}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+        true,
+      );
+    }
+  }
+
   const res = await fetch(`${backend.base_url}/prompt`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ prompt: compiled.graph, client_id: clientId }),
+    body: JSON.stringify({ prompt: graph, client_id: clientId }),
     signal: AbortSignal.timeout(30_000),
   }).catch((err: unknown) => {
     throw new DispatchError(

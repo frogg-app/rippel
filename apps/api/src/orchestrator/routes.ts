@@ -32,7 +32,26 @@ const generationParams = z.object({
   aspect: z.enum(['1:1', '3:2', '2:3', '16:9', '9:16']),
   batchSize: z.number().int().min(1).max(8),
   loras: z.array(z.object({ modelId: z.string().uuid(), weight: z.number() })).optional(),
-  references: z.array(z.unknown()).optional(),
+  // Checked properly rather than passed through: a reference names a file we
+  // will hand to a backend, so its shape is not something to discover at
+  // dispatch. At most one `init` — it is the canvas, and two canvases is not a
+  // thing the compiler can express.
+  references: z
+    .array(
+      z.object({
+        source: z.union([
+          z.object({ from: z.literal('asset'), assetId: z.string().uuid() }),
+          z.object({ from: z.literal('upload'), uploadId: z.string().uuid() }),
+        ]),
+        role: z.enum(['init', 'style', 'composition', 'face', 'depth', 'pose']),
+        influence: z.number().min(0).max(1),
+      }),
+    )
+    .max(8)
+    .refine((refs) => refs.filter((r) => r.role === 'init').length <= 1, {
+      message: 'Only one image can be the starting point.',
+    })
+    .optional(),
   advanced: z.record(z.unknown()).optional(),
   video: z.record(z.unknown()).optional(),
 }).passthrough();
@@ -50,6 +69,26 @@ export default async function jobRoutes(app: FastifyInstance) {
         });
       }
       const params = parsed.data as unknown as GenerationParams;
+
+      // A starting image is what makes a generation img2img — the capability
+      // follows from the request. A client that sends one alongside kind
+      // 'txt2img' has a bug, and accepting it would be the worst outcome
+      // available: the txt2img template has no LoadImage, so the image would be
+      // silently dropped and the user would get an unrelated picture several
+      // GPU-minutes later. Refuse it and say which field is wrong.
+      const initRef = params.references?.find((ref) => ref.role === 'init');
+      if (initRef && params.kind === 'txt2img') {
+        return reply.code(400).send({
+          error: 'invalid_input',
+          message: "A starting image makes this an img2img generation; send kind: 'img2img'.",
+        });
+      }
+      if (!initRef && params.kind === 'img2img') {
+        return reply.code(400).send({
+          error: 'invalid_input',
+          message: 'An img2img generation needs a starting image.',
+        });
+      }
 
       const model = await queryOne<{ base_model: string | null; display_name: string }>(
         'SELECT base_model, display_name FROM models WHERE id = $1',

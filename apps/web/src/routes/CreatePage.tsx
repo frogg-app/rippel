@@ -19,6 +19,7 @@ import { AdvancedDrawer } from '../create/AdvancedDrawer';
 import { JobStage } from '../create/JobStage';
 import { ModelPicker } from '../create/ModelPicker';
 import { PromptFields } from '../create/PromptFields';
+import { ReferenceImage } from '../create/ReferenceImage';
 import {
   ASPECT_RATIOS,
   type CreateFormState,
@@ -105,6 +106,14 @@ export function CreatePage() {
             onNegativeChange={(negativePrompt) => patch({ negativePrompt })}
             onNegativeOpenChange={(negativeOpen) => patch({ negativeOpen })}
             onSubmit={generate}
+          />
+
+          {/* Between the prompt and the model, as the artboard has it: what
+              you are starting from is part of the request, not a setting. */}
+          <ReferenceImage
+            value={form.initImage}
+            onChange={(initImage) => patch({ initImage })}
+            disabled={stage.submitting}
           />
 
           <Group label="Model">

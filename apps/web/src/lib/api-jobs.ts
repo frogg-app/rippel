@@ -18,6 +18,7 @@ import type {
   JobKind,
   JobStatus,
   Model,
+  Upload,
 } from '@comfy/shared';
 import { ApiRequestError } from './api';
 import { mockEventSource, mockJobs } from '../create/mockJobs';
@@ -291,3 +292,43 @@ export function backoffMs(attempt: number): number {
   const base = Math.min(500 * 2 ** attempt, 15_000);
   return Math.round(base * (0.75 + Math.random() * 0.5));
 }
+
+// ---------------------------------------------------------------- uploads
+
+/**
+ * Dropping a file to use as a starting image.
+ *
+ * Deliberately not routed through `request()`: that helper sets a JSON content
+ * type and serialises the body, and a multipart upload needs the browser to set
+ * the boundary itself. Passing a FormData with an explicit content-type header
+ * produces a request the server cannot parse.
+ */
+export const uploadsApi = {
+  async create(file: File, signal?: AbortSignal): Promise<{ upload: Upload }> {
+    const body = new FormData();
+    body.append('file', file);
+
+    const res = await fetch(`${BASE}/uploads`, {
+      method: 'POST',
+      credentials: 'include',
+      body,
+      ...(signal ? { signal } : {}),
+    });
+
+    if (!res.ok) {
+      // The server's message is the useful one — it distinguishes "that isn't
+      // an image we can read" from "that file is too large", and both are
+      // things the person who just dropped a file needs to be told.
+      const problem = (await res.json().catch(() => null)) as
+        | { error?: string; message?: string }
+        | null;
+      throw new ApiRequestError(
+        res.status,
+        problem?.error ?? 'upload_failed',
+        problem?.message ?? `Upload failed (${res.status})`,
+      );
+    }
+
+    return (await res.json()) as { upload: Upload };
+  },
+};
