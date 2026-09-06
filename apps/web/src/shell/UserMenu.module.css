@@ -6,14 +6,14 @@
   width: 30px;
   height: 30px;
   border-radius: 50%;
-  background: linear-gradient(140deg, #3a3a44, #22222a);
+  background: var(--avatar);
   border: 1px solid var(--line-input);
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 11.5px;
   font-weight: 600;
-  color: #b9b9c2;
+  color: var(--text-2);
 }
 
 .avatar:hover {

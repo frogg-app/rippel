@@ -34,7 +34,7 @@ export function BackendPill({
     return (
       <div
         className={`${styles.pill} ${styles.bad}`}
-        title="The studio server is not answering. Generation is unavailable until it is back."
+        title="The rippel server is not answering. Generation is unavailable until it is back."
       >
         <span className={styles.dot} data-status="offline" />
         <span className={styles.name}>Server unreachable</span>

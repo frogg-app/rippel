@@ -1,7 +1,7 @@
 /**
  * The Models screen (PLAN.md §4 phase 6).
  *
- * Layout from `design/parts/ModelBrowser.body.html`: a 60px band with the serif
+ * Layout from `design/parts/ModelBrowser.body.html`: a 60px band with the display
  * title, a tab strip carrying live counts, and a status pill on the right; then
  * a search-and-chips band; then the content. Three deviations from the artboard,
  * each forced by what the API can actually say, each noted where it happens:
@@ -244,7 +244,7 @@ export function ModelsPage({ api = modelsApi }: ModelsPageProps = {}) {
   return (
     <div className={styles.screen}>
       <header className={styles.topbar}>
-        <h1 className={`serif ${styles.title}`}>Models</h1>
+        <h1 className={`display ${styles.title}`}>Models</h1>
 
         <nav className={styles.tabs} aria-label="Models sections">
           <TabButton

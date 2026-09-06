@@ -23,7 +23,7 @@ export function EmptyState({
   if (filtered) {
     return (
       <div className={styles.empty}>
-        <p className={`serif ${styles.title}`}>Nothing matches</p>
+        <p className={`display ${styles.title}`}>Nothing matches</p>
         <p className={styles.body}>
           No renders fit that search and those filters. Widen it and they will come back — nothing
           has been deleted.
@@ -40,7 +40,7 @@ export function EmptyState({
       <div className={styles.icon} aria-hidden>
         <ImageIcon size={22} />
       </div>
-      <p className={`serif ${styles.title}`}>Your library is empty</p>
+      <p className={`display ${styles.title}`}>Your library is empty</p>
       <p className={styles.body}>
         Everything you generate lands here automatically — the image, the prompt, the seed and every
         setting behind it, so any render can be reproduced or remixed later.

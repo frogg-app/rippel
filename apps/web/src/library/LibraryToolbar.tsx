@@ -63,7 +63,7 @@ export function LibraryToolbar({
 
   return (
     <header className={styles.bar}>
-      <h1 className={`serif ${styles.title}`}>Library</h1>
+      <h1 className={`display ${styles.title}`}>Library</h1>
 
       <div className={styles.search}>
         <SearchIcon size={15} className={styles.searchIcon} />

@@ -266,7 +266,7 @@ describe('runnabilityFor', () => {
     });
     expect(verdict.status).toBe('no-workflow');
     // The model's own word for itself, not ours.
-    expect(verdict.detail).toBe('No Stable Cascade workflow yet — this studio cannot generate with one.');
+    expect(verdict.detail).toBe('No Stable Cascade workflow yet — rippel cannot generate with one.');
     expect(verdict.detail).not.toMatch(/could not work out/i);
   });
 

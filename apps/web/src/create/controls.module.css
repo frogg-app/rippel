@@ -139,7 +139,7 @@
   background: linear-gradient(
     90deg,
     var(--slider-fill) 0 var(--fill, 0%),
-    rgba(255, 255, 255, 0.1) var(--fill, 0%) 100%
+    rgba(220, 238, 242, 0.1) var(--fill, 0%) 100%
   );
 }
 
@@ -149,7 +149,7 @@
   background: linear-gradient(
     90deg,
     var(--slider-fill) 0 var(--fill, 0%),
-    rgba(255, 255, 255, 0.1) var(--fill, 0%) 100%
+    rgba(220, 238, 242, 0.1) var(--fill, 0%) 100%
   );
 }
 
@@ -173,11 +173,11 @@
 }
 
 .range {
-  --slider-fill: #8b8b95;
+  --slider-fill: var(--text-4);
   --slider-thumb: var(--text-bright);
 }
 
-/* The accent slider — influence, LoRA weight — gets the gold ramp and a halo,
+/* The accent slider — influence, LoRA weight — gets the foam ramp and a halo,
    which the artboard uses to mark the sliders that change the *image* rather
    than the sampler. */
 .rangeAccent {
@@ -189,13 +189,13 @@
   width: 13px;
   height: 13px;
   margin-top: -4.5px;
-  box-shadow: 0 0 0 3px rgba(227, 176, 75, 0.2);
+  box-shadow: 0 0 0 3px rgba(156, 207, 216, 0.2);
 }
 
 .rangeAccent::-moz-range-thumb {
   width: 13px;
   height: 13px;
-  box-shadow: 0 0 0 3px rgba(227, 176, 75, 0.2);
+  box-shadow: 0 0 0 3px rgba(156, 207, 216, 0.2);
 }
 
 /* ------------------------------------------------------------ rows */
@@ -283,7 +283,7 @@
 
 .iconButtonOn,
 .iconButtonOn:hover {
-  border-color: rgba(227, 176, 75, 0.32);
+  border-color: rgba(156, 207, 216, 0.32);
   background: var(--accent-tint);
   color: var(--accent);
 }

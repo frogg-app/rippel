@@ -42,7 +42,7 @@
 
 .memory {
   font-size: var(--text-xs);
-  color: #63636d;
+  color: var(--text-muted);
 }
 
 /* "reported" / "budget": the word that stops the figure being read as the

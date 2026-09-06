@@ -9,12 +9,6 @@
   animation: fade-in 400ms var(--ease) both;
 }
 
-.text {
-  font-family: var(--font-display);
-  font-size: var(--display-sm);
-  color: var(--text-3);
-}
-
 @keyframes fade-in {
   from {
     opacity: 0;

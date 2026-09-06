@@ -1,4 +1,7 @@
-# ComfyUI Studio
+# rippel
+
+<!-- Lowercase everywhere, including at the start of a sentence — that is the
+     name, not a typo to be helpfully corrected in a commit. -->
 
 A self-hosted web app for image and image-to-video generation, backed by your own
 ComfyUI servers. Prompt, optional reference images, a few sliders — no node graphs.
@@ -10,7 +13,7 @@ against a real ComfyUI server. Generation itself is next.
 ## Quick start
 
 ```bash
-git clone <this repo> && cd comfy-studio
+git clone <this repo> && cd rippel
 cp .env.example .env
 # Edit .env: set AUTH_SECRET and point COMFY_BACKENDS at your ComfyUI server.
 docker compose up -d

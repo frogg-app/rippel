@@ -25,10 +25,6 @@
   border-right: 1px solid var(--line);
 }
 
-.wordmark {
-  font-size: var(--display-sm);
-}
-
 .spacer {
   flex-grow: 1;
 }
@@ -51,7 +47,7 @@
 }
 
 .tab {
-  color: #7a7a84;
+  color: var(--text-4);
   padding-bottom: 2px;
   border-bottom: 1.5px solid transparent;
   transition: color var(--transition);

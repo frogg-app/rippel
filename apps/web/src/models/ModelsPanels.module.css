@@ -144,7 +144,7 @@
 }
 
 .chipOn .chipCount {
-  color: var(--accent-deep);
+  color: var(--accent-quiet);
 }
 
 /* A segmented control rather than three more chips: these three are mutually
@@ -182,7 +182,7 @@
 }
 
 .segmentOn .chipCount {
-  color: var(--accent-deep);
+  color: var(--accent-quiet);
 }
 
 /* -------------------------------------------------- enlarged preview */
@@ -195,7 +195,7 @@
   align-items: center;
   justify-content: center;
   padding: 24px;
-  background: rgba(8, 7, 11, 0.86);
+  background: var(--badge-strong);
   backdrop-filter: blur(3px);
 }
 
@@ -245,7 +245,7 @@
   max-height: 82vh;
   object-fit: contain;
   border-radius: var(--radius-md);
-  background: #0f0d14;
+  background: var(--ground-sunken);
 }
 
 .lightboxSource {
@@ -257,13 +257,19 @@
 
 /* -------------------------------------------------- catalogue grid */
 
-/* Wider than the token's 244px, and deliberately so: these cards carry a
-   photograph now, and a large share of those photographs are contact sheets —
-   a 3x3 or 4x4 grid of samples in one image. At 244px each sample in a 4x4 was
-   about 55 pixels. 320px is roughly the widest that still gives four columns on
-   a 1440px pane, and the click-to-enlarge covers the rest. */
+/* The cards carry a photograph, and a large share of those photographs are
+   contact sheets — a 3x3 or 4x4 grid of samples in one image. They were widened
+   to 320px so a sample in a 4x4 was legible on the card itself. That is no
+   longer the card's job: clicking the band opens the full-resolution lightbox,
+   so the card only has to be big enough to identify a model and read its
+   verdict. Back to roughly the token's width, which puts five columns on a
+   1440px pane instead of four and most of a screenful of models in view.
+
+   The verdict caption is deliberately unclamped (see .verdictText), so a
+   narrower column costs a line of height on the odd card rather than cutting a
+   sentence mid-word. */
 .grid {
-  --models-card-min: 320px;
+  --models-card-min: 252px;
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(var(--models-card-min), 1fr));
   gap: var(--models-gap);
@@ -273,7 +279,7 @@
 /* Roughly a card with a picture on it: a skeleton much shorter than what
    replaces it makes the whole grid jump when the catalogue lands. */
 .skeleton {
-  height: 320px;
+  height: 280px;
   border-radius: var(--models-card-radius);
   background: var(--surface-1);
   border: 1px solid var(--line);
@@ -309,7 +315,7 @@
 .cardArtPhoto {
   height: auto;
   aspect-ratio: 16 / 10;
-  background: #0f0d14;
+  background: var(--ground-sunken);
 }
 
 /* The whole band is the control when there is a bigger rendition to open. */
@@ -343,9 +349,9 @@
   width: 26px;
   height: 26px;
   border-radius: var(--radius-sm);
-  background: rgba(12, 10, 16, 0.6);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  color: rgba(255, 255, 255, 0.82);
+  background: var(--badge);
+  border: 1px solid rgba(220, 238, 242, 0.14);
+  color: rgba(220, 238, 242, 0.82);
   opacity: 0;
   transition: opacity var(--transition);
 }
@@ -383,10 +389,10 @@
   gap: 5px;
   padding: 4px 9px;
   border-radius: var(--radius-sm);
-  background: rgba(95, 208, 138, 0.16);
-  border: 1px solid rgba(95, 208, 138, 0.35);
+  background: var(--ok-tint);
+  border: 1px solid var(--ok-line);
   font-size: 10.5px;
-  color: #7fdca4;
+  color: var(--ok-text);
 }
 
 .cardBody {
@@ -471,23 +477,23 @@
 }
 
 .verdict_good .verdictChip {
-  color: #7fdca4;
-  background: rgba(95, 208, 138, 0.14);
-  border-color: rgba(95, 208, 138, 0.32);
+  color: var(--ok-text);
+  background: var(--ok-tint);
+  border-color: var(--ok-line);
 }
 
 /* Runs, but on a graph nobody wrote for it. Distinct from the verified green
    on purpose — see RUNNABILITY_TONE in catalogue.ts. */
 .verdict_soft .verdictChip {
-  color: #9fb8d8;
-  background: rgba(120, 160, 210, 0.12);
-  border-color: rgba(120, 160, 210, 0.3);
+  color: var(--info);
+  background: var(--info-tint);
+  border-color: var(--info-line);
 }
 
 .verdict_warn .verdictChip {
   color: var(--models-warn);
   background: var(--models-warn-tint);
-  border-color: var(--accent-line);
+  border-color: var(--warn-line);
 }
 
 .verdict_muted .verdictChip {
@@ -535,7 +541,7 @@
   gap: 7px;
   height: 32px;
   border-radius: var(--radius);
-  background: rgba(227, 176, 75, 0.14);
+  background: rgba(156, 207, 216, 0.14);
   border: 1px solid var(--accent-line-strong);
   font-size: var(--text-sm);
   font-weight: 600;

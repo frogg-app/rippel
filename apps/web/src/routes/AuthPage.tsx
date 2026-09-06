@@ -1,6 +1,6 @@
 import { useId, useState, type FormEvent } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Mark } from '../components/Mark';
+import { Lockup } from '../components/Mark';
 import { useAuth } from '../auth/context';
 import { ApiRequestError } from '../lib/api';
 import styles from './AuthPage.module.css';
@@ -61,11 +61,14 @@ export function AuthPage({ mode }: { mode: Mode }) {
       <div className={styles.glow} aria-hidden />
       <form className={styles.card} onSubmit={(event) => void onSubmit(event)}>
         <header className={styles.head}>
-          <Mark size={34} />
-          <h1 className={`serif ${styles.title}`}>{isRegister ? 'Create your studio' : 'Studio'}</h1>
+          {/* The lockup is the heading here — the name is the only title this
+              screen needs, and the subtitle carries sign-in versus sign-up. */}
+          <h1 className={styles.title}>
+            <Lockup size={34} />
+          </h1>
           <p className={styles.subtitle}>
             {isRegister
-              ? 'Your library and your generations are private to this account.'
+              ? 'Create an account. Your library and your generations are private to it.'
               : 'Sign in to your generations.'}
           </p>
         </header>

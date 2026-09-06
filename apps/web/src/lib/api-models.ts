@@ -111,7 +111,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     });
   } catch (cause) {
     if (signal?.aborted) throw cause;
-    throw new ApiRequestError(0, 'unreachable', 'Cannot reach the studio server.');
+    throw new ApiRequestError(0, 'unreachable', 'Cannot reach the rippel server.');
   }
 
   if (response.status === 204) return undefined as T;

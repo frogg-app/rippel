@@ -12,7 +12,7 @@
 .glow {
   position: absolute;
   inset: 0;
-  background: radial-gradient(60% 50% at 50% 0%, rgba(227, 176, 75, 0.07), rgba(0, 0, 0, 0) 70%);
+  background: radial-gradient(60% 50% at 50% 0%, rgba(156, 207, 216, 0.07), rgba(0, 0, 0, 0) 70%);
   pointer-events: none;
 }
 
@@ -26,7 +26,7 @@
   padding: 32px 30px 28px;
   border-radius: var(--radius-xl);
   border: 1px solid var(--line-strong);
-  background: rgba(255, 255, 255, 0.02);
+  background: rgba(220, 238, 242, 0.02);
   backdrop-filter: var(--glass-blur);
   box-shadow: 0 24px 64px rgba(0, 0, 0, 0.45);
 }
@@ -40,9 +40,11 @@
 
 .title {
   margin: 0;
-  font-size: 27px;
-  font-weight: 400;
+  /* The lockup sets its own type; the h1 is only the box it sits in. */
+  font-size: 0;
+  line-height: 1;
 }
+
 
 .subtitle {
   margin: 0;
@@ -100,7 +102,7 @@
   border-radius: var(--radius-lg);
   border: 1px solid var(--danger-line);
   background: var(--danger-tint);
-  color: #f0a4a4;
+  color: var(--danger-text);
   font-size: var(--text-sm);
 }
 

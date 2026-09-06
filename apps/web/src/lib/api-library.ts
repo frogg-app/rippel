@@ -163,7 +163,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     });
   } catch (cause) {
     if (signal?.aborted) throw cause;
-    throw new ApiRequestError(0, 'unreachable', 'Cannot reach the studio server.');
+    throw new ApiRequestError(0, 'unreachable', 'Cannot reach the rippel server.');
   }
 
   if (response.status === 204) return undefined as T;
@@ -305,5 +305,5 @@ export async function downloadAsset(asset: Asset, filename?: string): Promise<vo
 
 function defaultFilename(asset: Asset, mimeType: string): string {
   const extension = mimeType.split('/')[1]?.replace('jpeg', 'jpg') ?? 'png';
-  return `studio-${asset.id.slice(0, 8)}.${extension}`;
+  return `rippel-${asset.id.slice(0, 8)}.${extension}`;
 }

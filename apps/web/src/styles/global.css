@@ -18,6 +18,7 @@ body {
   color: var(--text);
   font-family: var(--font-ui);
   font-size: var(--text-base);
+  font-weight: var(--weight-body);
   line-height: 1.45;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
@@ -29,9 +30,13 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-.serif {
+/* Display type — headings and the wordmark. Epilogue 300, the brand weight.
+   Only used at 19px and up: below that the Light cut loses too much ink on a
+   near-black ground, so UI text stays at 400. */
+.display {
   font-family: var(--font-display);
-  font-weight: 400;
+  font-weight: var(--weight-display);
+  letter-spacing: var(--tracking-brand);
 }
 
 /* The recurring section label above every input group. */
@@ -75,7 +80,7 @@ button {
 /* Scrollbars: present but nearly invisible, so panels stay calm. */
 * {
   scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.12) transparent;
+  scrollbar-color: rgba(220, 238, 242, 0.12) transparent;
 }
 
 @media (prefers-reduced-motion: reduce) {

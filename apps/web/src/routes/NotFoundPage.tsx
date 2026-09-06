@@ -14,7 +14,7 @@ export function NotFoundPage() {
         color: 'var(--text-muted)',
       }}
     >
-      <p className="serif" style={{ fontSize: 'var(--display)', color: 'var(--text-3)', margin: 0 }}>
+      <p className="display" style={{ fontSize: 'var(--display)', color: 'var(--text-3)', margin: 0 }}>
         Nothing here
       </p>
       <Link to="/create">Back to Create</Link>

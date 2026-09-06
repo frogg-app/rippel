@@ -1,5 +1,5 @@
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
-import { Mark } from '../components/Mark';
+import { Lockup } from '../components/Mark';
 import { BackendPill } from './BackendPill';
 import { QueueChip } from './QueueChip';
 import { UserMenu } from './UserMenu';
@@ -11,7 +11,7 @@ import styles from './AppShell.module.css';
  * The chrome that is on every screen.
  *
  * The Main artboard draws the top bar as one 60px band split by the input
- * panel's hairline: the wordmark sits in the left 396px over the panel colour,
+ * panel's hairline: the lockup sits in the left 396px over the panel colour,
  * the nav and the status chips in the rest. That is reproduced here rather than
  * in the Create screen, because PLAN.md §6 makes the status pill and queue chip
  * global — Library and Models will hang off the same bar.
@@ -29,8 +29,9 @@ export function AppShell() {
     <div className={styles.shell}>
       <header className={styles.topbar}>
         <div className={styles.leading}>
-          <Mark size={28} />
-          <span className={`serif ${styles.wordmark}`}>Studio</span>
+          {/* 19px lockup on the product ground, per the brand spec. Never
+              re-typeset the word beside the mark by hand — call this. */}
+          <Lockup size={19} />
           <div className={styles.spacer} />
           {onCreate ? <ModeToggle /> : null}
         </div>

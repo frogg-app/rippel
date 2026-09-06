@@ -1,69 +1,122 @@
 /*
- * Design tokens, taken from the artboards in `design/parts/*.body.html` and
- * PLAN.md §6. Nothing in the app should hard-code a hex value, a radius or a
- * spacing step: if a value is missing here, it is missing from the design and
- * the artboards are the place to settle it.
+ * Design tokens.
  *
- * The artboards are hand-authored inline styles, so the scales below are the
- * values that actually recur in them rather than a tidy invented ramp — the
- * odd 9px/11px radii and the 13.5px type size are deliberate, not typos.
+ * Colour and type come from the rippel brand specification (rebrand.html,
+ * settled 6 September 2026): the Rosé Pine ramp foam-to-pine, Epilogue for
+ * type. Geometry — radii, spacing, panel widths — is unchanged from the
+ * artboards in `design/parts/*.body.html` and PLAN.md §6, which the rebrand
+ * does not touch.
+ *
+ * Nothing in the app should hard-code a hex value, a radius or a spacing step:
+ * if a value is missing here, it is missing from the design.
+ *
+ * The scales below are the values that actually recur in the artboards rather
+ * than a tidy invented ramp — the odd 9px/11px radii and the 13.5px type size
+ * are deliberate, not typos.
+ *
+ * Contrast rule for this file: every token that carries *text* clears 4.5:1
+ * against the lightest ground it can land on (--panel plus --surface-4, about
+ * #1e2427). The brand's own `faint` (#5d7077) measures 3.7:1 there and is
+ * therefore not used for type — only for hairlines and disabled marks.
  */
 
 :root {
+  /* -------------------------------------------------- brand ramp
+     The mark's four colours, core outward. Nothing but the mark and the accent
+     should use these: the interface stays quiet so generated images and model
+     previews are the only saturated things on screen. */
+  --mist: #c4e2e4;
+  --foam: #9ccfd8;
+  --tide: #6a97a8;
+  --pine: #31748f;
+
   /* -------------------------------------------------- ground and panels */
-  --ground: #0b0b0d;
+  --ground: #0d1014;
   /* The rail on Library sits a shade below the ground; the input panel a shade above. */
-  --ground-sunken: #08080a;
-  --panel: #0d0d10;
+  --ground-sunken: #0a0e11;
+  --panel: #12181c;
   /* Fills for controls that sit *on* a panel. Ascending prominence. */
-  --surface-1: rgba(255, 255, 255, 0.02);
-  --surface-2: rgba(255, 255, 255, 0.03);
-  --surface-3: rgba(255, 255, 255, 0.045);
-  --surface-4: rgba(255, 255, 255, 0.05);
-  --surface-hover: rgba(255, 255, 255, 0.08);
+  --surface-1: rgba(220, 238, 242, 0.02);
+  --surface-2: rgba(220, 238, 242, 0.03);
+  --surface-3: rgba(220, 238, 242, 0.045);
+  --surface-4: rgba(220, 238, 242, 0.05);
+  --surface-hover: rgba(220, 238, 242, 0.08);
   /* Glass over an image: the live-preview scrim. */
-  --glass: rgba(10, 8, 14, 0.3);
+  --glass: rgba(8, 12, 16, 0.34);
   --glass-blur: blur(24px);
-  --scrim: rgba(8, 7, 10, 0.62);
+  --scrim: rgba(6, 9, 12, 0.66);
 
   /* -------------------------------------------------- hairlines */
-  --line: rgba(255, 255, 255, 0.06);
-  --line-strong: rgba(255, 255, 255, 0.09);
-  --line-input: rgba(255, 255, 255, 0.11);
-  --line-dashed: rgba(255, 255, 255, 0.16);
+  --line: rgba(220, 238, 242, 0.07);
+  --line-strong: rgba(220, 238, 242, 0.1);
+  --line-input: rgba(220, 238, 242, 0.13);
+  --line-dashed: rgba(220, 238, 242, 0.18);
 
-  /* -------------------------------------------------- text */
-  --text: #ececef;
-  --text-bright: #d6d6de;
-  --text-2: #c2c2cb;
-  --text-3: #9a9aa4;
-  --text-4: #6f6f79;
-  --text-muted: #5d5d67;
+  /* -------------------------------------------------- text
+     ink / body / muted from the spec; the two dimmest steps are lifted off the
+     spec's `faint` so that 11px labels still clear 4.5:1. */
+  --text: #dceef2;
+  --text-bright: #cfe3e8;
+  --text-2: #c3d6db;
+  --text-3: #9fb3ba;
+  --text-4: #8ba0a6;
+  --text-muted: #7f959c;
 
-  /* -------------------------------------------------- accent */
-  --accent: #e3b04b;
-  --accent-hover: #f0c877;
-  --accent-deep: #a8702a;
-  --accent-ink: #1c1407; /* text on a filled accent surface */
-  --accent-tint: rgba(227, 176, 75, 0.12);
-  --accent-tint-strong: rgba(227, 176, 75, 0.16);
-  --accent-line: rgba(227, 176, 75, 0.3);
-  --accent-glow: 0 8px 26px rgba(227, 176, 75, 0.22);
-  --accent-gradient: linear-gradient(140deg, var(--accent-hover), #d09a34);
-  --accent-bar: linear-gradient(90deg, var(--accent-deep), var(--accent));
+  /* -------------------------------------------------- accent
+     foam, the ramp's first ring. Deep is pine; hover is mist. */
+  --accent: #9ccfd8;
+  --accent-hover: #c4e2e4;
+  --accent-deep: #31748f;
+  --accent-ink: #0d1014; /* text on a filled accent surface */
+  /* A quieter accent that is still *type*: the count beside an active filter
+     label. Pine is the ramp's outer ring and measures 2.7:1 on the accent
+     tint — the spec's own rule is "for type on dark, use foam or lighter", so
+     the deep step is never used for text. */
+  --accent-quiet: #7ba7b6;
+  --accent-tint: rgba(156, 207, 216, 0.12);
+  --accent-tint-strong: rgba(156, 207, 216, 0.16);
+  --accent-line: rgba(156, 207, 216, 0.3);
+  --accent-glow: 0 8px 26px rgba(156, 207, 216, 0.18);
+  --accent-gradient: linear-gradient(140deg, var(--mist), var(--tide));
+  --accent-bar: linear-gradient(90deg, var(--pine), var(--foam));
 
-  /* -------------------------------------------------- status */
-  --ok: #5fd08a;
-  --ok-glow: 0 0 8px rgba(95, 208, 138, 0.7);
-  --offline: #6f6f79;
-  --danger: #e06a6a;
-  --danger-tint: rgba(224, 106, 106, 0.1);
-  --danger-line: rgba(224, 106, 106, 0.28);
+  /* -------------------------------------------------- status
+     Semantic, not brand. The spec settles four brand colours and says nothing
+     about status, so these stay a hue apart from foam in order to keep their
+     signal; warn and danger are taken from Rosé Pine's own gold and love so
+     they sit in the same world. */
+  --ok: #6fd39a;
+  --ok-glow: 0 0 8px rgba(111, 211, 154, 0.6);
+  --offline: #7f959c;
+  --danger: #eb6f92;
+  --danger-text: #f2a2b8; /* the same signal at 4.5:1 on its own tint */
+  --danger-tint: rgba(235, 111, 146, 0.1);
+  --danger-line: rgba(235, 111, 146, 0.28);
+  --ok-text: #8adcae;
+  --ok-tint: rgba(111, 211, 154, 0.16);
+  --ok-line: rgba(111, 211, 154, 0.35);
+  --warn: #f6c177;
+  --warn-line: rgba(246, 193, 119, 0.3);
+  /* "Runs, but on a graph nobody wrote for it" — a hue away from both foam and
+     the verified green, so the three verdicts never blur into each other. */
+  --info: #b5a3d4;
+  --info-tint: rgba(181, 163, 212, 0.14);
+  --info-line: rgba(181, 163, 212, 0.32);
+  /* The user avatar: a shape, not a colour statement. */
+  --avatar: linear-gradient(140deg, #263136, #172025);
 
-  /* -------------------------------------------------- type */
-  --font-ui: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif;
-  --font-display: 'Instrument Serif', Georgia, serif;
+  /* -------------------------------------------------- type
+     One face: Epilogue (OFL, Google Fonts). 300 is the brand weight and is
+     used for the lockup and display sizes; UI text runs at 400 because a Light
+     at 11–13px on a near-black ground stops being readable — the ink is what
+     matters, not the nominal weight. */
+  --font-ui: 'Epilogue', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-display: 'Epilogue', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, monospace;
+
+  --weight-display: 300;
+  --weight-body: 400;
+  --weight-strong: 500;
 
   --text-xs: 11px;
   --text-sm: 12px;
@@ -76,6 +129,8 @@
 
   /* Section labels: 11px, uppercase, wide-tracked. */
   --tracking-label: 0.09em;
+  /* The wordmark's own tracking, from the spec. */
+  --tracking-brand: 0.005em;
 
   /* -------------------------------------------------- geometry */
   /* The one measurement PLAN.md fixes by number: the input panel. */
@@ -122,43 +177,41 @@
   --library-tile-radius: 13px;
   --library-rail-width: 208px;
   --library-drawer-width: 404px;
-  --library-drawer-bg: #0e0e11;
+  --library-drawer-bg: #101619;
   --library-drawer-shadow: -24px 0 60px rgba(0, 0, 0, 0.5);
   /* The badge over a thumbnail: dark enough to read on any image. */
-  --badge: rgba(8, 7, 10, 0.7);
-  --badge-strong: rgba(8, 7, 10, 0.86);
+  --badge: rgba(6, 9, 12, 0.7);
+  --badge-strong: rgba(6, 9, 12, 0.86);
 
   /* Two greys the artboards use that the text ramp above does not name: the
      inactive segment label, and the drawer's icon row and negative prompt. */
-  --text-dim: #7a7a84;
-  --text-soft: #8d8d97;
-  --text-quiet: #83838d;
+  --text-dim: #8ba0a6;
+  --text-soft: #a5b9bf;
+  --text-quiet: #97acb2;
   /* The faintest hairline in the set — only the segmented control uses it. */
-  --line-faint: rgba(255, 255, 255, 0.07);
+  --line-faint: rgba(220, 238, 242, 0.07);
   /* The accent button in the drawer sits a step above --accent-tint-strong. */
-  --accent-line-strong: rgba(227, 176, 75, 0.32);
-  --accent-tint-hover: rgba(227, 176, 75, 0.22);
+  --accent-line-strong: rgba(156, 207, 216, 0.32);
+  --accent-tint-hover: rgba(156, 207, 216, 0.22);
   /* Things that float over the page: the collections menu, the undo bar. */
   --shadow-pop: 0 16px 40px rgba(0, 0, 0, 0.55);
   --shadow-float: 0 14px 40px rgba(0, 0, 0, 0.5);
 }
 
 /* -------------------------------------------------- models
-   Measured off design/parts/ModelBrowser.body.html: a four-column card grid on
-   a 16px gutter with 14px-radius cards, a 44px search field, and pill filter
-   chips at 12.5px.
+   Measured off design/parts/ModelBrowser.body.html: a card grid on a 16px
+   gutter with 14px-radius cards, a 44px search field, and pill filter chips at
+   12.5px.
 
-   The one metric that departs from the artboard is the card's art band. The
-   artboard draws a 184px photograph; `ModelCatalogEntry` carries no preview URL
-   at all (verified against the live catalogue — 372 entries, not one image), so
-   the band is a gradient generated from the entry's family. It is kept short
-   because it carries a family, not a picture, and 184px of decoration per card
-   over hundreds of cards is scrolling for nothing. */
+   The card carries a real preview picture now (a 16:10 band, often a contact
+   sheet), and clicking it opens the full-resolution lightbox — which is what
+   lets the card come back down to a size where a screenful of models is
+   actually a screenful. */
 :root {
   --models-gap: 16px;
   --models-card-min: 244px;
   --models-card-radius: 14px;
-  --models-card-bg: #111114;
+  --models-card-bg: #131a1e;
   --models-card-art: 84px;
   --models-search-height: 44px;
   --models-chip-height: 30px;
@@ -167,7 +220,7 @@
   --models-group-gap: 26px;
   /* The indeterminate install bar: a highlight that travels a dim track,
      because there is no fraction to fill. */
-  --models-track: rgba(255, 255, 255, 0.1);
+  --models-track: rgba(220, 238, 242, 0.1);
   --models-track-pulse: linear-gradient(
     90deg,
     transparent,
@@ -175,6 +228,6 @@
     var(--accent-hover) 55%,
     transparent
   );
-  --models-warn: #e3b04b;
-  --models-warn-tint: rgba(227, 176, 75, 0.08);
+  --models-warn: #f6c177;
+  --models-warn-tint: rgba(246, 193, 119, 0.08);
 }

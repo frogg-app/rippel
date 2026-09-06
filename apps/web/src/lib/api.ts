@@ -60,7 +60,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     // unreachable, which for a self-hosted stack is the common case and
     // deserves its own wording rather than "something went wrong".
     if (signal?.aborted) throw cause;
-    throw new ApiRequestError(0, 'unreachable', 'Cannot reach the studio server.');
+    throw new ApiRequestError(0, 'unreachable', 'Cannot reach the rippel server.');
   }
 
   if (response.status === 204) return undefined as T;

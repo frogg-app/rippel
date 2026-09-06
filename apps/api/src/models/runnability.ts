@@ -261,7 +261,7 @@ export function runnabilityFor(input: RunnabilityInput): ModelRunnability {
       summary: 'No workflow for this yet',
       detail:
         claim.kind === 'named'
-          ? `No ${claim.stated} workflow yet — this studio cannot generate with one.`
+          ? `No ${claim.stated} workflow yet — rippel cannot generate with one.`
           : 'No workflow for this kind of checkpoint yet.',
     };
   }
@@ -273,7 +273,7 @@ export function runnabilityFor(input: RunnabilityInput): ModelRunnability {
       status: 'no-workflow',
       capabilities: [],
       summary: 'No workflow for this yet',
-      detail: `No ${displayFamily(family, claim)} workflow yet — this studio cannot generate with one.`,
+      detail: `No ${displayFamily(family, claim)} workflow yet — rippel cannot generate with one.`,
     };
   }
 

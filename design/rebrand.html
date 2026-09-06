@@ -1,0 +1,515 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="rippel — brand specification: mark, palette, typeface and the ink-based lockup rule.">
+<title>rippel Rebrand</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Epilogue:wght@200;300;400;500&family=Newsreader:opsz,wght@6..72,300;6..72,400;6..72,500&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  html{color-scheme:light dark;}
+  img{max-width:100%;}
+  [hidden]{display:none!important;}
+</style>
+</head>
+<body>
+<style>
+  :root{
+    --ground:#eef3f4; --surface:#fbfdfd; --sunk:#e4ecee;
+    --ink:#14232a; --body:#283d45; --muted:#5c7178; --faint:#8ba0a6;
+    --rule:rgba(20,35,42,0.14); --rule-soft:rgba(20,35,42,0.08);
+    --mist:#c4e2e4; --foam:#9ccfd8; --tide:#6a97a8; --pine:#31748f;
+    --accent:#31748f; --on-accent:#f4fbfc;
+    --product:#0d1014;
+    --display:'Epilogue',system-ui,sans-serif;
+    --read:'Newsreader',Georgia,serif;
+    --mono:'IBM Plex Mono',ui-monospace,Menlo,monospace;
+    --col:66ch;
+  }
+  :root:not([data-theme="light"]){ @media (prefers-color-scheme: dark){
+    --ground:#0d1014; --surface:#12181c; --sunk:#0a0e11;
+    --ink:#dceef2; --body:#c3d6db; --muted:#8399a0; --faint:#5d7077;
+    --rule:rgba(220,238,242,0.13); --rule-soft:rgba(220,238,242,0.07);
+    --accent:#9ccfd8; --on-accent:#0d1014;
+  }}
+  :root[data-theme="dark"]{
+    --ground:#0d1014; --surface:#12181c; --sunk:#0a0e11;
+    --ink:#dceef2; --body:#c3d6db; --muted:#8399a0; --faint:#5d7077;
+    --rule:rgba(220,238,242,0.13); --rule-soft:rgba(220,238,242,0.07);
+    --accent:#9ccfd8; --on-accent:#0d1014;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--ground);color:var(--body);
+       font-family:var(--read);font-size:17px;line-height:1.68;
+       -webkit-font-smoothing:antialiased;}
+  .wrap{max-width:1080px;margin:0 auto;padding:0 28px 96px;}
+  .col{max-width:var(--col);}
+  h1,h2,h3{font-family:var(--display);color:var(--ink);text-wrap:balance;margin:0;}
+  h2{font-size:31px;font-weight:300;letter-spacing:-0.015em;line-height:1.2;}
+  h3{font-size:19px;font-weight:400;letter-spacing:-0.005em;}
+  p{margin:0;}
+  a{color:var(--accent);text-underline-offset:3px;}
+  strong{color:var(--ink);font-weight:500;}
+  em{font-style:italic;color:var(--ink);}
+  code{font-family:var(--mono);font-size:0.86em;color:var(--ink);
+       background:var(--sunk);padding:0.12em 0.38em;border-radius:2px;}
+  .eyebrow{font-family:var(--mono);font-size:11px;font-weight:500;letter-spacing:0.16em;
+           text-transform:uppercase;color:var(--faint);}
+
+  .plate{background:var(--product);border:1px solid rgba(220,238,242,0.12);border-radius:5px;
+         padding:30px 34px;align-self:flex-start;max-width:100%;overflow-x:auto;}
+  .plate .lock .word{color:#dceef2;}
+  /* masthead */
+  header.mast{padding:76px 0 40px;border-bottom:1px solid var(--rule);
+              display:flex;flex-direction:column;gap:26px;}
+  .mast .lede{font-size:20px;line-height:1.55;color:var(--body);max-width:56ch;}
+  .mast .meta{display:flex;flex-wrap:wrap;gap:8px 26px;font-family:var(--mono);
+              font-size:11.5px;color:var(--muted);}
+  .mast .meta b{color:var(--ink);font-weight:500;}
+
+  section{padding:56px 0 0;display:flex;flex-direction:column;gap:20px;}
+  section + section{border-top:1px solid var(--rule-soft);margin-top:52px;}
+  .stack{display:flex;flex-direction:column;gap:16px;}
+
+  /* specimen bands */
+  .band{background:var(--surface);border:1px solid var(--rule);border-radius:4px;
+        padding:34px 30px;display:flex;flex-direction:column;gap:24px;overflow-x:auto;}
+  .band.dark{background:var(--product);border-color:rgba(220,238,242,0.12);}
+  .band.light{background:#f4f7f8;border-color:rgba(20,35,42,0.12);}
+  .band .cap{font-family:var(--mono);font-size:11px;letter-spacing:0.1em;
+             text-transform:uppercase;color:var(--faint);}
+  .band.dark .cap{color:#7e8f94;}
+  .band.light .cap{color:#5c7178;}
+  .row{display:flex;align-items:flex-end;gap:30px;flex-wrap:wrap;}
+
+  /* lockup primitives (built by script, sized by the documented rule) */
+  .lock{display:inline-block;position:relative;line-height:1;font-size:0;}
+  .lock .word{display:block;line-height:1;font-family:var(--display);font-weight:300;
+              letter-spacing:0.005em;color:var(--ink);white-space:nowrap;}
+  .band.dark .lock .word{color:#dceef2;}
+  .band.light .lock .word{color:#16252b;}
+  .lock svg{display:block;}
+  .ib{position:absolute;left:0;right:0;border:1px dashed rgba(156,207,216,0.55);}
+
+  /* palette */
+  .swatches{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));gap:1px;
+            background:var(--rule);border:1px solid var(--rule);border-radius:4px;overflow:hidden;}
+  .sw{background:var(--surface);padding:0;display:flex;flex-direction:column;}
+  .sw .chip{height:76px;}
+  .sw .txt{padding:13px 15px 16px;display:flex;flex-direction:column;gap:3px;}
+  .sw .nm{font-family:var(--display);font-size:15px;font-weight:400;color:var(--ink);}
+  .sw .hx{font-family:var(--mono);font-size:12px;color:var(--muted);
+          font-variant-numeric:tabular-nums;text-transform:uppercase;}
+  .sw .use{font-family:var(--mono);font-size:10.5px;color:var(--faint);line-height:1.5;}
+
+  /* spec list */
+  .spec{display:grid;grid-template-columns:max-content 1fr;gap:10px 22px;
+        font-family:var(--mono);font-size:13px;align-items:baseline;}
+  .spec dt{color:var(--faint);white-space:nowrap;}
+  .spec dd{margin:0;color:var(--ink);font-variant-numeric:tabular-nums;}
+  .spec dd span{color:var(--muted);}
+
+  pre{margin:0;background:var(--sunk);border:1px solid var(--rule-soft);border-radius:4px;
+      padding:18px 20px;overflow-x:auto;font-family:var(--mono);font-size:12.5px;
+      line-height:1.7;color:var(--ink);}
+  pre .c{color:var(--faint);}
+
+  /* rounds — a real sequence, so numbered */
+  .rounds{display:flex;flex-direction:column;gap:0;border-top:1px solid var(--rule-soft);}
+  .rnd{display:grid;grid-template-columns:44px 1fr;gap:20px;padding:14px 0;
+       border-bottom:1px solid var(--rule-soft);align-items:baseline;}
+  .rnd .num{font-family:var(--mono);font-size:12px;color:var(--faint);
+            font-variant-numeric:tabular-nums;}
+  .rnd .what{font-size:15.5px;line-height:1.6;}
+  .rnd .what b{color:var(--ink);font-weight:500;}
+
+  /* checklist */
+  .todo{display:flex;flex-direction:column;gap:0;border-top:1px solid var(--rule-soft);}
+  .todo li{list-style:none;display:grid;grid-template-columns:1fr max-content;gap:10px 20px;
+           padding:12px 0;border-bottom:1px solid var(--rule-soft);align-items:baseline;}
+  .todo{margin:0;padding:0;}
+  .todo .path{font-family:var(--mono);font-size:12.5px;color:var(--ink);}
+  .todo .note{font-family:var(--mono);font-size:11px;color:var(--faint);text-align:right;}
+
+  .callout{border-left:2px solid var(--accent);padding:2px 0 2px 20px;
+           display:flex;flex-direction:column;gap:10px;}
+  .open{display:flex;flex-direction:column;gap:18px;}
+  .open .item{display:flex;flex-direction:column;gap:5px;}
+  .open .item .h{font-family:var(--display);font-size:16px;font-weight:500;color:var(--ink);}
+
+  footer{margin-top:60px;padding-top:22px;border-top:1px solid var(--rule);
+         font-family:var(--mono);font-size:11.5px;color:var(--faint);line-height:1.8;}
+  @media (max-width:620px){
+    body{font-size:16px;} h2{font-size:26px;}
+    .wrap{padding:0 20px 72px;} .rnd{grid-template-columns:34px 1fr;gap:12px;}
+    .todo li{grid-template-columns:1fr;} .todo .note{text-align:left;}
+  }
+  @media (prefers-reduced-motion:no-preference){ .lock{transition:none;} }
+</style>
+
+<div class="wrap">
+
+  <header class="mast">
+    <div class="plate"><div id="mast-lock"></div></div>
+    <p class="lede">The generation studio is changing its name from <em>ComfyUI&nbsp;Studio</em> to
+      <strong>rippel</strong>. This is the identity that comes with it: one mark, four colours, one typeface,
+      and a lockup rule precise enough that nobody has to eyeball it again.</p>
+    <div class="meta">
+      <span><b>Status</b> settled</span>
+      <span><b>Mark</b> nine rounds</span>
+      <span><b>Wordmark</b> four rounds</span>
+      <span><b>Decided</b> 6 September 2026</span>
+    </div>
+  </header>
+
+  <section>
+    <span class="eyebrow">The name</span>
+    <div class="col stack">
+      <h2>rippel</h2>
+      <p>The working name was <em>Emulsion</em> — a photographic reference, and a reasonable one for a tool that
+        makes images. It described the medium rather than the thing the product actually does, and it had no
+        relationship to the mark that had already been drawn.</p>
+      <p><strong>rippel is what the logo was already drawing.</strong> The mark is a crescent dissolving into
+        rings; the name says the same thing in six letters. It is set <strong>lowercase everywhere</strong>,
+        including at the start of a sentence — that is a deliberate choice, not a typo to be helpfully corrected
+        in a commit.</p>
+      <p>The name also happens to be well built for type: the doubled <em>pp</em> in the middle is two identical
+        bowls at the same radius, which is what a ripple is. That symmetry sits at the optical centre of the word.</p>
+    </div>
+  </section>
+
+  <section>
+    <span class="eyebrow">The mark</span>
+    <div class="col stack">
+      <h2>A crescent, dissolving</h2>
+      <p>Every stroke is a <strong>filled ribbon riding a radius</strong> — it swells at mid-span and closes to a
+        point at both ends. There are no strokes anywhere in the artwork and no blunt line endings, so the crescent
+        and the ripples around it are the same primitive at different radii. The mark reads as one system rather
+        than a moon with lines drawn near it.</p>
+    </div>
+
+    <div class="band dark">
+      <span class="cap">the mark · 96 / 64 / 44 / 28 / 18 px of ink</span>
+      <div class="row" id="mark-sizes"></div>
+    </div>
+
+    <div class="col stack">
+      <h3>Two optical weights</h3>
+      <p>The fine drawing is three rings at 3.8 units of weight. It is <em>designed</em> to fail small — below about
+        22&nbsp;px of ink the rings close up and the mark turns to mush. That is solved the way every serious mark
+        solves it: a second cut. The small sibling drops to two rings and roughly doubles the weight, and the
+        renderer switches to it automatically. Never fix small sizes by thickening the display cut.</p>
+    </div>
+
+    <div class="band dark">
+      <span class="cap">left: fine cut at 18px — right: the small sibling at the same size</span>
+      <div class="row" id="mark-cuts"></div>
+    </div>
+  </section>
+
+  <section>
+    <span class="eyebrow">Colour</span>
+    <div class="col stack">
+      <h2>Rosé&nbsp;Pine, foam to pine</h2>
+      <p>The ramp is taken from the <a href="https://rosepinetheme.com/palette/" target="_blank" rel="noopener">Rosé
+        Pine</a> palette rather than invented, so it has already been argued over by a lot of people. Two steps are
+        the theme's own <em>foam</em> and <em>pine</em>; the two between them are interpolated on the same walk.
+        Colour steps outward from the core: lightest at the centre, deepest on the outermost ring.</p>
+    </div>
+    <div class="swatches">
+      <div class="sw"><div class="chip" style="background:#c4e2e4"></div><div class="txt">
+        <span class="nm">mist</span><span class="hx">#c4e2e4</span><span class="use">core crescent</span></div></div>
+      <div class="sw"><div class="chip" style="background:#9ccfd8"></div><div class="txt">
+        <span class="nm">foam</span><span class="hx">#9ccfd8</span><span class="use">first ring · UI accent</span></div></div>
+      <div class="sw"><div class="chip" style="background:#6a97a8"></div><div class="txt">
+        <span class="nm">tide</span><span class="hx">#6a97a8</span><span class="use">second ring</span></div></div>
+      <div class="sw"><div class="chip" style="background:#31748f"></div><div class="txt">
+        <span class="nm">pine</span><span class="hx">#31748f</span><span class="use">outer ring</span></div></div>
+    </div>
+    <div class="col">
+      <p><strong>Contrast, honestly.</strong> On the product ground <code>#0d1014</code> the outermost ring measures
+        <strong>3.7:1</strong> — it clears 3:1 for a large graphic, but pine is a ring colour, not a text colour.
+        For type on dark, use foam or lighter.</p>
+      <p><strong>The ramp does not survive a light ground as drawn.</strong> The core is the lightest step, so on
+        <code>#eef3f4</code> mist falls to <strong>1.2:1</strong> and the crescent at the centre of the mark
+        effectively disappears, while pine sits at a healthy 4.7:1. The mark is built for dark and the app is dark,
+        so this is not blocking — but any light-ground use (invoices, a printed sheet, a light marketing page)
+        needs a darkened variant of the ramp rather than the same four values. It is not drawn yet.</p>
+    </div>
+  </section>
+
+  <section>
+    <span class="eyebrow">Typeface</span>
+    <div class="col stack">
+      <h2>Epilogue Light</h2>
+      <p>One face, one weight: <strong>Epilogue 300</strong>, lowercase, tracked <code>0.005em</code>. It is a
+        geometric sans with slightly sharper cuts than the neutral options — enough personality to be recognisable
+        next to the mark, not so much that it competes with it. Open licence (OFL), on Google Fonts.</p>
+    </div>
+    <div class="band">
+      <span class="cap">Epilogue 300 — measured ink for “rippel” at 100px</span>
+      <dl class="spec">
+        <dt>ascender ink</dt><dd>79.0 px <span>— top of the l and the i dot</span></dd>
+        <dt>descender ink</dt><dd>22.0 px <span>— bottom of the p</span></dd>
+        <dt>total ink height</dt><dd>101.0 px <span>— 1.01em</span></dd>
+        <dt>set width</dt><dd>276.4 px <span>— before tracking</span></dd>
+      </dl>
+    </div>
+  </section>
+
+  <section>
+    <span class="eyebrow">The lockup</span>
+    <div class="col stack">
+      <h2>Measure ink, never boxes</h2>
+      <p>This is the part that took the longest and the part most likely to be got wrong again, so it is written
+        down as a rule rather than a picture.</p>
+      <div class="callout">
+        <p><strong>The mark's artwork fills only 58×69 of its 120×120 viewBox</strong> — 39% of the width on the
+          right is empty, and 29% across the top. A mark placed "at 60px" therefore draws about 34px of visible
+          ink, and a third of any gap you set is invisible padding. Font metrics lie in the same way: declared
+          ascenders do not match rendered ink, and they differ per face.</p>
+      </div>
+      <p>So both sides are measured as ink. The mark's true bounding box is computed from its own path coordinates
+        <em>after</em> the −34° rotation. The word's ink comes from the browser, for the exact string, at the exact
+        size. Then the two are matched.</p>
+    </div>
+
+    <div class="band">
+      <span class="cap">the rule, drawn — outer box is the word's ink, inner is the mark's</span>
+      <div class="row" id="proof"></div>
+      <dl class="spec">
+        <dt>mark height</dt><dd>85% <span>of the word's ink height</span></dd>
+        <dt>vertical</dt><dd>mark ink centred on word ink</dd>
+        <dt>gap</dt><dd>0.15em <span>of type size, ink to ink</span></dd>
+        <dt>rotation</dt><dd>−34° <span>about the viewBox centre</span></dd>
+      </dl>
+    </div>
+
+    <div class="col stack">
+      <h3>Two traps that cost a day</h3>
+      <p>Both produce <em>silently</em> wrong alignment — the page renders, nothing errors, it just sits a few
+        pixels off:</p>
+      <p><strong>1.</strong> Chrome ignores <code>margin-bottom</code> when synthesizing the baseline of a replaced
+        flex item, so nudging an <code>&lt;svg&gt;</code> in an <code>align-items:baseline</code> row does nothing
+        at all. <strong>2.</strong> The line-box strut of the <em>container's</em> inherited font pushes an
+        inline-block child down while an absolutely-positioned sibling stays put — invisible at 44px, a full 1–4px
+        at 13px. Place both parts from one known origin instead:</p>
+    </div>
+
+    <pre><span class="c">// word ink, from the rasteriser — not from declared metrics</span>
+const t = ctx.measureText('rippel');            <span class="c">// ctx.font = "300 ${px}px Epilogue"</span>
+const inkH  = t.actualBoundingBoxAscent + t.actualBoundingBoxDescent;
+const markH = inkH * 0.85;
+
+<span class="c">// mark ink box, precomputed from the rotated path data</span>
+const INK = { x0: 14.70, y0: 35.14, x1: 72.69, y1: 104.06 };
+const box = markH * 120 / (INK.y1 - INK.y0);    <span class="c">// the svg element size</span>
+const k   = box / 120;
+
+<span class="c">// one origin: the top of the text box, line-height 1</span>
+const half = (px - (t.fontBoundingBoxAscent + t.fontBoundingBoxDescent)) / 2;
+const inkTop  = half + t.fontBoundingBoxAscent - t.actualBoundingBoxAscent;
+const markTop = inkTop + (inkH - markH) / 2;    <span class="c">// centred on the word's ink</span>
+
+svg.style.top  = (markTop - INK.y0 * k) + 'px'; <span class="c">// absolute, never baseline-aligned</span>
+svg.style.left = (-INK.x0 * k) + 'px';          <span class="c">// trim the dead padding</span>
+lockup.style.paddingLeft = ((INK.x1 - INK.x0) * k + 0.15 * px) + 'px';</pre>
+
+    <div class="col">
+      <p>Verify it with geometry, not with your eyes: read back <code>getBoundingClientRect()</code> on both ink
+        boxes and assert the centres match. Every lockup on this page is built by the code above and lands within
+        <strong>0.03px</strong> of target from 13px to 96px.</p>
+    </div>
+  </section>
+
+  <section>
+    <span class="eyebrow">In place</span>
+    <div class="col stack">
+      <h2>Where it lands</h2>
+      <p>The lockup goes in the app header and on the sign-in screen. Everywhere tighter than that — sidebar rail,
+        favicon, tab title, avatar — the mark stands alone. Never re-typeset the word next to the mark by hand;
+        call the lockup component.</p>
+    </div>
+    <div class="band dark">
+      <span class="cap">app header · 19px lockup on the product ground</span>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:20px;
+                  padding-bottom:16px;border-bottom:1px solid rgba(220,238,242,0.1)">
+        <div id="ctx-header"></div>
+        <span style="font-family:var(--mono);font-size:11px;color:#7e8f94">queue · library · models</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:22px">
+        <div id="ctx-rail"></div>
+        <span style="font-family:var(--mono);font-size:11px;color:#7e8f94">sidebar rail · 26px mark alone</span>
+      </div>
+    </div>
+    <div class="band light">
+      <span class="cap">on light ground · #f4f7f8 · known issue — the core washes out</span>
+      <div id="ctx-light"></div>
+    </div>
+  </section>
+
+  <section>
+    <span class="eyebrow">How it was arrived at</span>
+    <div class="col stack">
+      <h2>Nine rounds, then four</h2>
+      <p>Recorded because the rejected directions are the useful part — they are the ones most likely to be
+        proposed again.</p>
+    </div>
+    <div class="rounds">
+      <div class="rnd"><span class="num">1–3</span><span class="what">Crescents into ripples, 25 marks a sheet.
+        <b>Killed:</b> stroked lines with blunt endings.</span></div>
+      <div class="rnd"><span class="num">4</span><span class="what">Rebuilt from one primitive — the tapering
+        ribbon. Every terminal closes to a point.</span></div>
+      <div class="rnd"><span class="num">5–7</span><span class="what">Thinner core, colour carrying the fade
+        instead of opacity. <b>Killed:</b> saturated mint-to-cyan, too far apart in hue and value.</span></div>
+      <div class="rnd"><span class="num">8</span><span class="what">Twelve palettes, six sourced from real systems
+        — Everforest, Nord, Catppuccin, Rosé Pine, traditional Japanese blue-greens.</span></div>
+      <div class="rnd"><span class="num">9</span><span class="what">Rosé Pine chosen, on the fine three-ring.
+        Mark settled.</span></div>
+      <div class="rnd"><span class="num">w1</span><span class="what">Twelve faces plus letterforms drawn from the
+        mark's own primitive. <b>Killed:</b> serifs.</span></div>
+      <div class="rnd"><span class="num">w2</span><span class="what">Premium light geometrics, monoline drawn cuts.
+        <b>Killed:</b> sizing the mark off font size rather than measured ink.</span></div>
+      <div class="rnd"><span class="num">w3</span><span class="what">Epilogue Light chosen. Ink-based alignment
+        built, then found broken by screenshot and fixed twice.</span></div>
+      <div class="rnd"><span class="num">w4</span><span class="what">Mark to 85%, gap to 0.15em. Lockup settled.</span></div>
+    </div>
+  </section>
+
+  <section>
+    <span class="eyebrow">Rollout</span>
+    <div class="col stack">
+      <h2>Renaming the codebase</h2>
+      <p>Verified against the working tree today. The package rename is the one with teeth — the shared package
+        specifier appears in <strong>80 import sites</strong> across <code>apps/</code> and <code>packages/</code>,
+        so it is a single mechanical commit, done in one pass or not at all.</p>
+    </div>
+    <ul class="todo">
+      <li><span class="path">apps/web/index.html — &lt;title&gt;Studio&lt;/title&gt;</span><span class="note">→ rippel</span></li>
+      <li><span class="path">package.json — "comfy-studio"</span><span class="note">→ rippel</span></li>
+      <li><span class="path">@comfy/web · @comfy/api · @comfy/shared</span><span class="note">→ @rippel/* · 80 imports</span></li>
+      <li><span class="path">README.md · PLAN.md — “ComfyUI Studio”</span><span class="note">headings + prose</span></li>
+      <li><span class="path">favicon + app icon</span><span class="note">mark alone, small cut</span></li>
+      <li><span class="path">POSTGRES_DB=comfy_studio · container comfy-dev-pg</span><span class="note">leave until a clean env</span></li>
+    </ul>
+    <div class="col">
+      <p>The database name and dev container are deliberately last: renaming them buys nothing visible and costs a
+        rebuilt volume and a broken <code>HANDOVER.md</code>. Do them when the environment is next rebuilt anyway.</p>
+    </div>
+  </section>
+
+  <section>
+    <span class="eyebrow">Still open</span>
+    <div class="col open">
+      <h2>What is not decided</h2>
+      <div class="item">
+        <span class="h">The 16px cut</span>
+        <p>The small sibling holds at 18px but is muddy at 13–16px, which is exactly favicon territory. It needs its
+          own drawing — probably one ring and a heavier core — rather than another scale of the same art.</p>
+      </div>
+      <div class="item">
+        <span class="h">A light-ground ramp</span>
+        <p>The four values are built for a dark ground and invert badly on a light one — the core reads at 1.2:1.
+          A darkened walk is needed before the mark goes anywhere printed or light.</p>
+      </div>
+      <div class="item">
+        <span class="h">The two-ring mark</span>
+        <p>A two-ring variant was drawn and never formally ruled out. It is calmer and survives small sizes better.
+          Worth a decision before the favicon is cut.</p>
+      </div>
+      <div class="item">
+        <span class="h">Drawn letterforms</span>
+        <p>A monoline alphabet built from the mark's own ribbon primitive exists for the six letters of the name. It
+          was shelved when Epilogue was chosen. It is the more distinctive answer and the more expensive one — six
+          glyphs is a sketch, not a typeface.</p>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    rippel — brand specification · settled 6 September 2026<br>
+    Mark: Rosé Pine on the fine three-ring · Word: Epilogue 300 · Lockup: 85% / 0.15em / ink-centred<br>
+    Working sheets: logos rounds 1–9 and wordmark rounds 1–4, served at 192.168.1.9:8931
+  </footer>
+</div>
+
+<script>
+(function(){
+  var FRAG = { fine: '<path d="M61.7 69.8L61.4 70.2L61.0 70.5L60.6 70.7L60.2 70.8L59.7 71.0L59.3 71.1L58.8 71.1L58.4 71.2L57.9 71.2L57.5 71.2L57.0 71.2L56.5 71.2L56.0 71.1L55.6 71.1L55.1 71.0L54.6 70.8L54.2 70.7L53.7 70.5L53.3 70.3L52.8 70.1L52.4 69.8L52.0 69.6L51.5 69.3L51.1 69.0L50.7 68.7L50.4 68.3L50.0 68.0L49.7 67.6L49.3 67.2L49.0 66.8L48.7 66.4L48.4 66.0L48.2 65.5L48.0 65.0L47.7 64.6L47.5 64.1L47.4 63.6L47.2 63.1L47.1 62.6L47.0 62.1L46.9 61.6L46.8 61.0L46.8 60.5L46.8 60.0L46.8 59.5L46.8 59.0L46.9 58.4L47.0 57.9L47.1 57.4L47.2 56.9L47.4 56.4L47.5 55.9L47.7 55.4L48.0 55.0L48.2 54.5L48.4 54.0L48.7 53.6L49.0 53.2L49.3 52.8L49.7 52.4L50.0 52.0L50.4 51.7L50.7 51.3L51.1 51.0L51.5 50.7L52.0 50.4L52.4 50.2L52.8 49.9L53.3 49.7L53.7 49.5L54.2 49.3L54.6 49.2L55.1 49.0L55.6 48.9L56.0 48.9L56.5 48.8L57.0 48.8L57.5 48.8L57.9 48.8L58.4 48.8L58.8 48.9L59.3 48.9L59.7 49.0L60.2 49.2L60.6 49.3L61.0 49.5L61.4 49.8L61.7 50.2L61.7 50.2L61.3 50.4L60.9 50.5L60.5 50.7L60.1 50.8L59.8 51.0L59.4 51.1L59.1 51.3L58.8 51.4L58.4 51.6L58.1 51.7L57.8 51.9L57.5 52.1L57.3 52.3L57.0 52.5L56.7 52.7L56.5 52.9L56.2 53.1L56.0 53.3L55.8 53.6L55.6 53.8L55.4 54.0L55.2 54.3L55.0 54.5L54.8 54.7L54.7 55.0L54.5 55.2L54.4 55.5L54.2 55.8L54.1 56.0L54.0 56.3L53.9 56.5L53.8 56.8L53.7 57.1L53.6 57.3L53.5 57.6L53.5 57.8L53.4 58.1L53.3 58.4L53.3 58.7L53.3 58.9L53.2 59.2L53.2 59.5L53.2 59.7L53.2 60.0L53.2 60.3L53.2 60.5L53.2 60.8L53.3 61.1L53.3 61.3L53.3 61.6L53.4 61.9L53.5 62.2L53.5 62.4L53.6 62.7L53.7 62.9L53.8 63.2L53.9 63.5L54.0 63.7L54.1 64.0L54.2 64.2L54.4 64.5L54.5 64.8L54.7 65.0L54.8 65.3L55.0 65.5L55.2 65.7L55.4 66.0L55.6 66.2L55.8 66.4L56.0 66.7L56.2 66.9L56.5 67.1L56.7 67.3L57.0 67.5L57.3 67.7L57.5 67.9L57.8 68.1L58.1 68.3L58.4 68.4L58.8 68.6L59.1 68.7L59.4 68.9L59.8 69.0L60.1 69.2L60.5 69.3L60.9 69.5L61.3 69.6L61.7 69.8Z" fill="#c4e2e4"/><path d="M60.0 80.2L59.3 80.6L58.5 80.7L57.8 80.9L57.0 81.0L56.2 81.0L55.4 81.0L54.7 81.0L53.9 80.9L53.1 80.8L52.3 80.6L51.5 80.5L50.8 80.2L50.0 80.0L49.2 79.7L48.5 79.4L47.7 79.1L47.0 78.7L46.3 78.3L45.6 77.9L44.9 77.4L44.3 76.9L43.6 76.4L43.0 75.8L42.4 75.3L41.8 74.7L41.2 74.1L40.7 73.4L40.2 72.7L39.7 72.1L39.2 71.3L38.8 70.6L38.4 69.9L38.0 69.1L37.7 68.3L37.4 67.5L37.1 66.7L36.8 65.9L36.6 65.1L36.4 64.3L36.3 63.4L36.2 62.6L36.1 61.7L36.0 60.9L36.0 60.0L36.0 59.1L36.1 58.3L36.2 57.4L36.3 56.6L36.4 55.7L36.6 54.9L36.8 54.1L37.1 53.3L37.4 52.5L37.7 51.7L38.0 50.9L38.4 50.1L38.8 49.4L39.2 48.7L39.7 47.9L40.2 47.3L40.7 46.6L41.2 45.9L41.8 45.3L42.4 44.7L43.0 44.2L43.6 43.6L44.3 43.1L44.9 42.6L45.6 42.1L46.3 41.7L47.0 41.3L47.7 40.9L48.5 40.6L49.2 40.3L50.0 40.0L50.8 39.8L51.5 39.5L52.3 39.4L53.1 39.2L53.9 39.1L54.7 39.0L55.4 39.0L56.2 39.0L57.0 39.0L57.8 39.1L58.5 39.3L59.3 39.4L60.0 39.8L60.0 39.8L59.3 40.2L58.6 40.4L57.9 40.7L57.3 41.0L56.6 41.2L56.0 41.5L55.4 41.8L54.8 42.1L54.2 42.4L53.6 42.8L53.0 43.1L52.5 43.5L51.9 43.9L51.4 44.3L50.9 44.7L50.4 45.1L49.9 45.5L49.5 46.0L49.0 46.4L48.6 46.9L48.2 47.3L47.8 47.8L47.5 48.3L47.1 48.8L46.8 49.3L46.4 49.8L46.1 50.4L45.8 50.9L45.6 51.4L45.3 52.0L45.1 52.5L44.9 53.1L44.7 53.6L44.5 54.2L44.3 54.8L44.2 55.3L44.0 55.9L43.9 56.5L43.8 57.1L43.7 57.7L43.7 58.2L43.6 58.8L43.6 59.4L43.6 60.0L43.6 60.6L43.6 61.2L43.7 61.8L43.7 62.3L43.8 62.9L43.9 63.5L44.0 64.1L44.2 64.7L44.3 65.2L44.5 65.8L44.7 66.4L44.9 66.9L45.1 67.5L45.3 68.0L45.6 68.6L45.8 69.1L46.1 69.6L46.4 70.2L46.8 70.7L47.1 71.2L47.5 71.7L47.8 72.2L48.2 72.7L48.6 73.1L49.0 73.6L49.5 74.0L49.9 74.5L50.4 74.9L50.9 75.3L51.4 75.7L51.9 76.1L52.5 76.5L53.0 76.9L53.6 77.2L54.2 77.6L54.8 77.9L55.4 78.2L56.0 78.5L56.6 78.8L57.3 79.0L57.9 79.3L58.6 79.6L59.3 79.8L60.0 80.2Z" fill="#9ccfd8"/><path d="M54.6 90.7L53.5 90.9L52.5 90.9L51.5 90.8L50.4 90.7L49.4 90.6L48.4 90.3L47.4 90.1L46.4 89.8L45.4 89.5L44.4 89.1L43.4 88.7L42.5 88.3L41.5 87.8L40.6 87.3L39.7 86.7L38.8 86.1L37.9 85.5L37.0 84.9L36.2 84.2L35.4 83.5L34.6 82.7L33.8 82.0L33.1 81.2L32.4 80.4L31.7 79.5L31.0 78.6L30.4 77.7L29.8 76.8L29.2 75.9L28.7 74.9L28.2 73.9L27.7 72.9L27.3 71.9L26.9 70.9L26.5 69.8L26.2 68.8L25.9 67.7L25.7 66.6L25.5 65.5L25.3 64.4L25.2 63.3L25.1 62.2L25.0 61.1L25.0 60.0L25.0 58.9L25.1 57.8L25.2 56.7L25.3 55.6L25.5 54.5L25.7 53.4L25.9 52.3L26.2 51.2L26.5 50.2L26.9 49.1L27.3 48.1L27.7 47.1L28.2 46.1L28.7 45.1L29.2 44.1L29.8 43.2L30.4 42.3L31.0 41.4L31.7 40.5L32.4 39.6L33.1 38.8L33.8 38.0L34.6 37.3L35.4 36.5L36.2 35.8L37.0 35.1L37.9 34.5L38.8 33.9L39.7 33.3L40.6 32.7L41.5 32.2L42.5 31.7L43.4 31.3L44.4 30.9L45.4 30.5L46.4 30.2L47.4 29.9L48.4 29.7L49.4 29.4L50.4 29.3L51.5 29.2L52.5 29.1L53.5 29.1L54.6 29.3L54.6 29.3L53.7 29.8L52.8 30.3L51.9 30.7L51.0 31.1L50.2 31.6L49.3 32.1L48.5 32.5L47.7 33.0L46.9 33.6L46.1 34.1L45.4 34.7L44.6 35.2L43.9 35.8L43.2 36.4L42.5 37.1L41.9 37.7L41.2 38.4L40.6 39.0L40.0 39.7L39.5 40.4L38.9 41.1L38.4 41.9L37.9 42.6L37.4 43.4L36.9 44.1L36.5 44.9L36.1 45.7L35.7 46.5L35.3 47.3L35.0 48.1L34.6 48.9L34.3 49.7L34.1 50.6L33.8 51.4L33.6 52.2L33.4 53.1L33.2 53.9L33.0 54.8L32.9 55.7L32.8 56.5L32.7 57.4L32.6 58.3L32.6 59.1L32.6 60.0L32.6 60.9L32.6 61.7L32.7 62.6L32.8 63.5L32.9 64.3L33.0 65.2L33.2 66.1L33.4 66.9L33.6 67.8L33.8 68.6L34.1 69.4L34.3 70.3L34.6 71.1L35.0 71.9L35.3 72.7L35.7 73.5L36.1 74.3L36.5 75.1L36.9 75.9L37.4 76.6L37.9 77.4L38.4 78.1L38.9 78.9L39.5 79.6L40.0 80.3L40.6 81.0L41.2 81.6L41.9 82.3L42.5 82.9L43.2 83.6L43.9 84.2L44.6 84.8L45.4 85.3L46.1 85.9L46.9 86.4L47.7 87.0L48.5 87.5L49.3 87.9L50.2 88.4L51.0 88.9L51.9 89.3L52.8 89.7L53.7 90.2L54.6 90.7Z" fill="#6a97a8"/><path d="M45.6 99.7L44.3 99.6L43.2 99.3L42.0 99.0L40.8 98.7L39.7 98.3L38.6 97.8L37.4 97.3L36.3 96.8L35.3 96.3L34.2 95.7L33.1 95.0L32.1 94.3L31.1 93.6L30.1 92.9L29.1 92.1L28.2 91.3L27.2 90.5L26.3 89.6L25.5 88.8L24.6 87.8L23.8 86.9L23.0 85.9L22.2 84.9L21.5 83.9L20.8 82.9L20.1 81.8L19.5 80.7L18.9 79.6L18.3 78.5L17.7 77.3L17.2 76.1L16.8 75.0L16.3 73.8L15.9 72.6L15.6 71.3L15.2 70.1L14.9 68.9L14.7 67.6L14.5 66.4L14.3 65.1L14.2 63.8L14.1 62.6L14.0 61.3L14.0 60.0L14.0 58.7L14.1 57.4L14.2 56.2L14.3 54.9L14.5 53.6L14.7 52.4L14.9 51.1L15.2 49.9L15.6 48.7L15.9 47.4L16.3 46.2L16.8 45.0L17.2 43.9L17.7 42.7L18.3 41.5L18.9 40.4L19.5 39.3L20.1 38.2L20.8 37.1L21.5 36.1L22.2 35.1L23.0 34.1L23.8 33.1L24.6 32.2L25.5 31.2L26.3 30.4L27.2 29.5L28.2 28.7L29.1 27.9L30.1 27.1L31.1 26.4L32.1 25.7L33.1 25.0L34.2 24.3L35.3 23.7L36.3 23.2L37.4 22.7L38.6 22.2L39.7 21.7L40.8 21.3L42.0 21.0L43.2 20.7L44.3 20.4L45.6 20.3L45.6 20.3L44.6 21.1L43.6 21.8L42.7 22.4L41.7 23.1L40.7 23.7L39.8 24.4L38.9 25.1L38.0 25.8L37.2 26.5L36.3 27.3L35.5 28.1L34.7 28.8L33.9 29.6L33.1 30.5L32.4 31.3L31.7 32.1L31.0 33.0L30.3 33.9L29.7 34.8L29.0 35.7L28.4 36.6L27.9 37.5L27.3 38.4L26.8 39.4L26.3 40.4L25.8 41.3L25.4 42.3L24.9 43.3L24.5 44.3L24.2 45.3L23.8 46.3L23.5 47.4L23.2 48.4L22.9 49.4L22.7 50.5L22.4 51.5L22.2 52.6L22.1 53.6L21.9 54.7L21.8 55.7L21.7 56.8L21.7 57.9L21.6 58.9L21.6 60.0L21.6 61.1L21.7 62.1L21.7 63.2L21.8 64.3L21.9 65.3L22.1 66.4L22.2 67.4L22.4 68.5L22.7 69.5L22.9 70.6L23.2 71.6L23.5 72.6L23.8 73.7L24.2 74.7L24.5 75.7L24.9 76.7L25.4 77.7L25.8 78.7L26.3 79.6L26.8 80.6L27.3 81.6L27.9 82.5L28.4 83.4L29.0 84.3L29.7 85.2L30.3 86.1L31.0 87.0L31.7 87.9L32.4 88.7L33.1 89.5L33.9 90.4L34.7 91.2L35.5 91.9L36.3 92.7L37.2 93.5L38.0 94.2L38.9 94.9L39.8 95.6L40.7 96.3L41.7 96.9L42.7 97.6L43.6 98.2L44.6 98.9L45.6 99.7Z" fill="#31748f"/>', small: '<path d="M61.7 69.8L61.4 70.5L61.0 70.9L60.6 71.2L60.2 71.5L59.7 71.8L59.2 72.0L58.7 72.2L58.2 72.3L57.7 72.5L57.2 72.6L56.6 72.6L56.1 72.6L55.5 72.6L55.0 72.6L54.4 72.5L53.8 72.5L53.3 72.3L52.7 72.2L52.2 72.0L51.6 71.8L51.1 71.5L50.5 71.3L50.0 71.0L49.5 70.6L49.0 70.3L48.6 69.9L48.1 69.5L47.7 69.1L47.2 68.6L46.8 68.2L46.5 67.7L46.1 67.2L45.8 66.6L45.5 66.1L45.2 65.5L45.0 64.9L44.7 64.3L44.5 63.7L44.4 63.1L44.2 62.5L44.1 61.9L44.1 61.3L44.0 60.6L44.0 60.0L44.0 59.4L44.1 58.7L44.1 58.1L44.2 57.5L44.4 56.9L44.5 56.3L44.7 55.7L45.0 55.1L45.2 54.5L45.5 53.9L45.8 53.4L46.1 52.8L46.5 52.3L46.8 51.8L47.2 51.4L47.7 50.9L48.1 50.5L48.6 50.1L49.0 49.7L49.5 49.4L50.0 49.0L50.5 48.7L51.1 48.5L51.6 48.2L52.2 48.0L52.7 47.8L53.3 47.7L53.8 47.5L54.4 47.5L55.0 47.4L55.5 47.4L56.1 47.4L56.6 47.4L57.2 47.4L57.7 47.5L58.2 47.7L58.7 47.8L59.2 48.0L59.7 48.2L60.2 48.5L60.6 48.8L61.0 49.1L61.4 49.5L61.7 50.2L61.7 50.2L61.3 50.7L60.9 51.0L60.5 51.3L60.1 51.5L59.8 51.8L59.5 52.0L59.2 52.3L58.9 52.5L58.7 52.8L58.4 53.0L58.2 53.3L58.0 53.5L57.8 53.8L57.6 54.0L57.4 54.3L57.3 54.5L57.1 54.8L57.0 55.0L56.9 55.3L56.8 55.5L56.7 55.7L56.6 55.9L56.5 56.2L56.4 56.4L56.4 56.6L56.3 56.8L56.3 57.0L56.2 57.2L56.2 57.4L56.2 57.6L56.1 57.8L56.1 58.0L56.1 58.2L56.1 58.4L56.0 58.5L56.0 58.7L56.0 58.9L56.0 59.0L56.0 59.2L56.0 59.4L56.0 59.5L56.0 59.7L56.0 59.8L56.0 60.0L56.0 60.2L56.0 60.3L56.0 60.5L56.0 60.6L56.0 60.8L56.0 61.0L56.0 61.1L56.0 61.3L56.0 61.5L56.1 61.6L56.1 61.8L56.1 62.0L56.1 62.2L56.2 62.4L56.2 62.6L56.2 62.8L56.3 63.0L56.3 63.2L56.4 63.4L56.4 63.6L56.5 63.8L56.6 64.1L56.7 64.3L56.8 64.5L56.9 64.7L57.0 65.0L57.1 65.2L57.3 65.5L57.4 65.7L57.6 66.0L57.8 66.2L58.0 66.5L58.2 66.7L58.4 67.0L58.7 67.2L58.9 67.5L59.2 67.7L59.5 68.0L59.8 68.2L60.1 68.5L60.5 68.7L60.9 69.0L61.3 69.3L61.7 69.8Z" fill="#c4e2e4"/><path d="M60.0 85.0L59.1 85.7L58.1 86.0L57.2 86.3L56.2 86.5L55.2 86.7L54.2 86.7L53.2 86.8L52.1 86.8L51.1 86.7L50.1 86.6L49.1 86.4L48.0 86.2L47.0 85.9L46.0 85.6L45.0 85.3L44.0 84.9L43.0 84.4L42.1 83.9L41.1 83.4L40.2 82.8L39.3 82.2L38.4 81.6L37.6 80.9L36.8 80.1L36.0 79.4L35.2 78.6L34.5 77.7L33.8 76.9L33.1 76.0L32.5 75.0L31.9 74.1L31.3 73.1L30.8 72.1L30.3 71.1L29.9 70.0L29.5 69.0L29.1 67.9L28.8 66.8L28.6 65.7L28.4 64.5L28.2 63.4L28.1 62.3L28.0 61.1L28.0 60.0L28.0 58.9L28.1 57.7L28.2 56.6L28.4 55.5L28.6 54.3L28.8 53.2L29.1 52.1L29.5 51.0L29.9 50.0L30.3 48.9L30.8 47.9L31.3 46.9L31.9 45.9L32.5 45.0L33.1 44.0L33.8 43.1L34.5 42.3L35.2 41.4L36.0 40.6L36.8 39.9L37.6 39.1L38.4 38.4L39.3 37.8L40.2 37.2L41.1 36.6L42.1 36.1L43.0 35.6L44.0 35.1L45.0 34.7L46.0 34.4L47.0 34.1L48.0 33.8L49.1 33.6L50.1 33.4L51.1 33.3L52.1 33.2L53.2 33.2L54.2 33.3L55.2 33.3L56.2 33.5L57.2 33.7L58.1 34.0L59.1 34.3L60.0 35.0L60.0 35.0L59.1 35.7L58.3 36.2L57.5 36.6L56.7 37.0L55.9 37.5L55.2 37.9L54.5 38.3L53.8 38.8L53.1 39.2L52.4 39.7L51.8 40.2L51.2 40.7L50.6 41.2L50.0 41.7L49.5 42.3L48.9 42.8L48.4 43.3L47.9 43.9L47.5 44.5L47.0 45.0L46.6 45.6L46.2 46.2L45.8 46.8L45.5 47.4L45.1 48.0L44.8 48.6L44.5 49.2L44.2 49.8L43.9 50.5L43.7 51.1L43.4 51.7L43.2 52.3L43.0 53.0L42.8 53.6L42.7 54.2L42.5 54.9L42.4 55.5L42.3 56.1L42.2 56.8L42.1 57.4L42.1 58.1L42.0 58.7L42.0 59.4L42.0 60.0L42.0 60.6L42.0 61.3L42.1 61.9L42.1 62.6L42.2 63.2L42.3 63.9L42.4 64.5L42.5 65.1L42.7 65.8L42.8 66.4L43.0 67.0L43.2 67.7L43.4 68.3L43.7 68.9L43.9 69.5L44.2 70.2L44.5 70.8L44.8 71.4L45.1 72.0L45.5 72.6L45.8 73.2L46.2 73.8L46.6 74.4L47.0 75.0L47.5 75.5L47.9 76.1L48.4 76.7L48.9 77.2L49.5 77.7L50.0 78.3L50.6 78.8L51.2 79.3L51.8 79.8L52.4 80.3L53.1 80.8L53.8 81.2L54.5 81.7L55.2 82.1L55.9 82.5L56.7 83.0L57.5 83.4L58.3 83.8L59.1 84.3L60.0 85.0Z" fill="#9ccfd8"/><path d="M51.5 100.1L50.1 100.4L48.7 100.5L47.4 100.4L46.0 100.3L44.7 100.1L43.4 99.9L42.0 99.6L40.7 99.2L39.4 98.8L38.1 98.3L36.8 97.8L35.6 97.2L34.3 96.6L33.1 95.9L31.9 95.2L30.7 94.5L29.5 93.7L28.4 92.8L27.3 91.9L26.2 91.0L25.2 90.0L24.2 89.0L23.2 88.0L22.3 86.9L21.3 85.8L20.5 84.6L19.6 83.4L18.9 82.2L18.1 81.0L17.4 79.7L16.7 78.4L16.1 77.1L15.6 75.7L15.0 74.4L14.6 73.0L14.1 71.6L13.7 70.2L13.4 68.7L13.1 67.3L12.9 65.9L12.7 64.4L12.6 62.9L12.5 61.5L12.5 60.0L12.5 58.5L12.6 57.1L12.7 55.6L12.9 54.1L13.1 52.7L13.4 51.3L13.7 49.8L14.1 48.4L14.6 47.0L15.0 45.6L15.6 44.3L16.1 42.9L16.7 41.6L17.4 40.3L18.1 39.0L18.9 37.8L19.6 36.6L20.5 35.4L21.3 34.2L22.3 33.1L23.2 32.0L24.2 31.0L25.2 30.0L26.2 29.0L27.3 28.1L28.4 27.2L29.5 26.3L30.7 25.5L31.9 24.8L33.1 24.1L34.3 23.4L35.6 22.8L36.8 22.2L38.1 21.7L39.4 21.2L40.7 20.8L42.0 20.4L43.4 20.1L44.7 19.9L46.0 19.7L47.4 19.6L48.7 19.5L50.1 19.6L51.5 19.9L51.5 19.9L50.4 20.8L49.3 21.5L48.2 22.2L47.1 22.8L46.1 23.5L45.1 24.2L44.1 24.9L43.1 25.6L42.1 26.3L41.2 27.1L40.3 27.9L39.4 28.7L38.6 29.5L37.8 30.3L37.0 31.1L36.2 32.0L35.4 32.8L34.7 33.7L34.0 34.6L33.4 35.5L32.7 36.5L32.1 37.4L31.5 38.4L31.0 39.3L30.4 40.3L29.9 41.3L29.4 42.3L29.0 43.3L28.6 44.3L28.2 45.3L27.8 46.3L27.5 47.3L27.1 48.4L26.9 49.4L26.6 50.5L26.4 51.5L26.2 52.6L26.0 53.6L25.8 54.7L25.7 55.7L25.6 56.8L25.6 57.9L25.5 58.9L25.5 60.0L25.5 61.1L25.6 62.1L25.6 63.2L25.7 64.3L25.8 65.3L26.0 66.4L26.2 67.4L26.4 68.5L26.6 69.5L26.9 70.6L27.1 71.6L27.5 72.7L27.8 73.7L28.2 74.7L28.6 75.7L29.0 76.7L29.4 77.7L29.9 78.7L30.4 79.7L31.0 80.7L31.5 81.6L32.1 82.6L32.7 83.5L33.4 84.5L34.0 85.4L34.7 86.3L35.4 87.2L36.2 88.0L37.0 88.9L37.8 89.7L38.6 90.5L39.4 91.3L40.3 92.1L41.2 92.9L42.1 93.7L43.1 94.4L44.1 95.1L45.1 95.8L46.1 96.5L47.1 97.2L48.2 97.8L49.3 98.5L50.4 99.2L51.5 100.1Z" fill="#6a97a8"/>' };
+  var INK  = { fine: {x0:14.70,y0:35.14,x1:72.69,y1:104.06},
+               small:{x0:13.42,y0:31.51,x1:75.38,y1:104.99} };
+  var TILT = -34, SCALE = 0.85, GAP = 0.15;
+
+  var CV = null;
+  try { CV = document.createElement('canvas').getContext('2d'); } catch(e){ CV = null; }
+
+  /* Epilogue 300 measured: ink asc 0.79em, desc 0.22em — the fallback if
+     canvas metrics are unavailable, so layout still resolves. */
+  function measure(px){
+    if (CV){
+      CV.font = '300 ' + px + "px 'Epilogue', sans-serif";
+      var t = CV.measureText('rippel');
+      if (t && t.actualBoundingBoxAscent) return {
+        asc:t.actualBoundingBoxAscent, desc:t.actualBoundingBoxDescent,
+        fbAsc:t.fontBoundingBoxAscent, fbDesc:t.fontBoundingBoxDescent };
+    }
+    return {asc:px*0.79, desc:px*0.22, fbAsc:px*0.79, fbDesc:px*0.24};
+  }
+  function markSvg(inkH, opts){
+    opts = opts || {};
+    var cut = opts.cut || (inkH < 22 ? 'small' : 'fine');
+    var ink = INK[cut], box = inkH * 120 / (ink.y1 - ink.y0), k = box / 120;
+    var guide = opts.guide
+      ? '<rect x="'+ink.x0+'" y="'+ink.y0+'" width="'+(ink.x1-ink.x0).toFixed(2)+'" height="'+(ink.y1-ink.y0).toFixed(2)+
+        '" fill="none" stroke="rgba(156,207,216,0.55)" stroke-width="1.6" stroke-dasharray="4 4"/>' : '';
+    return {
+      box:box, k:k, inkW:(ink.x1-ink.x0)*k, trimL:ink.x0*k, trimT:ink.y0*k,
+      html:function(style){
+        return '<svg width="'+box.toFixed(2)+'" height="'+box.toFixed(2)+'" viewBox="0 0 120 120" '+
+               'style="'+style+'" aria-hidden="true"><g transform="rotate('+TILT+' 60 60)">'+FRAG[cut]+'</g>'+guide+'</svg>';
+      }
+    };
+  }
+  /* the mark on its own, trimmed to its ink on every side */
+  function markOnly(inkH, cut){
+    var M = markSvg(inkH, {cut:cut});
+    return '<span style="display:inline-block;position:relative;width:'+M.inkW.toFixed(2)+'px;height:'+inkH.toFixed(2)+
+      'px" role="img" aria-label="rippel mark">'+
+      M.html('position:absolute;left:'+(-M.trimL).toFixed(2)+'px;top:'+(-M.trimT).toFixed(2)+'px')+'</span>';
+  }
+  /* the lockup, exactly as specified above */
+  function lockup(px, opts){
+    opts = opts || {};
+    var m = measure(px), inkH = m.asc + m.desc, markH = inkH * SCALE;
+    var M = markSvg(markH, {guide:opts.guide});
+    var half = (px - (m.fbAsc + m.fbDesc)) / 2;
+    var inkTop = half + m.fbAsc - m.asc;
+    var markTop = inkTop + (inkH - markH) / 2;
+    var overlay = opts.guide
+      ? '<span class="ib" style="top:'+inkTop.toFixed(2)+'px;height:'+inkH.toFixed(2)+'px"></span>' : '';
+    return '<span class="lock" style="padding-left:'+(M.inkW + GAP*px).toFixed(2)+'px">'+
+      M.html('position:absolute;left:'+(-M.trimL).toFixed(2)+'px;top:'+(markTop - M.trimT).toFixed(2)+'px')+
+      '<span class="word" style="font-size:'+px+'px">rippel'+overlay+'</span></span>';
+  }
+
+  function paint(){
+    var el;
+    if ((el = document.getElementById('mast-lock')))  el.innerHTML = lockup(64);
+    if ((el = document.getElementById('mark-sizes')))
+      el.innerHTML = [96,64,44,28,18].map(function(s){ return markOnly(s); }).join('');
+    if ((el = document.getElementById('mark-cuts')))
+      el.innerHTML = markOnly(18,'fine') + markOnly(18,'small');
+    if ((el = document.getElementById('proof')))     el.innerHTML = lockup(52, {guide:true});
+    if ((el = document.getElementById('ctx-header'))) el.innerHTML = lockup(19);
+    if ((el = document.getElementById('ctx-rail')))   el.innerHTML = markOnly(26);
+    if ((el = document.getElementById('ctx-light')))  el.innerHTML = lockup(40);
+  }
+  paint();
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(paint);
+})();
+</script>
+
+</body>
+</html>

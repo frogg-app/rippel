@@ -4,17 +4,26 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark" />
-    <title>Studio</title>
+    <!-- The name is lowercase everywhere, including here. -->
+    <title>rippel</title>
     <!--
-      The three faces the design uses: Instrument Serif for the wordmark and
-      headings, Instrument Sans for UI, IBM Plex Mono for every numeric (steps,
-      seeds, VRAM, timings). Preconnect first so the text is not held up.
+      The mark alone, small cut (two rings, roughly double the weight), trimmed
+      to its ink. The fine three-ring cut closes up below about 22px and would
+      be mush in a tab.
+    -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!--
+      Two faces: Epilogue for everything the app sets in a proportional face —
+      300 for the lockup and display sizes, 400/500 for UI text — and IBM Plex
+      Mono for every numeric (steps, seeds, VRAM, timings). Preconnect first so
+      the text is not held up; both have real fallbacks in `tokens.css`, because
+      the box this runs on may be offline.
     -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
       rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=Instrument+Serif:ital@0;1&family=IBM+Plex+Mono:wght@400;500&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Epilogue:wght@300;400;500&family=IBM+Plex+Mono:wght@400;500&display=swap"
     />
   </head>
   <body>

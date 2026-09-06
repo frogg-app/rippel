@@ -3,7 +3,7 @@
   align-items: center;
   gap: 4px;
   background: var(--surface-3);
-  border: 1px solid rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(220, 238, 242, 0.07);
   border-radius: var(--radius);
   padding: 3px;
 }
@@ -13,7 +13,7 @@
   border-radius: var(--radius-sm);
   font-size: var(--text-sm);
   font-weight: 500;
-  color: #7a7a84;
+  color: var(--text-4);
   transition: background var(--transition), color var(--transition);
 }
 

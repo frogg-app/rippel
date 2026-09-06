@@ -129,7 +129,7 @@ export function CatalogueCard({
         // Two stops off one hue, in the artboard's radial treatment.
         background: `radial-gradient(120% 100% at 32% 24%, hsl(${hue} 62% 62%) 0%, hsl(${
           (hue + 28) % 360
-        } 48% 28%) 55%, #0f0d14 100%)`,
+        } 48% 28%) 55%, var(--ground-sunken) 100%)`,
       };
 
   return (
