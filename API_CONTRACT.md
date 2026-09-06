@@ -60,3 +60,39 @@ that happens.
     POST   /uploads              multipart, field `file` -> 201 { upload: Upload }
 
 Feeds `ImageSource: { from: 'upload', uploadId }` in `GenerationParams`.
+
+---
+
+## Progress detail (added for the "nice feedback" work)
+
+The problem this addresses: a generation spends most of its wall clock in
+phases that are not sampling — the backend loads a checkpoint, encodes text,
+then samples, then decodes the VAE (on this hardware, on the CPU, slowly), then
+we download and thumbnail the result. Reporting only sampler steps means the
+bar sits at 0% and then at 100% for a long time, which reads as broken.
+
+`JobProgress` gains two optional fields. Both are additive; every existing
+field keeps its meaning.
+
+    phase?: 'queued' | 'preparing' | 'sampling' | 'decoding' | 'saving' | null
+    phaseLabel?: string | null      // human, e.g. "Loading SDXL", "Decoding image"
+
+`fraction` stays the single best number for a bar and remains 0..1 within the
+*sampling* phase. A client must not assume the bar is meaningful outside it —
+show an indeterminate state when `phase` is set and is not `sampling`.
+
+`JobEvent` is unchanged in shape. `job.complete` already carries the finished
+`assets`, and a client that receives it MUST render them without refetching;
+the array is authoritative.
+
+### What the backend emits, and when
+
+  - `preparing` — from dispatch until the first sampler step. Covers ComfyUI
+    loading weights, which is minutes on a cold model.
+  - `sampling`  — driven by ComfyUI's per-step progress frames.
+  - `decoding`  — after the last step, while the VAE runs.
+  - `saving`    — our own download/thumbnail/store pass (job status `uploading`).
+
+ComfyUI's WebSocket vocabulary has moved: recent versions emit `progress_state`
+with per-node state alongside (or instead of) the older flat `progress` frame.
+Handle both; the older one is what this project was originally written against.
