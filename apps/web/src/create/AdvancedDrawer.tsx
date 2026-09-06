@@ -31,7 +31,7 @@
  * by default, owned by the quality preset — which is exactly what they were
  * already, only now the screen says so.
  */
-import { useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import type { LoraSelection, Model, QualityPreset } from '@comfy/shared';
 import { ChevronDownIcon, PlusIcon } from '../components/icons';
 import { IconButton, Row, Select, Slider } from './Controls';
@@ -88,8 +88,30 @@ export function AdvancedDrawer({
   const steps = value.steps ?? preset.steps;
   const stepsWords = stepsReading(steps, batchSize);
 
+  // Opening the drawer at the bottom of a scrolled panel used to reveal only
+  // its head, with the controls below the fold. Once the body has mounted,
+  // bring the whole card up into view — but only on a click, never on the
+  // first render (the open state persists, and a page that scrolls itself on
+  // load is disorienting).
+  const cardRef = useRef<HTMLElement>(null);
+  const mounted = useRef(false);
+  useEffect(() => {
+    if (!mounted.current) {
+      mounted.current = true;
+      return;
+    }
+    if (!open) return;
+    const card = cardRef.current;
+    // jsdom has no scrollIntoView; the tests open this drawer constantly.
+    if (!card || typeof card.scrollIntoView !== 'function') return;
+    const frame = requestAnimationFrame(() => {
+      card.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [open]);
+
   return (
-    <section className={styles.drawer}>
+    <section className={styles.drawer} ref={cardRef}>
       <button
         type="button"
         className={open ? `${styles.head} ${styles.headOpen}` : styles.head}
