@@ -179,10 +179,13 @@
 }
 
 .loading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
   padding: 40px var(--pane-pad-x);
   font-size: var(--text-base);
   color: var(--text-4);
-  animation: pulse 1.6s var(--ease-in-out) infinite;
+  animation: fade var(--dur-slow) var(--ease-out) both;
 }
 
 .offlineHint {

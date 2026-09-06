@@ -17,12 +17,10 @@ import styles from './LibraryPage.module.css';
 /**
  * The Library screen (phase 3).
  *
- * Layout, from `design/parts/Library.body.html`: a collections rail on the
- * sunken ground, the dated tile grid filling the middle, and a fixed 404px
- * detail drawer on the right that appears when a tile is opened. The drawer
- * takes width from the grid rather than floating over it — the grid reflows to
- * fewer columns instead of being covered, which is the point of a fixed-width
- * drawer rather than a modal.
+ * Layout: a collections rail on the sunken ground, the dated tile grid
+ * filling the rest, and a centred detail modal over both when a tile is
+ * opened (it used to be a 404px side drawer; a modal gives the render most of
+ * the viewport and room for the settings underneath).
  *
  * This component owns only the state that genuinely spans the three panes:
  * the filters, which asset is open, and the feed. Paging, the optimistic

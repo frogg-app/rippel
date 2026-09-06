@@ -9,7 +9,7 @@ import { Lockup } from './Mark';
 export function Splash() {
   return (
     <div className={styles.splash} role="status" aria-live="polite">
-      <Lockup size={28} />
+      <Lockup size={28} ripple="loop" />
     </div>
   );
 }

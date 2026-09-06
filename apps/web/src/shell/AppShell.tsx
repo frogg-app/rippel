@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef, useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
-import { Mark } from '../components/Mark';
+import { Lockup } from '../components/Mark';
 import { CubeIcon, ImageIcon, SparkIcon } from '../components/icons';
 import { BackendPill } from './BackendPill';
 import { QueueChip } from './QueueChip';
@@ -55,10 +55,6 @@ export function AppShell() {
   return (
     <div className={styles.shell}>
       <aside className={styles.rail}>
-        <NavLink to="/create" className={styles.brand} aria-label="rippel home">
-          <Mark size={22} />
-        </NavLink>
-
         <nav ref={navRef} className={styles.nav} aria-label="Primary">
           {indicator ? (
             <span
@@ -86,7 +82,14 @@ export function AppShell() {
 
       <div className={styles.plateWrap}>
         <header className={styles.topbar}>
-          <div className={styles.topLeading}>{onCreate ? <ModeToggle /> : null}</div>
+          <div className={styles.topLeading}>
+            {/* The lockup ripples under the pointer. Never re-typeset the
+                word beside the mark by hand — this is the one place it lives. */}
+            <NavLink to="/create" className={styles.brand} aria-label="rippel home">
+              <Lockup size={19} ripple="hover" />
+            </NavLink>
+            {onCreate ? <ModeToggle /> : null}
+          </div>
           <div className={styles.status}>
             <QueueChip depth={totalQueueDepth(backends)} />
             <BackendPill

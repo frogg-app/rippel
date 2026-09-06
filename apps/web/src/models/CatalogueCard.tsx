@@ -52,6 +52,7 @@ import {
 import { CheckIcon, DownloadCountIcon, ExpandIcon, InstallIcon, LinkIcon } from './icons';
 import { InstallProgress } from './InstallProgress';
 import { PreviewLightbox } from './PreviewLightbox';
+import { Mark } from '../components/Mark';
 import styles from './ModelsPanels.module.css';
 
 export interface CatalogueCardProps {
@@ -110,7 +111,13 @@ export function CatalogueCard({
           decoding="async"
           onError={() => setImageBroken(true)}
         />
-      ) : null}
+      ) : (
+        // No sample render: the mark on the card's own hue, so every card in
+        // the grid is the same shape whether or not a picture was found.
+        <span className={styles.cardPlaceholder} aria-hidden>
+          <Mark size={34} />
+        </span>
+      )}
       <span className={styles.cardType}>{TYPE_LABELS[entry.type].toUpperCase()}</span>
       {done ? (
         <span className={styles.cardInstalled}>

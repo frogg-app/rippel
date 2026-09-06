@@ -362,16 +362,35 @@
   box-shadow: 0 0 0 1px var(--accent-tint), var(--accent-glow);
 }
 
+/* Every card's art is the same 16:10 band. A found preview is cropped to it
+   (object-fit: cover); a missing one gets the mark on the card's hue, so the
+   grid stays a grid rather than a mix of tall and short cards. */
 .cardArt {
   position: relative;
-  height: var(--models-card-art);
+  aspect-ratio: 16 / 10;
   flex-shrink: 0;
+  overflow: hidden;
 }
 
 .cardArtPhoto {
-  height: auto;
-  aspect-ratio: 16 / 10;
   background: var(--ground-sunken);
+}
+
+.cardPlaceholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.55;
+  filter: saturate(0.6) brightness(1.4);
+  mix-blend-mode: luminosity;
+  transition: transform 600ms var(--ease-out), opacity var(--transition);
+}
+
+.card:hover .cardPlaceholder {
+  opacity: 0.8;
+  transform: scale(1.08);
 }
 
 .cardArtButton {

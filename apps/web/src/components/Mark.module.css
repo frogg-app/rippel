@@ -1,0 +1,54 @@
+/*
+ * The ripple. Each ring of the mark scales out from the crescent's centre
+ * (60,60 in the viewBox) a beat after the one inside it, so the whole mark
+ * reads as a drop landing: core first, outer ring last.
+ *
+ * Two uses. `loop` runs it forever — a loader. `hover` arms it and plays one
+ * pass when the pointer arrives.
+ */
+
+.ring {
+  transform-box: view-box;
+  transform-origin: 60px 60px;
+}
+
+.loop .ring {
+  animation: ripple 1.8s var(--ease-out) infinite;
+  animation-delay: calc(var(--k) * 160ms);
+}
+
+.hover .ring {
+  transition: transform var(--dur-slow) var(--ease-spring);
+}
+
+.hover:hover .ring,
+.hover:focus-visible .ring,
+:hover > .hover .ring {
+  animation: ripple 900ms var(--ease-out) 1;
+  animation-delay: calc(var(--k) * 90ms);
+}
+
+@keyframes ripple {
+  0% {
+    transform: scale(0.4);
+    opacity: 0;
+  }
+  35% {
+    transform: scale(1.12);
+    opacity: 1;
+  }
+  60% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loop .ring {
+    animation: pulse 1.6s ease-in-out infinite;
+  }
+}

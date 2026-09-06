@@ -14,23 +14,8 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 14px 0 14px;
+  padding: 58px 0 14px;
   gap: 18px;
-}
-
-.brand {
-  width: 40px;
-  height: 40px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 12px;
-  transition: transform var(--dur-slow) var(--ease-spring), background var(--transition);
-}
-
-.brand:hover {
-  transform: scale(1.08) rotate(-6deg);
-  background: var(--surface-2);
 }
 
 .nav {
@@ -131,7 +116,17 @@
 .topLeading {
   display: flex;
   align-items: center;
-  gap: var(--gap);
+  gap: 22px;
+}
+
+/* The lockup: the mark ripples under the pointer (see Mark.module.css); the
+   word stays still. Placed 4px in so its ink lines up with the plate edge. */
+.brand {
+  display: flex;
+  align-items: center;
+  padding: 4px 6px;
+  margin-left: -2px;
+  border-radius: 8px;
 }
 
 .status {

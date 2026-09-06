@@ -9,6 +9,11 @@ import {
   SMALL_CUT_BELOW,
   type MarkCut,
 } from './mark-art';
+import styles from './Mark.module.css';
+
+/** `loop` plays the ripple forever (a loader); `hover` plays one pass when the
+ *  pointer arrives — on the mark itself, or on its parent element. */
+export type Ripple = 'loop' | 'hover';
 
 /**
  * The rippel identity, in one place. Everything that draws the mark or the
@@ -44,13 +49,38 @@ function markGeometry(inkHeight: number, cut: MarkCut) {
   return { box, inkWidth: (ink.x1 - ink.x0) * k, trimLeft: ink.x0 * k, trimTop: ink.y0 * k };
 }
 
-function MarkSvg({ inkHeight, cut, style }: { inkHeight: number; cut: MarkCut; style: React.CSSProperties }) {
+function MarkSvg({
+  inkHeight,
+  cut,
+  style,
+  ripple,
+}: {
+  inkHeight: number;
+  cut: MarkCut;
+  style: React.CSSProperties;
+  ripple?: Ripple;
+}) {
   const { box } = markGeometry(inkHeight, cut);
+  const className = ripple === 'loop' ? styles.loop : ripple === 'hover' ? styles.hover : undefined;
   return (
-    <svg width={box} height={box} viewBox="0 0 120 120" style={style} aria-hidden focusable="false">
+    <svg
+      width={box}
+      height={box}
+      viewBox="0 0 120 120"
+      style={style}
+      className={className}
+      aria-hidden
+      focusable="false"
+    >
       <g transform={`rotate(${MARK_TILT} 60 60)`}>
-        {MARK_ART[cut].map((path) => (
-          <path key={path.fill} d={path.d} fill={path.fill} />
+        {MARK_ART[cut].map((path, k) => (
+          <path
+            key={path.fill}
+            d={path.d}
+            fill={path.fill}
+            className={ripple ? styles.ring : undefined}
+            style={ripple ? ({ '--k': k } as React.CSSProperties) : undefined}
+          />
         ))}
       </g>
     </svg>
@@ -66,10 +96,12 @@ export function Mark({
   size = 26,
   cut,
   title,
+  ripple,
 }: {
   size?: number;
   cut?: MarkCut;
   title?: string;
+  ripple?: Ripple;
 }) {
   const chosen = pickCut(size, cut);
   const { inkWidth, trimLeft, trimTop } = markGeometry(size, chosen);
@@ -89,6 +121,7 @@ export function Mark({
       <MarkSvg
         inkHeight={size}
         cut={chosen}
+        ripple={ripple}
         style={{ position: 'absolute', left: -trimLeft, top: -trimTop, display: 'block' }}
       />
     </span>
@@ -154,7 +187,15 @@ function useWordInk(px: number): WordInk {
  * The name is lowercase everywhere, including at the start of a sentence. That
  * is deliberate, not a typo to be helpfully corrected.
  */
-export function Lockup({ size = 19, className }: { size?: number; className?: string }) {
+export function Lockup({
+  size = 19,
+  className,
+  ripple,
+}: {
+  size?: number;
+  className?: string;
+  ripple?: Ripple;
+}) {
   const m = useWordInk(size);
   const inkHeight = m.asc + m.desc;
   const markHeight = inkHeight * LOCKUP_SCALE;
@@ -180,6 +221,7 @@ export function Lockup({ size = 19, className }: { size?: number; className?: st
       <MarkSvg
         inkHeight={markHeight}
         cut={cut}
+        ripple={ripple}
         style={{ position: 'absolute', left: -trimLeft, top: markTop - trimTop, display: 'block' }}
       />
       <span

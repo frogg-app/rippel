@@ -57,6 +57,7 @@ import { useInstalls } from '../models/useInstalls';
 import { useModelLibrary } from '../models/useModelLibrary';
 import { useNow } from '../models/useNow';
 import panels from '../models/ModelsPanels.module.css';
+import { Mark } from '../components/Mark';
 import styles from './ModelsPage.module.css';
 
 type Tab = 'installed' | 'discover' | 'downloads';
@@ -296,6 +297,7 @@ export function ModelsPage({ api = modelsApi }: ModelsPageProps = {}) {
       <div className={styles.body}>
         {library.loading ? (
           <div className={styles.loading} role="status">
+            <Mark size={22} ripple="loop" />
             Reading your backends…
           </div>
         ) : library.error ? (
@@ -412,6 +414,7 @@ export function ModelsPage({ api = modelsApi }: ModelsPageProps = {}) {
               <AdminOnly />
             ) : installs.loading ? (
               <div className={styles.loading} role="status">
+            <Mark size={22} ripple="loop" />
                 Checking for downloads…
               </div>
             ) : installs.error ? (

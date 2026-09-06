@@ -56,7 +56,7 @@ describe('LibraryPage', () => {
     const [tile] = await screen.findAllByRole('button', { name: /rain-slick street/ });
     await user.click(tile!);
 
-    const drawer = await screen.findByRole('complementary', { name: 'Asset details' });
+    const drawer = await screen.findByRole('dialog', { name: 'Asset details' });
     expect(drawer).toBeInTheDocument();
 
     await waitFor(() => expect(screen.getByText('Prompt')).toBeInTheDocument());

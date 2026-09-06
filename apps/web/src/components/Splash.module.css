@@ -10,18 +10,3 @@
   animation: fade var(--dur-page) var(--ease-out) both;
 }
 
-.splash > * {
-  animation: breathe 2.2s var(--ease-in-out) infinite;
-}
-
-@keyframes breathe {
-  0%,
-  100% {
-    opacity: 0.55;
-    transform: scale(0.985);
-  }
-  50% {
-    opacity: 1;
-    transform: none;
-  }
-}
