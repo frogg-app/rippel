@@ -798,3 +798,144 @@ export interface BackendProbe {
   vramTotal?: number;
   error?: string;
 }
+
+// ---------------------------------------------------------------- deployments
+
+/**
+ * A machine rippel manages through the rippel agent.
+ *
+ * A *backend* is a ComfyUI address rippel generates against. A *deployment* is
+ * the machine itself, reachable through an agent that can install, update,
+ * start and stop the ComfyUI on it and keep the storage helper in place. The
+ * two are separate on purpose: a hand-run ComfyUI is a backend with no
+ * deployment, and an agent installed on a box that has not finished installing
+ * ComfyUI yet is a deployment with no backend. `backendId` links them once
+ * both exist.
+ */
+export type DeploymentStatus = 'pending' | 'online' | 'offline';
+
+export type AgentPlatform = 'linux' | 'darwin' | 'win32' | 'unknown';
+
+/** What the agent reports about the ComfyUI it manages. */
+export interface ComfyState {
+  /** Whether an install exists at the agent's ComfyUI path. */
+  installed: boolean;
+  /** Whether that install is running and answering on its port. */
+  running: boolean;
+  /** Where it lives on the remote disk. */
+  path: string | null;
+  /** ComfyUI's own version string, when it is running and says so. */
+  version: string | null;
+  /** The git commit of the checkout, when there is one. */
+  commit: string | null;
+  /** The port the agent starts it on. */
+  port: number;
+  /** Whether comfyui-rippel-storage is present in custom_nodes. */
+  helperInstalled: boolean;
+  /** Whether the helper answers with the token the agent was given. */
+  helperReady: boolean;
+  /** Free bytes on the volume holding the install, when it could be read. */
+  diskFree: number | null;
+  diskTotal: number | null;
+}
+
+export interface Deployment {
+  id: Uuid;
+  name: string;
+  /** Host or IP rippel reaches the agent on. */
+  host: string;
+  agentPort: number;
+  platform: AgentPlatform;
+  status: DeploymentStatus;
+  agentVersion: string | null;
+  /** Last status the agent reported; null until it first checks in. */
+  comfy: ComfyState | null;
+  /** The backend row this deployment's ComfyUI is registered as, if any. */
+  backendId: Uuid | null;
+  backendName: string | null;
+  lastSeenAt: string | null;
+  createdAt: string;
+  /**
+   * The enrolment secret, shown only to an administrator. It is what the
+   * install script and every agent call carry, so it is a credential — the
+   * list route returns it because the whole point of the panel is to hand it
+   * to a machine, but never log or forward it.
+   */
+  token: string;
+}
+
+export interface DeploymentInput {
+  name: string;
+  host: string;
+  agentPort?: number;
+}
+
+/** The answer to "is an agent answering on this host right now?". */
+export interface AgentProbe {
+  ok: boolean;
+  latencyMs: number;
+  version?: string;
+  platform?: AgentPlatform;
+  hostname?: string;
+  error?: string;
+}
+
+/** One long-running action on a deployment — an install, an update, a start. */
+export type AgentTaskStatus = 'running' | 'done' | 'failed';
+
+export interface AgentTask {
+  id: string;
+  kind: string;
+  status: AgentTaskStatus;
+  startedAt: string;
+  finishedAt: string | null;
+  /** Appended output, newest last. Truncated to the last few hundred lines. */
+  log: string[];
+  error: string | null;
+}
+
+/** A managed install over SSH, as it runs. */
+export type SshRunStatus = 'running' | 'done' | 'failed';
+
+export interface SshRun {
+  id: string;
+  deploymentId: Uuid | null;
+  host: string;
+  status: SshRunStatus;
+  startedAt: string;
+  finishedAt: string | null;
+  log: string[];
+  error: string | null;
+}
+
+/** What an administrator sends to install the agent over SSH. */
+export interface SshInstallInput {
+  /** Name for the deployment the install creates. */
+  name: string;
+  host: string;
+  port?: number;
+  username: string;
+  /** Exactly one of these two. */
+  password?: string;
+  privateKey?: string;
+  /** Passphrase for an encrypted private key. */
+  passphrase?: string;
+  /** Prefix privileged steps with sudo; needs a password-less sudoer or `password`. */
+  useSudo?: boolean;
+  /** Port the agent will listen on, and rippel will reach it on. */
+  agentPort?: number;
+}
+
+/** Where the agent can be downloaded from, per platform. */
+export interface AgentRelease {
+  /** Release tag, e.g. "agent-v0.1.0", or null when the lookup failed. */
+  tag: string | null;
+  /** Human release name. */
+  name: string | null;
+  publishedAt: string | null;
+  /** The GitHub release page. */
+  url: string;
+  downloads: { platform: AgentPlatform; label: string; url: string; sizeBytes: number | null }[];
+  /** Why the live lookup failed, when it did — the links then point at /latest. */
+  note: string | null;
+}

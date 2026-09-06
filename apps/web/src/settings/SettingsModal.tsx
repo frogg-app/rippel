@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { createPortal } from 'react-dom';
 import type { Backend, BackendInput, BackendProbe, Uuid } from '@comfy/shared';
 import { CloseIcon } from '../library/icons';
-import { CubeIcon, PlusIcon } from '../components/icons';
+import { CubeIcon, PlusIcon, ServerIcon } from '../components/icons';
+import { DeploymentsSection } from './DeploymentsSection';
 import { Mark } from '../components/Mark';
 import { gb } from '../lib/format';
 import { ApiRequestError } from '../lib/api';
@@ -12,15 +13,26 @@ import styles from './SettingsModal.module.css';
 
 /**
  * Settings, for administrators. A centred glass sheet with a section rail on
- * the left; today the sections are Backends and About, and the rail is where
- * the next ones go.
+ * the left; today the sections are Backends, Deployment and About, and the rail
+ * is where the next ones go.
  *
  * Backends is the reason it exists: until now the fleet came from an env
  * variable and a restart. Everything here talks to `api-backends.ts`, and
  * after any change asks the shell's pill to re-read.
+ *
+ * Deployment is the other half of the same job. Backends answers "where do I
+ * send a prompt"; Deployment answers "is there a ComfyUI there at all", and can
+ * put one there. It lives one section below because that is the order the work
+ * happens in — you deploy a machine, then it becomes a backend.
  */
 
-type Section = 'backends' | 'about';
+type Section = 'backends' | 'deployment' | 'about';
+
+const SECTION_TITLE: Record<Section, string> = {
+  backends: 'Backends',
+  deployment: 'Deployment',
+  about: 'About',
+};
 
 export function SettingsModal({
   open,
@@ -73,6 +85,15 @@ export function SettingsModal({
             </button>
             <button
               type="button"
+              className={section === 'deployment' ? `${styles.sectionTab} ${styles.sectionOn}` : styles.sectionTab}
+              aria-current={section === 'deployment' ? 'page' : undefined}
+              onClick={() => setSection('deployment')}
+            >
+              <ServerIcon size={15} />
+              Deployment
+            </button>
+            <button
+              type="button"
               className={section === 'about' ? `${styles.sectionTab} ${styles.sectionOn}` : styles.sectionTab}
               aria-current={section === 'about' ? 'page' : undefined}
               onClick={() => setSection('about')}
@@ -85,13 +106,19 @@ export function SettingsModal({
 
         <div className={styles.pane}>
           <header className={styles.paneHead}>
-            <span className={styles.paneTitle}>{section === 'backends' ? 'Backends' : 'About'}</span>
+            <span className={styles.paneTitle}>{SECTION_TITLE[section]}</span>
             <button type="button" className={styles.close} onClick={onClose} aria-label="Close settings">
               <CloseIcon size={16} />
             </button>
           </header>
           <div className={styles.paneBody} key={section}>
-            {section === 'backends' ? <BackendsSection api={api} /> : <AboutSection version={version} />}
+            {section === 'backends' ? (
+              <BackendsSection api={api} />
+            ) : section === 'deployment' ? (
+              <DeploymentsSection />
+            ) : (
+              <AboutSection version={version} />
+            )}
           </div>
         </div>
       </div>

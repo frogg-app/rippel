@@ -275,3 +275,63 @@ each backend through the helper's `DELETE /rippel/storage/models`
 `{ folder, filename }` when `COMFY_STORAGE_TOKEN` is set and the helper is
 installed there; otherwise the record goes and `kept` names the file that
 stayed (the poller will re-list it on its next scan).
+
+## Deployments — owned by the deployment work
+
+A *backend* is an address rippel sends prompts to. A *deployment* is a machine
+rippel can act on through the rippel agent (`apps/agent`). `Deployment.backendId`
+links them once both exist.
+
+### For an administrator (session cookie, `requireAdmin`)
+
+    GET    /deployments                        -> { deployments: Deployment[] }
+    POST   /deployments                        { DeploymentInput } -> 201 { deployment: Deployment }
+    DELETE /deployments/:id                    -> 204
+    POST   /deployments/:id/probe              -> AgentProbe
+    GET    /deployments/:id/status             -> { comfy: ComfyState, accelerator, tasks: AgentTask[] }
+    GET    /deployments/:id/install            -> { serverUrl, token, commands, release: AgentRelease }
+    GET    /deployments/:id/tasks/:taskId?since -> { task: AgentTask, logOffset }
+    POST   /deployments/:id/comfyui/install    { accelerator } -> { task: AgentTask }
+    POST   /deployments/:id/comfyui/update     -> { task: AgentTask }
+    POST   /deployments/:id/comfyui/start|stop|restart -> { result }
+    POST   /deployments/:id/helper/install     -> { task: AgentTask }
+    POST   /deployments/:id/backend            { name? } -> { deployment, adopted } (201, or 200 when adopted)
+    GET    /deployments/releases               -> { release: AgentRelease }
+    POST   /deployments/ssh-install            { SshInstallInput } -> 202 { run: SshRun, deployment }
+    GET    /deployments/runs/:id?since         -> { run: SshRun, logOffset }
+
+Long work never holds the request open. `comfyui/install`, `helper/install` and
+`ssh-install` return a handle and are polled; `since` is the caller's log offset,
+so a fifteen-minute pip log is fetched once rather than once per poll.
+
+Failure modes worth coding against: **502** `unreachable` when the agent does not
+answer (the deployment is marked offline as a side effect), **409** `busy` when
+the agent already has a task of that kind running — two pip installs into one
+venv corrupt it — **409** `not_configured` on `helper/install` when
+`COMFY_STORAGE_TOKEN` is unset, and **409** `conflict` on `/backend` when the
+deployment already has one. `POST /deployments/:id/backend` returns 200 with
+`adopted: true` when a backend at that address already existed and was linked
+rather than duplicated.
+
+`Deployment.status` is computed at read time, not stored: an agent whose machine
+was unplugged leaves `online` behind it and no event to correct it with, so
+silence past `AGENT_OFFLINE_AFTER_MS` is what makes a machine offline.
+
+`Deployment.token` is returned to administrators because handing it to a machine
+is the entire point of the panel. It is a credential — never log or forward it.
+
+### For an agent (deployment token, no session)
+
+    POST   /deployments/checkin                -> { ok, deploymentId }
+    GET    /deployments/agent/manifest         -> text/plain, one filename per line
+    GET    /deployments/agent/file/:name       -> text/plain, that file
+    GET    /deployments/:id/install.sh|.ps1    -> the generated installer
+
+The token arrives as `X-Rippel-Agent-Token`, or as `?token=` for the installer
+routes — `curl | bash` cannot set a header on the request fetching the script it
+is about to run. The id in an installer path is checked against the token's row,
+so a valid token cannot fetch another machine's script.
+
+`checkin` is also how a deployment learns the address it is really reachable at:
+what the agent says about itself, and the address the request came from, beat
+what an operator typed into a form.

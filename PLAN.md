@@ -55,6 +55,12 @@ channel scoped to the job's owner. On completion it pulls artifacts via `/view`,
 writes them to object storage, thumbnails them (sharp / ffmpeg for video posters),
 and records the row. Crash-safe: on restart we reconcile via `/history`.
 
+**Deployment agent**: a dependency-free Node process (`apps/agent`) installed on
+each GPU machine, over SSH from the admin UI or by a generated one-line command.
+It installs and updates ComfyUI, starts and stops it, keeps the storage helper in
+place, and checks in with what it finds. The agent's source is served by the
+rippel that will drive it, so the pair always matches. See `apps/agent/README.md`.
+
 **Model manager**: search Civitai + HuggingFace APIs, show cards with previews,
 license, size, base model. Download runs as a queued job *on the chosen backend's
 host* via a small companion agent, or via ComfyUI-Manager's model-install API if

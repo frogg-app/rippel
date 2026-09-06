@@ -30,6 +30,11 @@ COPY --from=build /app/apps/api/dist apps/api/dist
 # Migrations are read from disk at boot, so they ship as files rather than
 # being compiled in.
 COPY apps/api/src/migrations apps/api/dist/migrations
+# The agent's source and the ComfyUI storage helper are *served*, not executed
+# here: rippel hands them to a remote machine on request. Shipping them beside
+# dist/ is what makes an agent install always match the rippel driving it.
+COPY apps/agent/src apps/api/dist/agent-source
+COPY tools/comfyui-rippel-storage apps/api/dist/helper-source
 
 # Run unprivileged. The node image already provides uid/gid 1000.
 RUN mkdir -p /data/assets && chown -R node:node /data
