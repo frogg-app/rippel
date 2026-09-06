@@ -1,0 +1,76 @@
+import Fastify from 'fastify';
+import type { FastifyError } from 'fastify';
+import cookie from '@fastify/cookie';
+import { env } from './env.js';
+import { migrate, pool, waitForDatabase } from './db.js';
+import { seed } from './seed.js';
+import { pruneSessions } from './auth/sessions.js';
+import { startBackendPoller } from './lib/backend-poller.js';
+import authPlugin from './plugins/auth.js';
+import authRoutes from './routes/auth.js';
+import backendRoutes from './routes/backends.js';
+import healthRoutes from './routes/health.js';
+import modelRoutes from './routes/models.js';
+
+const app = Fastify({
+  logger: {
+    level: env.isProduction ? 'info' : 'debug',
+    transport: env.isProduction ? undefined : { target: 'pino-pretty' },
+  },
+  // The web app and api sit behind the same reverse proxy, which sets these.
+  trustProxy: true,
+  bodyLimit: 32 * 1024 * 1024,
+});
+
+await app.register(cookie, { secret: env.authSecret });
+await app.register(authPlugin);
+
+await app.register(
+  async (api) => {
+    await api.register(healthRoutes);
+    await api.register(authRoutes);
+    await api.register(backendRoutes);
+    await api.register(modelRoutes);
+  },
+  { prefix: '/api' },
+);
+
+app.setErrorHandler((err: FastifyError, req, reply) => {
+  req.log.error({ err }, 'request failed');
+  const status = err.statusCode && err.statusCode >= 400 ? err.statusCode : 500;
+  reply.code(status).send({
+    error: status === 500 ? 'internal' : err.code ?? 'error',
+    // Never leak an internal stack or SQL error to the client.
+    message: status === 500 ? 'Something went wrong on the server.' : err.message,
+  });
+});
+
+async function main() {
+  app.log.info('waiting for the database');
+  await waitForDatabase();
+  await migrate((msg) => app.log.info(msg));
+  await seed((msg) => app.log.info(msg));
+
+  const stopPoller = startBackendPoller((msg) => app.log.info(msg));
+  const pruneTimer = setInterval(() => {
+    void pruneSessions().catch((err) => app.log.warn({ err }, 'session prune failed'));
+  }, 60 * 60 * 1000);
+
+  await app.listen({ port: env.port, host: env.host });
+
+  const shutdown = async (signal: string) => {
+    app.log.info(`${signal} received, shutting down`);
+    clearInterval(pruneTimer);
+    stopPoller();
+    await app.close();
+    await pool.end();
+    process.exit(0);
+  };
+  process.on('SIGTERM', () => void shutdown('SIGTERM'));
+  process.on('SIGINT', () => void shutdown('SIGINT'));
+}
+
+main().catch((err) => {
+  app.log.error({ err }, 'failed to start');
+  process.exit(1);
+});

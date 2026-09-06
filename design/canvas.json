@@ -1,0 +1,69 @@
+{
+  "artboards": [
+    {
+      "file": "Main.dc.html",
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "title": "Create \u2014 split workspace"
+    },
+    {
+      "file": "Animate.dc.html",
+      "x": 1560,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "title": "Animate + live video job"
+    },
+    {
+      "file": "Library.dc.html",
+      "x": 3120,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "title": "Library + detail drawer"
+    },
+    {
+      "file": "ModelBrowser.dc.html",
+      "x": 4680,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "title": "Models \u2014 Discover"
+    }
+  ],
+  "annotations": [
+    {
+      "id": "n-create",
+      "x": 0,
+      "y": -196,
+      "w": 470,
+      "text": "Create \u2014 the chosen direction.\n\nInputs on the left, the running job large on the right with live preview, variation strip and per-result actions. Advanced drawer shown open so the full control set is visible; it collapses by default and remembers your choice.\n\nThe Image/Video toggle sits in the left panel header \u2014 switching it swaps the input panel, not the whole app."
+    },
+    {
+      "id": "n-animate",
+      "x": 1560,
+      "y": -196,
+      "w": 470,
+      "text": "Animate \u2014 the second route into video, opened from any image. Source frame and camera presets left, motion prompt and video model right.\n\nThe strip underneath is the long-running job: frame count, ETA, and an explicit 'you can close this tab' \u2014 the job lives on the server, not in the page."
+    },
+    {
+      "id": "n-lib",
+      "x": 3120,
+      "y": -196,
+      "w": 470,
+      "text": "Library \u2014 grouped by day, filtered by images / video / starred / model. Selecting an asset opens the detail drawer with the full generation record, a copyable seed, and Download / Remix / Animate."
+    },
+    {
+      "id": "n-mod",
+      "x": 4680,
+      "y": -196,
+      "w": 470,
+      "text": "Models \u2014 Discover. Civitai / Hugging Face toggle, type and base-model filters, install state on every card. One card is mid-download, using the same progress plumbing as a generation job."
+    }
+  ],
+  "launch": {
+    "view": "canvas"
+  }
+}

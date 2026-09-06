@@ -1,0 +1,122 @@
+# ComfyUI Studio — self-hosted image and video generation.
+#
+#   cp .env.example .env      # then edit COMFY_BACKENDS and AUTH_SECRET
+#   docker compose up -d
+#
+# Reaching ComfyUI: it runs OUTSIDE this stack, so `localhost` inside a container
+# is not your ComfyUI. Use the machine's LAN IP (e.g. http://192.168.1.10:8188).
+# If ComfyUI runs on this same host, uncomment the `extra_hosts` block below and
+# use http://host.docker.internal:8188.
+
+name: comfy-studio
+
+services:
+  postgres:
+    image: postgres:17.5-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-comfy}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-comfy}
+      POSTGRES_DB: ${POSTGRES_DB:-comfy_studio}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-comfy} -d ${POSTGRES_DB:-comfy_studio}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  api:
+    build:
+      context: .
+      dockerfile: docker/api.Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      STORAGE_LOCAL_PATH: /data/assets
+    volumes:
+      - asset-data:/data/assets
+    # ComfyUI on this same host? Uncomment, and set
+    # COMFY_BACKENDS=local=http://host.docker.internal:8188
+    # extra_hosts:
+    #   - "host.docker.internal:host-gateway"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  web:
+    build:
+      context: .
+      dockerfile: docker/web.Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      # Server-side calls go straight to the api container.
+      API_INTERNAL_URL: http://api:4000
+    depends_on:
+      api:
+        condition: service_healthy
+
+  caddy:
+    image: caddy:2.10.0-alpine
+    restart: unless-stopped
+    ports:
+      - "${HTTP_PORT:-3000}:80"
+    volumes:
+      - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - web
+      - api
+
+  # Optional S3-compatible storage. Off by default — the `local` driver writes
+  # to the asset-data volume and needs no extra service.
+  #   docker compose --profile minio up -d
+  minio:
+    image: minio/minio:latest
+    profiles: ["minio"]
+    restart: unless-stopped
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:-comfy}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-comfy-secret}
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+volumes:
+  postgres-data:
+  redis-data:
+  asset-data:
+  minio-data:
+  caddy-data:
+  caddy-config:

@@ -1,0 +1,139 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=Instrument+Serif:ital@0;1&family=IBM+Plex+Mono:wght@400;500&display=swap">
+  <style>
+    body { margin:0; background:#0b0b0d; color:#ececef; font-family:'Instrument Sans', ui-sans-serif, system-ui, sans-serif; -webkit-font-smoothing:antialiased; }
+    * { box-sizing:border-box; }
+    a { color:#e3b04b; text-decoration:none; }
+    a:hover { color:#f0c877; }
+  </style>
+</helmet>
+<div style="width:1440px;height:900px;background:#0b0b0d;color:#ececef;overflow:hidden;display:flex;">
+
+  <div style="width:72px;flex-shrink:0;border-right:1px solid rgba(255,255,255,0.06);display:flex;flex-direction:column;align-items:center;padding:20px 0 18px;gap:26px;background:#08080a;">
+    <div style="width:34px;height:34px;border-radius:10px;background:linear-gradient(150deg,#e3b04b,#a8702a);display:flex;align-items:center;justify-content:center;">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1a1206" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"></path></svg>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:6px;align-items:center;">
+      <div style="width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;color:#6f6f79;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"></path></svg></div>
+      <div style="font-size:10px;color:#6f6f79;">Create</div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:6px;align-items:center;">
+      <div style="width:44px;height:44px;border-radius:12px;background:rgba(227,176,75,0.12);border:1px solid rgba(227,176,75,0.28);display:flex;align-items:center;justify-content:center;color:#e3b04b;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M3 15l4.5-4.5 4 4L15 11l6 6"></path></svg></div>
+      <div style="font-size:10px;color:#e3b04b;">Library</div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:6px;align-items:center;">
+      <div style="width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;color:#6f6f79;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"></path><path d="M4 7.5l8 4.5 8-4.5M12 12v9"></path></svg></div>
+      <div style="font-size:10px;color:#6f6f79;">Models</div>
+    </div>
+    <div style="flex-grow:1;"></div>
+    <div style="width:34px;height:34px;border-radius:50%;background:linear-gradient(140deg,#3a3a44,#22222a);border:1px solid rgba(255,255,255,0.1);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;color:#b9b9c2;">S</div>
+  </div>
+
+  <!-- grid column -->
+  <div style="flex-grow:1;display:flex;flex-direction:column;min-width:0;">
+    <div style="height:60px;flex-shrink:0;border-bottom:1px solid rgba(255,255,255,0.06);display:flex;align-items:center;gap:12px;padding:0 26px;">
+      <div style="font-family:'Instrument Serif',Georgia,serif;font-size:21px;margin-right:8px;">Library</div>
+      <div style="display:flex;align-items:center;gap:9px;height:34px;padding:0 13px;border-radius:9px;border:1px solid rgba(255,255,255,0.09);background:rgba(255,255,255,0.03);width:280px;">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#6f6f79" stroke-width="1.6" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.6-3.6"></path></svg>
+        <span style="font-size:13px;color:#5d5d67;">Search your prompts</span>
+      </div>
+      <div style="flex-grow:1;"></div>
+      <div style="display:flex;align-items:center;gap:4px;background:rgba(255,255,255,0.045);border:1px solid rgba(255,255,255,0.07);border-radius:9px;padding:3px;">
+        <div style="padding:5px 13px;border-radius:7px;background:rgba(255,255,255,0.08);font-size:12px;font-weight:500;">All</div>
+        <div style="padding:5px 13px;border-radius:7px;color:#7a7a84;font-size:12px;">Images</div>
+        <div style="padding:5px 13px;border-radius:7px;color:#7a7a84;font-size:12px;">Video</div>
+        <div style="padding:5px 13px;border-radius:7px;color:#7a7a84;font-size:12px;">Starred</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:7px;height:34px;padding:0 12px;border-radius:9px;border:1px solid rgba(255,255,255,0.09);font-size:12.5px;color:#a4a4ae;">
+        FLUX.1 dev
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#6f6f79" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg>
+      </div>
+    </div>
+
+    <div style="flex-grow:1;padding:20px 26px;overflow:hidden;">
+      <div style="font-size:11px;letter-spacing:0.09em;color:#6f6f79;text-transform:uppercase;margin-bottom:12px;">Today</div>
+      <div style="display:grid;grid-template-columns:repeat(4, minmax(0, 1fr));gap:13px;">
+        <div style="height:186px;border-radius:13px;overflow:hidden;border:1.5px solid #e3b04b;background:radial-gradient(120% 100% at 25% 15%, #ff7a3d 0%, #b5245a 42%, #1c0f2e 100%);"></div>
+        <div style="height:186px;border-radius:13px;overflow:hidden;position:relative;background:radial-gradient(100% 100% at 70% 20%, #7fd1ff 0%, #2a5fa8 45%, #0b1526 100%);">
+          <div style="position:absolute;top:9px;left:9px;display:flex;align-items:center;gap:5px;padding:3px 8px;border-radius:6px;background:rgba(8,7,10,0.7);font-size:10.5px;font-family:'IBM Plex Mono',monospace;color:#d6d6de;">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M8 5l11 7-11 7z"></path></svg> 0:04
+          </div>
+        </div>
+        <div style="height:186px;border-radius:13px;overflow:hidden;background:radial-gradient(110% 100% at 30% 80%, #d8ff7a 0%, #2f8f5b 45%, #08201a 100%);"></div>
+        <div style="height:186px;border-radius:13px;overflow:hidden;background:radial-gradient(100% 90% at 60% 30%, #ffd9a0 0%, #a05c2a 45%, #2a1408 100%);"></div>
+        <div style="height:186px;border-radius:13px;overflow:hidden;background:radial-gradient(120% 100% at 40% 20%, #cbb2ff 0%, #5b3fa8 45%, #140d26 100%);"></div>
+        <div style="height:186px;border-radius:13px;overflow:hidden;background:radial-gradient(110% 100% at 70% 70%, #7affd0 0%, #1d6f6a 45%, #06181c 100%);"></div>
+        <div style="height:186px;border-radius:13px;overflow:hidden;background:radial-gradient(100% 100% at 30% 30%, #ff9fb8 0%, #8e2f5f 48%, #200c1c 100%);"></div>
+        <div style="height:186px;border-radius:13px;overflow:hidden;background:radial-gradient(120% 90% at 50% 80%, #ffe9a8 0%, #6d5620 50%, #16120a 100%);"></div>
+      </div>
+      <div style="font-size:11px;letter-spacing:0.09em;color:#6f6f79;text-transform:uppercase;margin:20px 0 12px;">Yesterday</div>
+      <div style="display:grid;grid-template-columns:repeat(4, minmax(0, 1fr));gap:13px;">
+        <div style="height:186px;border-radius:13px;overflow:hidden;background:radial-gradient(110% 100% at 20% 40%, #a8c6ff 0%, #37478f 50%, #0c0f22 100%);"></div>
+        <div style="height:186px;border-radius:13px;overflow:hidden;background:radial-gradient(120% 100% at 70% 30%, #ffb37a 0%, #7a3a1e 50%, #1a0d06 100%);"></div>
+        <div style="height:186px;border-radius:13px;overflow:hidden;background:radial-gradient(100% 100% at 40% 60%, #c4ff9f 0%, #3d7a2c 50%, #0c1a08 100%);"></div>
+        <div style="height:186px;border-radius:13px;overflow:hidden;background:radial-gradient(110% 100% at 60% 20%, #ffa8e0 0%, #6d2a72 50%, #1a081c 100%);"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- DETAIL DRAWER -->
+  <div style="width:404px;flex-shrink:0;border-left:1px solid rgba(255,255,255,0.07);background:#0e0e11;display:flex;flex-direction:column;box-shadow:-24px 0 60px rgba(0,0,0,0.5);">
+    <div style="height:56px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;padding:0 20px;border-bottom:1px solid rgba(255,255,255,0.06);">
+      <div style="font-size:13.5px;font-weight:500;">Details</div>
+      <div style="display:flex;align-items:center;gap:10px;color:#8d8d97;">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4l2.4 5.2 5.6.7-4.1 3.9 1.1 5.6L12 16.7 6.9 19.4 8 13.8 3.9 9.9l5.6-.7z"></path></svg>
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 7h12M9 7V5h6v2M8 7l1 13h6l1-13"></path></svg>
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"></path></svg>
+      </div>
+    </div>
+
+    <div style="flex-grow:1;padding:18px 20px;display:flex;flex-direction:column;gap:17px;overflow:hidden;">
+      <div style="height:206px;border-radius:13px;overflow:hidden;background:radial-gradient(120% 100% at 25% 15%, #ff7a3d 0%, #b5245a 42%, #1c0f2e 100%);"></div>
+
+      <div style="display:flex;gap:8px;">
+        <div style="flex-grow:1;height:38px;border-radius:10px;border:1px solid rgba(255,255,255,0.11);display:flex;align-items:center;justify-content:center;gap:7px;font-size:12.5px;color:#c2c2cb;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11M7 11l5 5 5-5M4 20h16"></path></svg> Download
+        </div>
+        <div style="flex-grow:1;height:38px;border-radius:10px;border:1px solid rgba(255,255,255,0.11);display:flex;align-items:center;justify-content:center;gap:7px;font-size:12.5px;color:#c2c2cb;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 0113.7-5.7L20 8M20 4v4h-4"></path><path d="M20 12a8 8 0 01-13.7 5.7L4 16M4 20v-4h4"></path></svg> Remix
+        </div>
+        <div style="flex-grow:1;height:38px;border-radius:10px;background:rgba(227,176,75,0.14);border:1px solid rgba(227,176,75,0.32);color:#e3b04b;display:flex;align-items:center;justify-content:center;gap:7px;font-size:12.5px;font-weight:600;">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 5l11 7-11 7z"></path></svg> Animate
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:7px;">
+        <div style="font-size:11px;letter-spacing:0.09em;color:#6f6f79;text-transform:uppercase;">Prompt</div>
+        <div style="font-size:13.5px;line-height:1.55;color:#d6d6de;">a lone figure on a rain-slick street, neon signage, anamorphic bokeh, shallow depth of field</div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:7px;">
+        <div style="font-size:11px;letter-spacing:0.09em;color:#6f6f79;text-transform:uppercase;">Negative</div>
+        <div style="font-size:13px;line-height:1.5;color:#83838d;">blurry, watermark, text</div>
+      </div>
+
+      <div style="height:1px;background:rgba(255,255,255,0.06);"></div>
+
+      <div style="display:flex;flex-direction:column;gap:10px;font-size:12.5px;">
+        <div style="display:flex;justify-content:space-between;"><span style="color:#6f6f79;">Model</span><span style="color:#d6d6de;">FLUX.1 dev</span></div>
+        <div style="display:flex;justify-content:space-between;"><span style="color:#6f6f79;">LoRA</span><span style="color:#d6d6de;">film-grain <span style="font-family:'IBM Plex Mono',monospace;color:#8d8d97;">0.70</span></span></div>
+        <div style="display:flex;justify-content:space-between;"><span style="color:#6f6f79;">Size</span><span style="font-family:'IBM Plex Mono',monospace;color:#d6d6de;">1344 &times; 768</span></div>
+        <div style="display:flex;justify-content:space-between;"><span style="color:#6f6f79;">Steps &middot; Guidance</span><span style="font-family:'IBM Plex Mono',monospace;color:#d6d6de;">30 &middot; 4.5</span></div>
+        <div style="display:flex;justify-content:space-between;"><span style="color:#6f6f79;">Sampler</span><span style="font-family:'IBM Plex Mono',monospace;color:#d6d6de;">dpmpp_2m</span></div>
+        <div style="display:flex;justify-content:space-between;align-items:center;"><span style="color:#6f6f79;">Seed</span><span style="display:flex;align-items:center;gap:7px;font-family:'IBM Plex Mono',monospace;color:#d6d6de;">874203551 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#6f6f79" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M15 5H6a2 2 0 00-2 2v9"></path></svg></span></div>
+        <div style="display:flex;justify-content:space-between;"><span style="color:#6f6f79;">Rendered on</span><span style="color:#d6d6de;">desktop-4090 &middot; 19.4s</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

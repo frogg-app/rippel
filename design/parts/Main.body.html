@@ -1,0 +1,179 @@
+<div style="width:1440px;height:900px;background:#0b0b0d;color:#ececef;overflow:hidden;display:flex;">
+
+  <!-- LEFT: inputs -->
+  <div style="width:396px;flex-shrink:0;border-right:1px solid rgba(255,255,255,0.06);background:#0d0d10;display:flex;flex-direction:column;">
+    <div style="height:60px;flex-shrink:0;display:flex;align-items:center;gap:10px;padding:0 22px;border-bottom:1px solid rgba(255,255,255,0.06);">
+      <div style="width:28px;height:28px;border-radius:9px;background:linear-gradient(150deg,#e3b04b,#a8702a);display:flex;align-items:center;justify-content:center;">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#1a1206" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"></path></svg>
+      </div>
+      <div style="font-family:'Instrument Serif',Georgia,serif;font-size:19px;">Studio</div>
+      <div style="flex-grow:1;"></div>
+      <div style="display:flex;align-items:center;gap:4px;background:rgba(255,255,255,0.045);border:1px solid rgba(255,255,255,0.07);border-radius:9px;padding:3px;">
+        <div style="padding:5px 13px;border-radius:7px;background:rgba(255,255,255,0.08);font-size:12px;font-weight:500;">Image</div>
+        <div style="padding:5px 13px;border-radius:7px;color:#7a7a84;font-size:12px;font-weight:500;">Video</div>
+      </div>
+    </div>
+
+    <div style="flex-grow:1;padding:20px 22px;display:flex;flex-direction:column;gap:20px;overflow:hidden;">
+      <div style="display:flex;flex-direction:column;gap:9px;">
+        <div style="font-size:11px;letter-spacing:0.09em;color:#6f6f79;text-transform:uppercase;">Prompt</div>
+        <div style="min-height:96px;border-radius:12px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.03);padding:13px 14px;font-size:14px;line-height:1.5;color:#ececef;">a lone figure on a rain-slick street, neon signage, anamorphic bokeh, shallow depth of field</div>
+        <div style="display:flex;align-items:center;gap:8px;font-size:12px;color:#6f6f79;">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>
+          Add a negative prompt
+        </div>
+      </div>
+
+      <div style="display:flex;gap:11px;">
+        <div style="width:84px;height:84px;border-radius:11px;flex-shrink:0;overflow:hidden;position:relative;background:radial-gradient(120% 100% at 30% 20%, #ffd9a0 0%, #a05c2a 45%, #2a1408 100%);border:1px solid rgba(255,255,255,0.1);">
+          <div style="position:absolute;top:5px;right:5px;width:18px;height:18px;border-radius:50%;background:rgba(8,7,10,0.75);display:flex;align-items:center;justify-content:center;">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#d6d6de" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"></path></svg>
+          </div>
+        </div>
+        <div style="flex-grow:1;display:flex;flex-direction:column;gap:9px;justify-content:center;">
+          <div style="display:flex;align-items:center;justify-content:space-between;font-size:12px;">
+            <span style="color:#a4a4ae;">Image influence</span>
+            <span style="font-family:'IBM Plex Mono',monospace;color:#e3b04b;">0.65</span>
+          </div>
+          <div style="height:4px;border-radius:2px;background:rgba(255,255,255,0.1);position:relative;">
+            <div style="width:65%;height:100%;border-radius:2px;background:linear-gradient(90deg,#a8702a,#e3b04b);"></div>
+            <div style="position:absolute;left:65%;top:50%;width:13px;height:13px;margin:-6.5px 0 0 -6.5px;border-radius:50%;background:#f0c877;box-shadow:0 0 0 3px rgba(227,176,75,0.2);"></div>
+          </div>
+          <div style="font-size:11px;color:#5d5d67;">Higher keeps more of the source image</div>
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:9px;">
+        <div style="font-size:11px;letter-spacing:0.09em;color:#6f6f79;text-transform:uppercase;">Model</div>
+        <div style="display:flex;gap:9px;">
+          <div style="flex-grow:1;height:70px;border-radius:11px;position:relative;overflow:hidden;border:1.5px solid #e3b04b;background:radial-gradient(120% 100% at 30% 20%, #ff9a5c 0%, #8e2f4f 55%, #1b1020 100%);">
+            <div style="position:absolute;inset:auto 0 0 0;padding:6px 8px;background:linear-gradient(180deg,rgba(0,0,0,0),rgba(4,4,6,0.9));font-size:10.5px;font-weight:600;">FLUX.1 dev</div>
+          </div>
+          <div style="flex-grow:1;height:70px;border-radius:11px;position:relative;overflow:hidden;border:1px solid rgba(255,255,255,0.08);background:radial-gradient(120% 100% at 60% 30%, #9fe6ff 0%, #2b5f96 55%, #0a1420 100%);">
+            <div style="position:absolute;inset:auto 0 0 0;padding:6px 8px;background:linear-gradient(180deg,rgba(0,0,0,0),rgba(4,4,6,0.9));font-size:10.5px;font-weight:600;color:#c9c9d2;">SDXL Turbo</div>
+          </div>
+          <div style="flex-grow:1;height:70px;border-radius:11px;position:relative;overflow:hidden;border:1px solid rgba(255,255,255,0.08);background:radial-gradient(120% 100% at 40% 70%, #cbb2ff 0%, #4b348c 55%, #100b1e 100%);">
+            <div style="position:absolute;inset:auto 0 0 0;padding:6px 8px;background:linear-gradient(180deg,rgba(0,0,0,0),rgba(4,4,6,0.9));font-size:10.5px;font-weight:600;color:#c9c9d2;">Juggernaut</div>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:9px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.07);border-radius:10px;padding:3px;">
+        <div style="flex-grow:1;text-align:center;padding:8px 0;border-radius:7px;font-size:12.5px;color:#83838d;">Fast</div>
+        <div style="flex-grow:1;text-align:center;padding:8px 0;border-radius:7px;font-size:12.5px;font-weight:600;background:rgba(227,176,75,0.16);border:1px solid rgba(227,176,75,0.3);color:#e3b04b;">Balanced</div>
+        <div style="flex-grow:1;text-align:center;padding:8px 0;border-radius:7px;font-size:12.5px;color:#83838d;">High</div>
+      </div>
+
+      <!-- ADVANCED, OPEN -->
+      <div style="border-radius:12px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.02);overflow:hidden;">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:11px 14px;border-bottom:1px solid rgba(255,255,255,0.06);">
+          <span style="font-size:13px;color:#c2c2cb;">Advanced</span>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#6f6f79" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 15l6-6 6 6"></path></svg>
+        </div>
+        <div style="padding:14px;display:flex;flex-direction:column;gap:14px;">
+          <div style="display:flex;flex-direction:column;gap:7px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;font-size:12px;"><span style="color:#9a9aa4;">Steps</span><span style="font-family:'IBM Plex Mono',monospace;color:#d6d6de;">30</span></div>
+            <div style="height:4px;border-radius:2px;background:rgba(255,255,255,0.1);position:relative;"><div style="width:52%;height:100%;border-radius:2px;background:#8b8b95;"></div><div style="position:absolute;left:52%;top:50%;width:12px;height:12px;margin:-6px 0 0 -6px;border-radius:50%;background:#d6d6de;"></div></div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:7px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;font-size:12px;"><span style="color:#9a9aa4;">Guidance</span><span style="font-family:'IBM Plex Mono',monospace;color:#d6d6de;">4.5</span></div>
+            <div style="height:4px;border-radius:2px;background:rgba(255,255,255,0.1);position:relative;"><div style="width:28%;height:100%;border-radius:2px;background:#8b8b95;"></div><div style="position:absolute;left:28%;top:50%;width:12px;height:12px;margin:-6px 0 0 -6px;border-radius:50%;background:#d6d6de;"></div></div>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;">
+            <span style="font-size:12px;color:#9a9aa4;">Sampler</span>
+            <div style="display:flex;align-items:center;gap:7px;padding:5px 10px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:#d6d6de;">dpmpp_2m <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#6f6f79" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg></div>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;">
+            <span style="font-size:12px;color:#9a9aa4;">Seed</span>
+            <div style="display:flex;align-items:center;gap:7px;">
+              <div style="padding:5px 10px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:#d6d6de;">874 203 551</div>
+              <div style="width:28px;height:28px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);display:flex;align-items:center;justify-content:center;color:#9a9aa4;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="4" y="4" width="16" height="16" rx="3"></rect><circle cx="9" cy="9" r="1.1" fill="currentColor" stroke="none"></circle><circle cx="15" cy="15" r="1.1" fill="currentColor" stroke="none"></circle><circle cx="15" cy="9" r="1.1" fill="currentColor" stroke="none"></circle><circle cx="9" cy="15" r="1.1" fill="currentColor" stroke="none"></circle></svg>
+              </div>
+              <div style="width:28px;height:28px;border-radius:8px;border:1px solid rgba(227,176,75,0.32);background:rgba(227,176,75,0.12);display:flex;align-items:center;justify-content:center;color:#e3b04b;">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><rect x="5" y="10.5" width="14" height="9.5" rx="2"></rect><path d="M8 10.5V7.5a4 4 0 018 0v3"></path></svg>
+              </div>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;padding-top:2px;">
+            <span style="font-size:12px;color:#9a9aa4;">LoRA</span>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <div style="display:flex;align-items:center;gap:7px;padding:5px 10px;border-radius:8px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.09);font-size:11.5px;">film-grain <span style="font-family:'IBM Plex Mono',monospace;color:#e3b04b;">0.7</span></div>
+              <div style="width:26px;height:26px;border-radius:8px;border:1px dashed rgba(255,255,255,0.16);display:flex;align-items:center;justify-content:center;color:#6f6f79;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div style="padding:16px 22px 20px;border-top:1px solid rgba(255,255,255,0.06);display:flex;flex-direction:column;gap:9px;">
+      <div style="height:48px;border-radius:12px;background:linear-gradient(140deg,#f0c877,#d09a34);color:#1c1407;display:flex;align-items:center;justify-content:center;gap:9px;font-size:14.5px;font-weight:600;box-shadow:0 8px 26px rgba(227,176,75,0.22);">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"></path></svg>
+        Generate
+      </div>
+      <div style="text-align:center;font-size:11.5px;color:#5d5d67;">4 images &middot; about 22 seconds</div>
+    </div>
+  </div>
+
+  <!-- RIGHT: current job -->
+  <div style="flex-grow:1;display:flex;flex-direction:column;min-width:0;position:relative;">
+    <div style="position:absolute;inset:0;background:radial-gradient(80% 60% at 50% 0%, rgba(227,176,75,0.05), rgba(0,0,0,0) 70%);pointer-events:none;"></div>
+
+    <div style="height:60px;flex-shrink:0;border-bottom:1px solid rgba(255,255,255,0.06);display:flex;align-items:center;justify-content:space-between;padding:0 28px;position:relative;">
+      <div style="display:flex;align-items:center;gap:24px;font-size:13.5px;">
+        <span style="color:#ececef;font-weight:500;padding-bottom:2px;border-bottom:1.5px solid #e3b04b;">Create</span>
+        <span style="color:#7a7a84;">Library</span>
+        <span style="color:#7a7a84;">Models</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;">
+        <div style="display:flex;align-items:center;gap:8px;padding:6px 12px 6px 10px;border-radius:20px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.07);">
+          <span style="width:7px;height:7px;border-radius:50%;background:#5fd08a;box-shadow:0 0 8px rgba(95,208,138,0.7);"></span>
+          <span style="font-size:12px;color:#a4a4ae;">desktop-4090</span>
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#63636d;">18.2/24 GB</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:7px;padding:7px 13px;border-radius:20px;background:rgba(227,176,75,0.1);border:1px solid rgba(227,176,75,0.22);font-size:12px;color:#e3b04b;">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>
+          2 in queue
+        </div>
+        <div style="width:30px;height:30px;border-radius:50%;background:linear-gradient(140deg,#3a3a44,#22222a);border:1px solid rgba(255,255,255,0.1);display:flex;align-items:center;justify-content:center;font-size:11.5px;font-weight:600;color:#b9b9c2;">S</div>
+      </div>
+    </div>
+
+    <div style="flex-grow:1;display:flex;flex-direction:column;align-items:center;padding:26px 32px;gap:18px;position:relative;">
+      <div style="width:100%;display:flex;align-items:center;gap:14px;">
+        <span style="width:8px;height:8px;border-radius:50%;background:#e3b04b;"></span>
+        <span style="font-size:13.5px;font-weight:500;">Generating</span>
+        <span style="font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:#9a9aa4;">step 18 / 30</span>
+        <div style="flex-grow:1;height:3px;border-radius:2px;background:rgba(255,255,255,0.1);overflow:hidden;"><div style="width:60%;height:100%;background:linear-gradient(90deg,#a8702a,#e3b04b);"></div></div>
+        <span style="font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:#9a9aa4;">~14s</span>
+        <span style="font-size:12.5px;color:#8d8d97;border:1px solid rgba(255,255,255,0.14);border-radius:8px;padding:5px 12px;">Cancel</span>
+      </div>
+
+      <div style="width:820px;height:462px;border-radius:16px;overflow:hidden;position:relative;border:1px solid rgba(227,176,75,0.26);background:radial-gradient(120% 100% at 25% 15%, #ff7a3d 0%, #b5245a 42%, #1c0f2e 100%);">
+        <div style="position:absolute;inset:0;backdrop-filter:blur(24px);background:rgba(10,8,14,0.3);"></div>
+        <div style="position:absolute;top:14px;left:16px;padding:5px 11px;border-radius:7px;background:rgba(8,7,10,0.62);border:1px solid rgba(255,255,255,0.1);font-size:11px;letter-spacing:0.03em;color:#c9c9d2;">LIVE PREVIEW</div>
+      </div>
+
+      <div style="width:820px;display:flex;align-items:center;gap:12px;">
+        <div style="display:flex;gap:10px;">
+          <div style="width:76px;height:76px;border-radius:11px;overflow:hidden;border:1.5px solid #e3b04b;background:radial-gradient(120% 100% at 25% 15%, #ff7a3d 0%, #b5245a 42%, #1c0f2e 100%);"></div>
+          <div style="width:76px;height:76px;border-radius:11px;overflow:hidden;border:1px solid rgba(255,255,255,0.08);background:radial-gradient(100% 100% at 70% 20%, #7fd1ff 0%, #2a5fa8 45%, #0b1526 100%);"></div>
+          <div style="width:76px;height:76px;border-radius:11px;border:1px dashed rgba(255,255,255,0.13);"></div>
+          <div style="width:76px;height:76px;border-radius:11px;border:1px dashed rgba(255,255,255,0.13);"></div>
+        </div>
+        <div style="flex-grow:1;"></div>
+        <div style="display:flex;align-items:center;gap:9px;">
+          <div style="display:flex;align-items:center;gap:8px;height:38px;padding:0 15px;border-radius:10px;border:1px solid rgba(255,255,255,0.11);font-size:13px;color:#c2c2cb;">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11M7 11l5 5 5-5M4 20h16"></path></svg> Save
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;height:38px;padding:0 15px;border-radius:10px;border:1px solid rgba(255,255,255,0.11);font-size:13px;color:#c2c2cb;">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 0113.7-5.7L20 8M20 4v4h-4"></path><path d="M20 12a8 8 0 01-13.7 5.7L4 16M4 20v-4h4"></path></svg> Remix
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;height:38px;padding:0 16px;border-radius:10px;background:rgba(227,176,75,0.14);border:1px solid rgba(227,176,75,0.32);color:#e3b04b;font-size:13px;font-weight:600;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 5l11 7-11 7z"></path></svg> Animate
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,9 @@
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=Instrument+Serif:ital@0;1&family=IBM+Plex+Mono:wght@400;500&display=swap">
+  <style>
+    body { margin:0; background:#0b0b0d; color:#ececef; font-family:'Instrument Sans', ui-sans-serif, system-ui, sans-serif; -webkit-font-smoothing:antialiased; }
+    * { box-sizing:border-box; }
+    a { color:#e3b04b; text-decoration:none; }
+    a:hover { color:#f0c877; }
+  </style>
+</helmet>

@@ -1,0 +1,20 @@
+# One front door: the web app on /, the API on /api.
+# Everything is plain HTTP on :80 inside the container; publish it on whatever
+# port you like via HTTP_PORT, or put your own TLS terminator in front.
+
+:80 {
+	encode gzip zstd
+
+	handle /api/* {
+		reverse_proxy api:4000
+	}
+
+	handle {
+		reverse_proxy web:3000
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}
