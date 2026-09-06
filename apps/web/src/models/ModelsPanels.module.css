@@ -725,14 +725,33 @@
   color: var(--text-soft);
 }
 
-/* Indeterminate: the highlight sweeps to say "still moving", never "this far
-   along", because the API reports tasks, not bytes. */
+/* Two bars share this track, and which one is inside it is a statement about
+   what we know. `.trackFill` is a real fraction of a real total; `.trackPulse`
+   sweeps to say "still moving", never "this far along". */
 .track {
   position: relative;
   height: 4px;
   border-radius: 999px;
   background: var(--models-track);
   overflow: hidden;
+}
+
+/* Determinate. Width is bytes-on-disk over an exact Content-Length, so the
+   transition only has to smooth the gap between polls, never invent motion:
+   with nothing arriving the bar genuinely stops, which is the truth. */
+.trackFill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 999px;
+  background: var(--accent-bar);
+  box-shadow: 0 0 12px rgba(156, 207, 216, 0.55);
+  transition: width 400ms var(--ease-out, ease-out);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .trackFill {
+    transition: none;
+  }
 }
 
 .trackPulse {
@@ -762,6 +781,31 @@
   }
 }
 
+/* The measured line. Brighter than `.progressDetail` because it is the thing
+   the operator came to read. */
+.progressBytes {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--gap-xs);
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--text-soft);
+}
+
+.progressPercent {
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The one derived line, and the quietest thing here on purpose: an average and
+   a projection should never out-shout the measurements above them. */
+.progressRate {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--text-4);
+}
+
 .progressDetail {
   margin: 0;
   font-size: var(--text-xs);
@@ -774,7 +818,8 @@
   color: var(--danger-text);
 }
 
-.progressCompact .progressDetail {
+.progressCompact .progressDetail,
+.progressCompact .progressRate {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

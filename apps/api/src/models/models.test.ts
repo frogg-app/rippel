@@ -17,12 +17,15 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 // the UPDATE would have set.
 vi.mock('../db.js', () => ({
   query: vi.fn(async (_sql: string, params: unknown[] = []) => [
-    { ...dbRow, status: params[1], detail: params[2] },
+    // `bytes_received` is written with COALESCE($4, bytes_received), so the
+    // echo has to do the same or a measurement would vanish on the way back.
+    { ...dbRow, status: params[1], detail: params[2], bytes_received: params[3] ?? dbRow.bytes_received },
   ]),
   queryOne: vi.fn(async (_sql: string, params: unknown[] = []) => ({
     ...dbRow,
     status: String(_sql).includes("'failed'") ? 'failed' : params[1],
     detail: params[2] ?? null,
+    bytes_received: params[3] ?? dbRow.bytes_received,
     error: String(_sql).includes("'failed'") ? params[1] : null,
   })),
 }));
@@ -33,6 +36,7 @@ import { TransportError } from './transport.js';
 import type { InstallRequest, ModelTransport } from './transport.js';
 import {
   backendHasFile,
+  folderForRow,
   folderForType,
   InstallConflict,
   refreshInstall,
@@ -59,6 +63,8 @@ const dbRow = {
   created_at: new Date(),
   started_at: new Date(),
   finished_at: null,
+  bytes_total: null,
+  bytes_received: null,
 };
 
 /** Stub fetch with a handler keyed on the path. */
@@ -201,7 +207,7 @@ describe('ComfyManagerTransport.install', () => {
 describe('ComfyManagerTransport.progress', () => {
   const request = {
     name: 'x', filename: 'x.safetensors', type: 'checkpoints',
-    base: 'SDXL', savePath: 'checkpoints/SDXL', url: 'http://x',
+    base: 'SDXL', savePath: 'checkpoints/SDXL', url: 'http://x', folder: 'checkpoints',
   };
 
   it('reports downloading while the queue is working', async () => {
@@ -419,5 +425,187 @@ describe('startInstall', () => {
       }
     }
     expect(results).toEqual(['skipped', 'queued']);
+  });
+});
+
+
+/**
+ * Bytes, and the line between measuring and guessing.
+ *
+ * The whole reason this exists is that Manager cannot count bytes and we
+ * refused to fake it. What changed is not that we started guessing but that a
+ * second, independent source appeared: ComfyUI will stat its own model folders,
+ * and Manager writes the file in place, so the file can be watched growing.
+ * These tests pin the boundary — measured things are reported, unmeasured
+ * things stay null, and nothing in between is filled in.
+ */
+describe('ComfyManagerTransport.measureBytes', () => {
+  const request: InstallRequest = {
+    name: 'LTX depth',
+    filename: 'ltxv-097-ic-lora-depth-control-comfyui.safetensors',
+    type: 'lora',
+    base: 'LTX-Video',
+    savePath: 'loras/ltxv/ltx2',
+    url: 'http://x',
+    folder: 'loras',
+  };
+
+  /** The real shape of `/api/experiment/models/<folder>`, from the live box. */
+  const listing = [
+    {
+      name: 'ltxv\\ltx2\\ltxv-097-ic-lora-depth-control-comfyui.safetensors',
+      pathIndex: 0,
+      modified: 1788690441.65,
+      created: 1788690434.43,
+      size: 41_000_000,
+    },
+  ];
+
+  it('reads the size of a file that is still being written', async () => {
+    stubFetch(() => json(listing));
+    expect(await new ComfyManagerTransport(BASE).measureBytes(request)).toBe(41_000_000);
+  });
+
+  it('matches on the basename, because a nested save_path is listed with its subfolder', async () => {
+    // "loras/ltxv/ltx2" lands the file under `loras`, and ComfyUI lists it as
+    // "ltxv\ltx2\name" on a Windows backend. Comparing whole strings misses.
+    stubFetch(() => json(listing));
+    const transport = new ComfyManagerTransport(BASE);
+    expect(await transport.measureBytes(request)).toBe(41_000_000);
+  });
+
+  it('is null, not zero, when the file is not there yet', async () => {
+    // Zero is a real measurement - a download that opened its file and wrote
+    // nothing - so it must not double as "no idea".
+    stubFetch(() => json([]));
+    expect(await new ComfyManagerTransport(BASE).measureBytes(request)).toBeNull();
+  });
+
+  it('is null when the backend has no such folder, rather than throwing', async () => {
+    stubFetch(() => new Response('', { status: 404 }));
+    expect(await new ComfyManagerTransport(BASE).measureBytes(request)).toBeNull();
+  });
+
+  it('is null when we could not work out which folder to look in', async () => {
+    stubFetch(() => json(listing));
+    expect(
+      await new ComfyManagerTransport(BASE).measureBytes({ ...request, folder: null }),
+    ).toBeNull();
+  });
+
+  it('does not fail an install because a listing was unreadable', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('ECONNRESET'); }));
+    await expect(new ComfyManagerTransport(BASE).measureBytes(request)).resolves.toBeNull();
+  });
+});
+
+describe('ComfyManagerTransport.totalBytes', () => {
+  const request: InstallRequest = {
+    name: 'x', filename: 'x.safetensors', type: 'lora', base: 'b',
+    savePath: 'loras', url: 'https://huggingface.co/x/resolve/main/x.safetensors',
+    folder: 'loras',
+  };
+
+  it('takes the exact Content-Length of the download', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(null, {
+      status: 200, headers: { 'content-length': '327309314' },
+    })));
+    expect(await new ComfyManagerTransport(BASE).totalBytes(request)).toBe(327_309_314);
+  });
+
+  it('is null when the host will not say, rather than approximating', async () => {
+    // This is the field that becomes the denominator of a percentage shown to a
+    // human. Manager's catalogue calls this same file "0.30GB", which is 9%
+    // out; using it would park the bar at 100% with a tenth still to come.
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(null, { status: 200 })));
+    expect(await new ComfyManagerTransport(BASE).totalBytes(request)).toBeNull();
+  });
+
+  it('is null when the HEAD fails, and never throws', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('ENOTFOUND'); }));
+    await expect(new ComfyManagerTransport(BASE).totalBytes(request)).resolves.toBeNull();
+  });
+});
+
+describe('folderForRow', () => {
+  const row = { ...dbRow } as InstallRow;
+
+  it('takes the first segment of the save_path, which is the folder ComfyUI names', () => {
+    expect(folderForRow({ ...row, save_path: 'loras/ltxv/ltx2' })).toBe('loras');
+    expect(folderForRow({ ...row, save_path: 'checkpoints/SDXL' })).toBe('checkpoints');
+  });
+
+  it("falls back to the type when Manager says 'default'", () => {
+    // Manager writes the literal word for "wherever this type normally goes".
+    expect(folderForRow({ ...row, save_path: 'default', model_type: 'lora' })).toBe('loras');
+  });
+
+  it('gives up rather than guessing for a type with no folder', () => {
+    expect(folderForRow({ ...row, save_path: 'default', model_type: 'video' })).toBeNull();
+  });
+});
+
+describe('refreshInstall byte handling', () => {
+  const row = { ...dbRow, bytes_total: 6_938_078_334 } as InstallRow;
+
+  const partial = [{ name: 'SDXL\\sd_xl_base_1.0.safetensors', size: 3_000_000_000 }];
+  const whole = [{ name: 'SDXL\\sd_xl_base_1.0.safetensors', size: 6_938_078_334 }];
+
+  function stub(files: unknown, busy: boolean) {
+    stubFetch((path) => {
+      if (path.startsWith('/api/experiment/models/')) return json(files);
+      if (path.startsWith('/api/models/')) return json(['SDXL\\sd_xl_base_1.0.safetensors']);
+      return json({
+        total_count: 1, done_count: busy ? 0 : 1,
+        in_progress_count: busy ? 1 : 0, is_processing: busy,
+      });
+    });
+  }
+
+  it('reports the measured bytes while the download is running', async () => {
+    stub(partial, true);
+    const install = await refreshInstall(row, BASE);
+    expect(install.status).toBe('downloading');
+    expect(install.bytesReceived).toBe(3_000_000_000);
+  });
+
+  it('does not complete a half-written file, however busy the queue looks', async () => {
+    stub(partial, true);
+    expect((await refreshInstall(row, BASE)).status).toBe('downloading');
+  });
+
+  it('completes on the bytes alone once the file reaches its exact size', async () => {
+    // The queue still claims to be working. It is wrong, and this is the case
+    // that used to hang for ever: Manager adds to its in-progress set before a
+    // task and removes after, with no `finally`, so a worker thread that dies
+    // mid-download leaks its entry and the queue never reads idle again.
+    // Observed on the live backend, stuck at in_progress_count 1 for 8.5 hours.
+    stub(whole, true);
+    const install = await refreshInstall(row, BASE);
+    expect(install.status).toBe('complete');
+  });
+
+  it('still requires ComfyUI to list the file before completing on bytes', async () => {
+    // Fully written is not the same as usable - a file in the wrong folder is
+    // the exact case the original completion rule was built to catch.
+    stubFetch((path) => {
+      if (path.startsWith('/api/experiment/models/')) return json(whole);
+      if (path.startsWith('/api/models/')) return json([]);
+      return json({ total_count: 1, done_count: 0, in_progress_count: 1, is_processing: true });
+    });
+    expect((await refreshInstall(row, BASE)).status).toBe('downloading');
+  });
+
+  it('leaves bytes null when there is no measurement to be had', async () => {
+    // A backend with no experiment routes. The install must still work; it just
+    // shows elapsed time instead of a bar.
+    stubFetch((path) => {
+      if (path.startsWith('/api/experiment/models/')) return new Response('', { status: 404 });
+      if (path.startsWith('/api/models/')) return json(['SDXL\\sd_xl_base_1.0.safetensors']);
+      return json({ total_count: 1, done_count: 0, in_progress_count: 1, is_processing: true });
+    });
+    const install = await refreshInstall(row, BASE);
+    expect(install.status).toBe('downloading');
+    expect(install.bytesReceived).toBeNull();
   });
 });

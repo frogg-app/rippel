@@ -114,6 +114,11 @@ export function makeInstall(overrides: Partial<ModelInstall> = {}): ModelInstall
     createdAt: '2026-09-06T08:28:03.859Z',
     startedAt: null,
     finishedAt: null,
+    // Null by default: a fixture must default to the *unmeasured* case, which
+    // is the one where no percentage may be shown. A default of 0 would let a
+    // test pass while rendering a 0% bar for a download nobody measured.
+    bytesReceived: null,
+    bytesTotal: null,
     ...overrides,
   };
 }

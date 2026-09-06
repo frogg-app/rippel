@@ -1,8 +1,8 @@
 /**
  * A clock that only ticks when something is watching it.
  *
- * Elapsed time is the honest substitute for the percentage this API cannot
- * give us, so it has to move — but only while an install is live. With nothing
+ * Elapsed time, the transfer rate and the time remaining are all functions of
+ * "now", so it has to move — but only while an install is live. With nothing
  * running the value is frozen and no timer exists, which keeps an idle Models
  * tab from re-rendering once a second forever.
  */

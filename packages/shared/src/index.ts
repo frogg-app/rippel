@@ -586,10 +586,21 @@ export type ModelInstallStatus =
 /**
  * A request to put a model onto a backend.
  *
- * Progress is coarse on purpose. The only transport we have reports per-task
- * state rather than bytes transferred, so there is no honest percentage to show
- * for a multi-gigabyte download — see `ModelInstall.detail`, which carries what
- * the transport actually told us instead of a fabricated number.
+ * Progress comes from two independent places, and it matters which is which.
+ *
+ * The *transport* reports per-task state — ComfyUI-Manager's queue counts
+ * tasks, so a 6.9 GB checkpoint is one task that is queued, then running, then
+ * done. That is what `status` and `detail` carry, and no percentage can be
+ * derived from it.
+ *
+ * The *bytes* come from watching the file itself grow on the backend, which is
+ * possible because Manager downloads in place and ComfyUI will stat its own
+ * model folders. `bytesReceived` is therefore a measured quantity, not an
+ * estimate. `bytesTotal` is the exact `Content-Length` of the download, and
+ * when both are present a real percentage exists and may be shown.
+ *
+ * When either is null there is no percentage, and a client must not synthesise
+ * one — the fallback is bytes-so-far and elapsed time, which are still true.
  */
 export interface ModelInstall {
   id: Uuid;
@@ -608,6 +619,18 @@ export interface ModelInstall {
   createdAt: string;
   startedAt: string | null;
   finishedAt: string | null;
+  /**
+   * Bytes on the backend's disk for this file, as last measured. Null when the
+   * transport cannot see the file's size at all — not zero, which is a real
+   * measurement meaning "the download has not written anything yet".
+   */
+  bytesReceived: number | null;
+  /**
+   * The download's exact size in bytes, from a HEAD of its URL. Null when that
+   * could not be obtained, in which case there is no denominator and no
+   * percentage. Never derived from the catalogue's rounded size string.
+   */
+  bytesTotal: number | null;
 }
 
 // ---------------------------------------------------------------- queue

@@ -56,6 +56,17 @@ export interface InstallRequest {
   base: string;
   savePath: string;
   url: string;
+  /**
+   * The ComfyUI model folder the file lands in ("loras", "checkpoints"), or
+   * null when we cannot work it out.
+   *
+   * Resolved by the service rather than the transport because the mapping from
+   * our model types onto ComfyUI's folder names lives there, and a save_path is
+   * not always enough on its own — Manager writes "default" when it means "the
+   * folder this type normally goes in". A transport that can watch a file grow
+   * needs to know which folder to look in; one that cannot may ignore this.
+   */
+  folder: string | null;
 }
 
 export type InstallState = 'queued' | 'downloading' | 'complete' | 'failed';
@@ -65,9 +76,19 @@ export interface InstallProgress {
   /**
    * Whatever the transport actually said. Deliberately a string and not a
    * percentage: the ComfyUI-Manager transport reports per-task state, so any
-   * number we produced for a 7 GB download would be invented.
+   * number derived from `state` alone would be invented. Bytes are a separate
+   * measurement and travel in `bytesReceived`.
    */
   detail: string | null;
+  /**
+   * Bytes written to the backend's disk so far, when the transport can measure
+   * it. `undefined` means "not measured this time" and leaves the last known
+   * value standing; `null` means "measured, and the file is not there yet".
+   *
+   * Zero is a real answer and must not be conflated with either: a download
+   * that has opened its file but written nothing is genuinely at zero.
+   */
+  bytesReceived?: number | null;
   error?: string;
 }
 
@@ -89,4 +110,16 @@ export interface ModelTransport {
    * `complete` against ComfyUI's own model listing before trusting it.
    */
   progress(request: InstallRequest): Promise<InstallProgress>;
+
+  /**
+   * The download's exact size in bytes, asked once before the download starts.
+   *
+   * Optional because it is a genuine capability, not a formality: a transport
+   * that cannot answer exactly must return null (or not implement this) rather
+   * than approximate, because the only thing this number is used for is the
+   * denominator of a percentage shown to a human. An approximate denominator
+   * produces a bar that reaches 100% with minutes left to run, or stalls at
+   * 91%, and either is worse than the honest indeterminate bar it replaced.
+   */
+  totalBytes?(request: InstallRequest): Promise<number | null>;
 }

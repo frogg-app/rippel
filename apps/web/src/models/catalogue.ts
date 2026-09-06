@@ -320,6 +320,96 @@ export function familyHue(base: string): number {
   return hash % 360;
 }
 
+/**
+ * A byte count as a human reads it.
+ *
+ * Decimal units, not binary, because every number this sits next to is decimal:
+ * HuggingFace's `Content-Length` is quoted that way, Manager's catalogue says
+ * "6.94GB" for 6,938,078,334 bytes, and the operator comparing the two would
+ * be right to be confused if we said "6.46 GiB". Three significant figures is
+ * as much precision as means anything at this scale.
+ */
+export function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes < 0) return '—';
+  if (bytes < 1_000) return `${Math.round(bytes)} B`;
+  const units = ['kB', 'MB', 'GB', 'TB'];
+  let value = bytes / 1_000;
+  let unit = 0;
+  while (value >= 1_000 && unit < units.length - 1) {
+    value /= 1_000;
+    unit += 1;
+  }
+  // 9.87 GB, 98.7 MB, 987 kB - three significant figures throughout.
+  const decimals = value >= 100 ? 0 : value >= 10 ? 1 : 2;
+  return `${value.toFixed(decimals)} ${units[unit]}`;
+}
+
+/**
+ * Bytes per second, averaged over the whole download so far.
+ *
+ * An average rather than an instantaneous rate, and said to be an average
+ * wherever it is shown. We sample the file's size every few seconds, so an
+ * instantaneous figure would be the difference between two polls divided by the
+ * gap between them - a number that swings wildly with poll jitter and tells a
+ * watching human nothing. The average is stable, and it is the one that
+ * actually predicts when the thing will finish.
+ *
+ * Null until there is enough to divide: a rate computed over the first second
+ * of a download is noise dressed up as information.
+ */
+export function transferRate(
+  bytesReceived: number | null,
+  sinceIso: string | null,
+  now: number,
+): number | null {
+  if (bytesReceived === null || bytesReceived <= 0 || !sinceIso) return null;
+  const seconds = (now - Date.parse(sinceIso)) / 1000;
+  if (!Number.isFinite(seconds) || seconds < 3) return null;
+  return bytesReceived / seconds;
+}
+
+/**
+ * How long the rest is likely to take, in the same terse form as `elapsed`.
+ *
+ * This is the one number on the screen that is a prediction rather than a
+ * measurement, and it is labelled as such where it is rendered. It is honest
+ * arithmetic on two measured quantities - bytes still to come, over the rate
+ * actually achieved so far - but a download can stall or a CDN can throttle,
+ * and it must never be mistaken for a countdown. It drives no bar.
+ */
+export function remaining(
+  bytesReceived: number | null,
+  bytesTotal: number | null,
+  rateBytesPerSecond: number | null,
+): string | null {
+  if (bytesReceived === null || bytesTotal === null || !rateBytesPerSecond) return null;
+  const left = bytesTotal - bytesReceived;
+  if (left <= 0) return null;
+  const seconds = Math.round(left / rateBytesPerSecond);
+  if (!Number.isFinite(seconds) || seconds <= 0) return null;
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes}m`;
+  return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+}
+
+/**
+ * The fraction of the download that has arrived, 0-100, or null.
+ *
+ * Null is the important return. It means "no percentage exists", and every
+ * caller must render that as an absence rather than a zero - a bar sitting at
+ * 0% is a claim about the download, and the claim would be false. Both inputs
+ * have to be real: `bytesTotal` is only ever an exact Content-Length, so when
+ * it is null there is genuinely no denominator and nothing may be shown.
+ */
+export function percentComplete(
+  bytesReceived: number | null,
+  bytesTotal: number | null,
+): number | null {
+  if (bytesReceived === null || bytesTotal === null || bytesTotal <= 0) return null;
+  return Math.max(0, Math.min(100, (bytesReceived / bytesTotal) * 100));
+}
+
 /** Elapsed wall-clock, in the terse form the mono numerics use. */
 export function elapsed(sinceIso: string, now: number): string {
   const seconds = Math.max(0, Math.round((now - Date.parse(sinceIso)) / 1000));

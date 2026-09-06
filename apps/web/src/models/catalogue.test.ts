@@ -20,6 +20,10 @@ import {
   latestByFilename,
   matchesRunFilter,
   runs,
+  formatBytes,
+  percentComplete,
+  remaining,
+  transferRate,
 } from './catalogue';
 import { makeEntry, makeInstall, makeModel, makeRunnability } from './testing';
 
@@ -181,5 +185,92 @@ describe('formatCount', () => {
     expect(formatCount(64_200)).toBe('64k');
     expect(formatCount(1_767_210)).toBe('1.8M');
     expect(formatCount(41_000_000)).toBe('41M');
+  });
+});
+
+
+/**
+ * The numbers on the download display.
+ *
+ * These are small functions guarding one rule that is easy to break by
+ * accident: a percentage may exist only when both a measured byte count and an
+ * exact total exist. Everything else on the screen degrades to prose, and none
+ * of it may quietly become a zero.
+ */
+describe('formatBytes', () => {
+  it('uses decimal units, to match every other size on the screen', () => {
+    // Manager quotes "6.94GB" for this file and HuggingFace's Content-Length
+    // agrees; saying "6.46 GiB" next to that would just look like a bug.
+    expect(formatBytes(6_938_078_334)).toBe('6.94 GB');
+    expect(formatBytes(327_309_314)).toBe('327 MB');
+    expect(formatBytes(81_918_064)).toBe('81.9 MB');
+  });
+
+  it('holds three significant figures across the scales', () => {
+    expect(formatBytes(1_240_000_000)).toBe('1.24 GB');
+    expect(formatBytes(25_000)).toBe('25.0 kB');
+    expect(formatBytes(512)).toBe('512 B');
+  });
+
+  it('says zero rather than rounding it away', () => {
+    expect(formatBytes(0)).toBe('0 B');
+  });
+});
+
+describe('percentComplete', () => {
+  it('is a real fraction when both halves are real', () => {
+    expect(percentComplete(3_469_039_167, 6_938_078_334)).toBeCloseTo(50, 5);
+  });
+
+  it('is null without an exact total, rather than a zero', () => {
+    // This is the whole guard. A download with no known total renders no bar;
+    // returning 0 here would draw one that claims nothing has arrived.
+    expect(percentComplete(3_000_000_000, null)).toBeNull();
+  });
+
+  it('is null when nothing has been measured', () => {
+    expect(percentComplete(null, 6_938_078_334)).toBeNull();
+  });
+
+  it('is zero - a real zero - for a download that has written nothing yet', () => {
+    expect(percentComplete(0, 6_938_078_334)).toBe(0);
+  });
+
+  it('never exceeds 100, so a resumed or padded file cannot overflow the bar', () => {
+    expect(percentComplete(7_000_000_000, 6_938_078_334)).toBe(100);
+  });
+});
+
+describe('transferRate', () => {
+  const started = '2026-09-06T08:00:00.000Z';
+  const at = (seconds: number) => Date.parse(started) + seconds * 1000;
+
+  it('averages the bytes over the whole download so far', () => {
+    expect(transferRate(120_000_000, started, at(10))).toBe(12_000_000);
+  });
+
+  it('waits until there is enough elapsed time to divide by', () => {
+    // A rate computed over the first second is poll jitter, not information.
+    expect(transferRate(120_000_000, started, at(1))).toBeNull();
+  });
+
+  it('is null with nothing measured, or nothing started', () => {
+    expect(transferRate(null, started, at(30))).toBeNull();
+    expect(transferRate(120_000_000, null, at(30))).toBeNull();
+  });
+});
+
+describe('remaining', () => {
+  it('divides what is left by the rate actually achieved', () => {
+    // 3.0 GB still to come at 10 MB/s is 300 seconds.
+    expect(remaining(3_000_000_000, 6_000_000_000, 10_000_000)).toBe('5m');
+  });
+
+  it('is null without a total, because there is nothing to subtract from', () => {
+    expect(remaining(3_000_000_000, null, 10_000_000)).toBeNull();
+  });
+
+  it('is null once nothing is left, rather than counting down past zero', () => {
+    expect(remaining(6_000_000_000, 6_000_000_000, 10_000_000)).toBeNull();
   });
 });

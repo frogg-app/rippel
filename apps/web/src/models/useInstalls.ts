@@ -7,11 +7,13 @@
  *     the operator will navigate away, reload, or come back tomorrow. So on
  *     mount we ask `/api/model-installs` what is already in flight and adopt
  *     it, rather than assuming this page started everything it can see.
- *  2. **There is no percentage.** The transport reports queue state, so the
- *     only honest signals are the status word, the transport's own `detail`
- *     string, and elapsed time. This hook therefore carries no notion of
- *     progress beyond `ModelInstall.status`, and nothing downstream can
- *     invent one.
+ *  2. **The percentage, where one exists, arrives inside the install.** The
+ *     transport reports queue state per task, but the API measures the file
+ *     growing on the backend and pairs it with the download's exact size, so a
+ *     `ModelInstall` carries `bytesReceived` and `bytesTotal` already computed.
+ *     This hook therefore still holds no notion of progress of its own and
+ *     still cannot invent one — when either field is null there is genuinely no
+ *     percentage, and the display falls back to elapsed time.
  *  3. **The single-install route refreshes on read.** Polling
  *     `/backends/:id/models/installs/:installId` is what actually advances an
  *     install, so that is the poll target while anything is live. With nothing
