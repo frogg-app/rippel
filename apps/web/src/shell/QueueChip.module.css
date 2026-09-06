@@ -1,0 +1,12 @@
+.chip {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 13px;
+  border-radius: var(--radius-pill);
+  background: rgba(227, 176, 75, 0.1);
+  border: 1px solid rgba(227, 176, 75, 0.22);
+  font-size: var(--text-sm);
+  color: var(--accent);
+  white-space: nowrap;
+}

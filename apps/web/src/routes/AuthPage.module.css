@@ -1,0 +1,135 @@
+.page {
+  position: relative;
+  flex-grow: 1;
+  min-height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 24px;
+  background: var(--ground);
+}
+
+.glow {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(60% 50% at 50% 0%, rgba(227, 176, 75, 0.07), rgba(0, 0, 0, 0) 70%);
+  pointer-events: none;
+}
+
+.card {
+  position: relative;
+  width: 100%;
+  max-width: 392px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-lg);
+  padding: 32px 30px 28px;
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--line-strong);
+  background: rgba(255, 255, 255, 0.02);
+  backdrop-filter: var(--glass-blur);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.45);
+}
+
+.head {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--gap-sm);
+}
+
+.title {
+  margin: 0;
+  font-size: 27px;
+  font-weight: 400;
+}
+
+.subtitle {
+  margin: 0;
+  font-size: var(--text-base);
+  color: var(--text-4);
+}
+
+.fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-md);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.fieldLabel {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.hint {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.input {
+  height: 42px;
+  padding: 0 13px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--line-input);
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: var(--text-lg);
+  transition: border-color var(--transition), background var(--transition);
+}
+
+.input::placeholder {
+  color: var(--text-muted);
+}
+
+.input:focus {
+  outline: none;
+  border-color: var(--accent-line);
+  background: var(--surface-3);
+}
+
+.error {
+  padding: 10px 13px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--danger-line);
+  background: var(--danger-tint);
+  color: #f0a4a4;
+  font-size: var(--text-sm);
+}
+
+.submit {
+  height: var(--cta-height);
+  border-radius: var(--radius-lg);
+  background: var(--accent-gradient);
+  color: var(--accent-ink);
+  font-size: var(--text-xl);
+  font-weight: 600;
+  box-shadow: var(--accent-glow);
+  transition: filter var(--transition);
+}
+
+.submit:hover:not(:disabled) {
+  filter: brightness(1.06);
+}
+
+.submit:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.alt {
+  text-align: center;
+  font-size: var(--text-sm);
+  color: var(--text-4);
+}
+
+.closed {
+  color: var(--text-muted);
+}

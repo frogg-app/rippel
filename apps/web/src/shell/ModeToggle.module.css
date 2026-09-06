@@ -1,0 +1,28 @@
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--surface-3);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: var(--radius);
+  padding: 3px;
+}
+
+.option {
+  padding: 5px 13px;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: #7a7a84;
+  transition: background var(--transition), color var(--transition);
+}
+
+.option:hover {
+  color: var(--text-2);
+}
+
+.active,
+.active:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}

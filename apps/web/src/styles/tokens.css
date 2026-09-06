@@ -1,0 +1,107 @@
+/*
+ * Design tokens, taken from the artboards in `design/parts/*.body.html` and
+ * PLAN.md §6. Nothing in the app should hard-code a hex value, a radius or a
+ * spacing step: if a value is missing here, it is missing from the design and
+ * the artboards are the place to settle it.
+ *
+ * The artboards are hand-authored inline styles, so the scales below are the
+ * values that actually recur in them rather than a tidy invented ramp — the
+ * odd 9px/11px radii and the 13.5px type size are deliberate, not typos.
+ */
+
+:root {
+  /* -------------------------------------------------- ground and panels */
+  --ground: #0b0b0d;
+  /* The rail on Library sits a shade below the ground; the input panel a shade above. */
+  --ground-sunken: #08080a;
+  --panel: #0d0d10;
+  /* Fills for controls that sit *on* a panel. Ascending prominence. */
+  --surface-1: rgba(255, 255, 255, 0.02);
+  --surface-2: rgba(255, 255, 255, 0.03);
+  --surface-3: rgba(255, 255, 255, 0.045);
+  --surface-4: rgba(255, 255, 255, 0.05);
+  --surface-hover: rgba(255, 255, 255, 0.08);
+  /* Glass over an image: the live-preview scrim. */
+  --glass: rgba(10, 8, 14, 0.3);
+  --glass-blur: blur(24px);
+  --scrim: rgba(8, 7, 10, 0.62);
+
+  /* -------------------------------------------------- hairlines */
+  --line: rgba(255, 255, 255, 0.06);
+  --line-strong: rgba(255, 255, 255, 0.09);
+  --line-input: rgba(255, 255, 255, 0.11);
+  --line-dashed: rgba(255, 255, 255, 0.16);
+
+  /* -------------------------------------------------- text */
+  --text: #ececef;
+  --text-bright: #d6d6de;
+  --text-2: #c2c2cb;
+  --text-3: #9a9aa4;
+  --text-4: #6f6f79;
+  --text-muted: #5d5d67;
+
+  /* -------------------------------------------------- accent */
+  --accent: #e3b04b;
+  --accent-hover: #f0c877;
+  --accent-deep: #a8702a;
+  --accent-ink: #1c1407; /* text on a filled accent surface */
+  --accent-tint: rgba(227, 176, 75, 0.12);
+  --accent-tint-strong: rgba(227, 176, 75, 0.16);
+  --accent-line: rgba(227, 176, 75, 0.3);
+  --accent-glow: 0 8px 26px rgba(227, 176, 75, 0.22);
+  --accent-gradient: linear-gradient(140deg, var(--accent-hover), #d09a34);
+  --accent-bar: linear-gradient(90deg, var(--accent-deep), var(--accent));
+
+  /* -------------------------------------------------- status */
+  --ok: #5fd08a;
+  --ok-glow: 0 0 8px rgba(95, 208, 138, 0.7);
+  --offline: #6f6f79;
+  --danger: #e06a6a;
+  --danger-tint: rgba(224, 106, 106, 0.1);
+  --danger-line: rgba(224, 106, 106, 0.28);
+
+  /* -------------------------------------------------- type */
+  --font-ui: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'Instrument Serif', Georgia, serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, monospace;
+
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-base: 13px;
+  --text-md: 13.5px;
+  --text-lg: 14px;
+  --text-xl: 14.5px;
+  --display-sm: 19px;
+  --display: 21px;
+
+  /* Section labels: 11px, uppercase, wide-tracked. */
+  --tracking-label: 0.09em;
+
+  /* -------------------------------------------------- geometry */
+  /* The one measurement PLAN.md fixes by number: the input panel. */
+  --panel-width: 396px;
+  --topbar-height: 60px;
+  --panel-pad-x: 22px;
+  --pane-pad-x: 28px;
+
+  --radius-sm: 7px;
+  --radius: 9px;
+  --radius-md: 11px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-pill: 20px;
+
+  --gap-xs: 6px;
+  --gap-sm: 9px;
+  --gap: 12px;
+  --gap-md: 14px;
+  --gap-lg: 20px;
+  --gap-xl: 26px;
+
+  --control-height: 34px;
+  --action-height: 38px;
+  --cta-height: 48px;
+
+  --ease: cubic-bezier(0.2, 0.6, 0.3, 1);
+  --transition: 140ms var(--ease);
+}
