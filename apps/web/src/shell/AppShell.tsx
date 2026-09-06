@@ -49,12 +49,12 @@ export function AppShell() {
             >
               Library
             </NavLink>
-            {/* Models is a later phase. Shown, because the design shows it and
-                its absence would be more confusing than a disabled tab, but
-                honestly marked as not yet built. */}
-            <span className={`${styles.tab} ${styles.tabDisabled}`} aria-disabled title="Coming in a later phase">
+            <NavLink
+              to="/models"
+              className={({ isActive }) => (isActive ? `${styles.tab} ${styles.tabActive}` : styles.tab)}
+            >
               Models
-            </span>
+            </NavLink>
           </nav>
 
           <div className={styles.status}>

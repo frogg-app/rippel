@@ -1,0 +1,679 @@
+/*
+ * Everything inside the Models panes: the filter band, the catalogue cards, the
+ * installed rows, the install list and the shared notice panel.
+ *
+ * One module rather than one per component because these pieces only ever
+ * appear together, on one screen, and splitting them would mean five files
+ * repeating the same card metrics.
+ */
+
+/* -------------------------------------------------- filter band */
+
+.filters {
+  flex-shrink: 0;
+  padding: var(--gap-lg) var(--pane-pad-x) var(--gap-md);
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+}
+
+.searchRow {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+
+.search {
+  flex-grow: 1;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  height: var(--models-search-height);
+  padding: 0 16px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--line-input);
+  background: var(--surface-2);
+}
+
+.search:focus-within {
+  border-color: var(--accent-line);
+}
+
+.searchIcon {
+  color: var(--text-4);
+  flex-shrink: 0;
+}
+
+.searchInput {
+  flex-grow: 1;
+  min-width: 0;
+  background: none;
+  border: none;
+  outline: none;
+  font-size: var(--text-lg);
+  color: var(--text-bright);
+}
+
+.searchInput::placeholder {
+  color: var(--text-4);
+}
+
+.familyPicker {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: var(--models-search-height);
+  padding: 0 30px 0 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--line-strong);
+  background: var(--surface-2);
+}
+
+.familyLabel {
+  font-size: var(--text-sm);
+  color: var(--text-4);
+}
+
+.familySelect {
+  background: none;
+  border: none;
+  outline: none;
+  font-size: var(--text-sm);
+  color: var(--text-2);
+  cursor: pointer;
+  max-width: 180px;
+  /* The chevron is drawn by us, in the artboard's weight. */
+  appearance: none;
+}
+
+.familySelect option {
+  background: var(--panel);
+  color: var(--text-2);
+}
+
+.familyChevron {
+  position: absolute;
+  right: 12px;
+  color: var(--text-4);
+  pointer-events: none;
+}
+
+.resultCount {
+  flex-shrink: 0;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  min-width: 56px;
+  text-align: right;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.chip {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: var(--models-chip-height);
+  padding: 0 14px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--line-strong);
+  font-size: 12.5px;
+  color: var(--text-quiet);
+  transition: color var(--transition), border-color var(--transition), background var(--transition);
+}
+
+.chip:hover {
+  color: var(--text-2);
+  border-color: var(--line-input);
+}
+
+.chipOn {
+  border: 1.5px solid var(--accent);
+  background: var(--accent-tint);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.chipCount {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.chipOn .chipCount {
+  color: var(--accent-deep);
+}
+
+/* -------------------------------------------------- catalogue grid */
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(var(--models-card-min), 1fr));
+  gap: var(--models-gap);
+  align-content: start;
+}
+
+.skeleton {
+  height: 190px;
+  border-radius: var(--models-card-radius);
+  background: var(--surface-1);
+  border: 1px solid var(--line);
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--models-card-radius);
+  overflow: hidden;
+  border: 1px solid var(--line-faint);
+  background: var(--models-card-bg);
+}
+
+/* An install in flight is the only card that carries the accent border, which
+   is what makes one running download findable in a grid of hundreds. */
+.cardBusy {
+  border-color: var(--accent-line-strong);
+}
+
+.cardArt {
+  position: relative;
+  height: var(--models-card-art);
+  flex-shrink: 0;
+}
+
+.cardType {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  padding: 4px 9px;
+  border-radius: var(--radius-sm);
+  background: var(--badge);
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  color: var(--text-bright);
+}
+
+.cardInstalled {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 9px;
+  border-radius: var(--radius-sm);
+  background: rgba(95, 208, 138, 0.16);
+  border: 1px solid rgba(95, 208, 138, 0.35);
+  font-size: 10.5px;
+  color: #7fdca4;
+}
+
+.cardBody {
+  padding: 13px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  flex-grow: 1;
+}
+
+.cardHead {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex-grow: 1;
+}
+
+.cardName {
+  font-size: var(--text-md);
+  font-weight: 600;
+  color: var(--text);
+  /* Catalogue names run long and there is no room for two lines in a grid this
+     dense; the full name is on the element's title. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cardMeta {
+  font-size: 11.5px;
+  color: var(--text-4);
+  margin: 0;
+}
+
+.cardFile {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.installButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  height: 32px;
+  border-radius: var(--radius);
+  background: rgba(227, 176, 75, 0.14);
+  border: 1px solid var(--accent-line-strong);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--accent);
+  transition: background var(--transition), color var(--transition);
+}
+
+.installButton:hover:not(:disabled) {
+  background: var(--accent-tint-hover);
+  color: var(--accent-hover);
+}
+
+.installButton:disabled {
+  color: var(--text-4);
+  border-color: var(--line-strong);
+  background: var(--surface-2);
+  cursor: not-allowed;
+}
+
+.cardResting {
+  margin: 0;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius);
+  border: 1px solid var(--line-faint);
+  font-size: var(--text-sm);
+  color: var(--text-4);
+}
+
+.cardFailure {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--danger);
+}
+
+.more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--gap);
+  padding: var(--gap-xl) 0 0;
+}
+
+.moreButton {
+  height: var(--action-height);
+  padding: 0 20px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--line-input);
+  font-size: var(--text-base);
+  color: var(--text-2);
+  transition: border-color var(--transition), color var(--transition);
+}
+
+.moreButton:hover {
+  border-color: var(--accent-line);
+  color: var(--accent);
+}
+
+.moreCount {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+/* -------------------------------------------------- install progress */
+
+.progress {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-xs);
+}
+
+.progressRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 11.5px;
+}
+
+.progressStatus {
+  color: var(--accent);
+}
+
+.progressDone {
+  color: var(--ok);
+}
+
+.progressFailed {
+  color: var(--danger);
+}
+
+.progressElapsed {
+  color: var(--text-soft);
+}
+
+/* Indeterminate. There is no percentage in this API and we will not invent
+   one: the highlight sweeps to say "still moving", never "this far along". */
+.track {
+  position: relative;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--models-track);
+  overflow: hidden;
+}
+
+.trackPulse {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 40%;
+  background: var(--models-track-pulse);
+  animation: sweep 1.4s var(--ease) infinite;
+}
+
+@keyframes sweep {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(350%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .trackPulse {
+    animation: none;
+    width: 100%;
+    opacity: 0.45;
+  }
+}
+
+.progressDetail {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--text-4);
+}
+
+.progressError {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--danger);
+}
+
+.progressCompact .progressDetail {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* -------------------------------------------------- installed list */
+
+.groups {
+  display: flex;
+  flex-direction: column;
+  gap: var(--models-group-gap);
+  padding-top: var(--gap-sm);
+}
+
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-sm);
+}
+
+.groupHead {
+  display: flex;
+  align-items: baseline;
+  gap: var(--gap-sm);
+  padding-bottom: var(--gap-xs);
+  border-bottom: 1px solid var(--line);
+}
+
+.groupType {
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--text-4);
+  font-weight: 500;
+  margin: 0;
+}
+
+.groupFamily {
+  font-size: var(--text-md);
+  color: var(--text);
+}
+
+.groupCount {
+  margin-left: auto;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--gap);
+  min-height: var(--models-row-height);
+  padding: 0 4px;
+  border-bottom: 1px solid var(--line);
+}
+
+.row:last-child {
+  border-bottom: none;
+}
+
+.rowText {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  flex-grow: 1;
+}
+
+.rowName {
+  font-size: var(--text-base);
+  color: var(--text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rowFile {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* "Which machines have this" — the question this screen exists to answer, so
+   the chips sit at the end of every row rather than behind a hover or a click. */
+.hosts {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--gap-xs);
+  flex-shrink: 0;
+}
+
+.host {
+  padding: 3px 9px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line-faint);
+  background: var(--surface-2);
+  font-size: var(--text-xs);
+  color: var(--text-quiet);
+}
+
+.hostSelected {
+  border-color: var(--accent-line);
+  background: var(--accent-tint);
+  color: var(--accent);
+}
+
+.hostOffline {
+  color: var(--text-muted);
+  border-style: dashed;
+}
+
+.hostNone {
+  color: var(--danger);
+  border-color: var(--danger-line);
+  background: var(--danger-tint);
+}
+
+/* -------------------------------------------------- installs list */
+
+.installs {
+  list-style: none;
+  margin: 0;
+  padding: var(--gap-sm) 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+}
+
+.install {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-xs);
+  padding: var(--gap-md) 16px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--line-faint);
+  background: var(--models-card-bg);
+}
+
+.installHead {
+  display: flex;
+  align-items: baseline;
+  gap: var(--gap-sm);
+  flex-wrap: wrap;
+}
+
+.installType {
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-3);
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  color: var(--text-quiet);
+}
+
+.installName {
+  font-size: var(--text-lg);
+  color: var(--text);
+  font-weight: 500;
+}
+
+.installBase {
+  font-size: var(--text-sm);
+  color: var(--text-4);
+}
+
+.installBackend {
+  margin-left: auto;
+  font-size: var(--text-sm);
+  color: var(--text-4);
+}
+
+.installFile {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  word-break: break-all;
+}
+
+.installUrl {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* -------------------------------------------------- notice */
+
+.notice {
+  margin: var(--gap-xl) auto;
+  max-width: 560px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--gap-sm);
+  padding: 32px 36px;
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--line);
+  background: var(--surface-1);
+  text-align: center;
+}
+
+.noticeWarning {
+  border-color: var(--accent-line);
+  background: var(--models-warn-tint);
+}
+
+.noticeDanger {
+  border-color: var(--danger-line);
+  background: var(--danger-tint);
+}
+
+.noticeIcon {
+  color: var(--models-warn);
+  display: flex;
+}
+
+.noticeDanger .noticeIcon {
+  color: var(--danger);
+}
+
+.noticeTitle {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: var(--display-sm);
+  color: var(--text);
+}
+
+.noticeText {
+  margin: 0;
+  font-size: var(--text-base);
+  line-height: 1.6;
+  color: var(--text-3);
+}
+
+.noticeFootnote {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.noticeAction {
+  margin-top: var(--gap-xs);
+  height: var(--action-height);
+  padding: 0 18px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--line-input);
+  font-size: var(--text-base);
+  color: var(--text-2);
+  transition: border-color var(--transition), color var(--transition);
+}
+
+.noticeAction:hover {
+  border-color: var(--accent-line);
+  color: var(--accent);
+}

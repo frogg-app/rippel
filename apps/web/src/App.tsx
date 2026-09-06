@@ -5,6 +5,7 @@ import { AppShell } from './shell/AppShell';
 import { AuthPage } from './routes/AuthPage';
 import { CreatePage } from './routes/CreatePage';
 import { LibraryPage } from './routes/LibraryPage';
+import { ModelsPage } from './routes/ModelsPage';
 import { NotFoundPage } from './routes/NotFoundPage';
 
 /**
@@ -14,7 +15,7 @@ import { NotFoundPage } from './routes/NotFoundPage';
  *   /create             the creation surface (the default landing place)
  *   /                   → /create
  *
- * Models is a later phase; its tab is visible but inert, so
+ * Every tab in the shell now leads somewhere, so
  * adding them later is a route and a screen, not a change to the chrome.
  */
 export function App() {
@@ -32,6 +33,7 @@ export function App() {
               <Route path="/" element={<Navigate to="/create" replace />} />
               <Route path="/create" element={<CreatePage />} />
               <Route path="/library" element={<LibraryPage />} />
+              <Route path="/models" element={<ModelsPage />} />
               <Route path="*" element={<NotFoundPage />} />
             </Route>
           </Route>

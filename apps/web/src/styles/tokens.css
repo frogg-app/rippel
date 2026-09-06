@@ -142,3 +142,39 @@
   --shadow-pop: 0 16px 40px rgba(0, 0, 0, 0.55);
   --shadow-float: 0 14px 40px rgba(0, 0, 0, 0.5);
 }
+
+/* -------------------------------------------------- models
+   Measured off design/parts/ModelBrowser.body.html: a four-column card grid on
+   a 16px gutter with 14px-radius cards, a 44px search field, and pill filter
+   chips at 12.5px.
+
+   The one metric that departs from the artboard is the card's art band. The
+   artboard draws a 184px photograph; `ModelCatalogEntry` carries no preview URL
+   at all (verified against the live catalogue — 372 entries, not one image), so
+   the band is a gradient generated from the entry's family. It is kept short
+   because it carries a family, not a picture, and 184px of decoration per card
+   over hundreds of cards is scrolling for nothing. */
+:root {
+  --models-gap: 16px;
+  --models-card-min: 244px;
+  --models-card-radius: 14px;
+  --models-card-bg: #111114;
+  --models-card-art: 84px;
+  --models-search-height: 44px;
+  --models-chip-height: 30px;
+  /* The installed list is rows, not cards; these are its two metrics. */
+  --models-row-height: 42px;
+  --models-group-gap: 26px;
+  /* The indeterminate install bar: a highlight that travels a dim track,
+     because there is no fraction to fill. */
+  --models-track: rgba(255, 255, 255, 0.1);
+  --models-track-pulse: linear-gradient(
+    90deg,
+    transparent,
+    var(--accent) 45%,
+    var(--accent-hover) 55%,
+    transparent
+  );
+  --models-warn: #e3b04b;
+  --models-warn-tint: rgba(227, 176, 75, 0.08);
+}

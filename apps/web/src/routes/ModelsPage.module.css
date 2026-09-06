@@ -1,0 +1,156 @@
+/*
+ * The Models screen's chrome: the 60px band, the tab strip, and the pane the
+ * content scrolls in. Card and list styling lives in models/ModelsPanels.module.css.
+ */
+
+.screen {
+  flex-grow: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* -------------------------------------------------- top band */
+
+.topbar {
+  flex-shrink: 0;
+  height: var(--topbar-height);
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 0 var(--pane-pad-x);
+  border-bottom: 1px solid var(--line);
+}
+
+.title {
+  font-size: var(--display);
+  color: var(--text);
+  font-weight: 400;
+}
+
+.tabs {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  margin-left: 10px;
+}
+
+/* The artboard's underline-on-active, not a segmented control: these are
+   sections of one screen, not a choice of mode. */
+.tab {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: var(--text-md);
+  color: var(--text-dim);
+  padding-bottom: 2px;
+  border-bottom: 1.5px solid transparent;
+  transition: color var(--transition), border-color var(--transition);
+}
+
+.tab:hover {
+  color: var(--text-2);
+}
+
+.tabOn {
+  color: var(--text);
+  font-weight: 500;
+  border-bottom-color: var(--accent);
+}
+
+.tabCount {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.tabCountAccent {
+  color: var(--accent);
+}
+
+.spacer {
+  flex-grow: 1;
+}
+
+/* The artboard's status pill, doing a job the artboard's did not: choosing the
+   machine. What can be installed is a property of the backend, so this is the
+   most consequential control on the screen. */
+.backendPicker {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 10px 0 12px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-3);
+  border: 1px solid var(--line-faint);
+}
+
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--offline);
+  flex-shrink: 0;
+}
+
+.dotOn {
+  background: var(--ok);
+  box-shadow: var(--ok-glow);
+}
+
+.backendLabel {
+  font-size: var(--text-sm);
+  color: var(--text-4);
+}
+
+.backendSelect {
+  background: none;
+  border: none;
+  font-size: var(--text-sm);
+  color: var(--text-2);
+  cursor: pointer;
+  max-width: 200px;
+}
+
+.backendSelect option {
+  background: var(--panel);
+  color: var(--text-2);
+}
+
+/* -------------------------------------------------- body */
+
+.body {
+  flex-grow: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.scroller {
+  flex-grow: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--gap-xs) var(--pane-pad-x) 40px;
+  display: flex;
+  flex-direction: column;
+}
+
+.loading {
+  padding: 40px var(--pane-pad-x);
+  font-size: var(--text-base);
+  color: var(--text-4);
+}
+
+.offlineHint {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-sm);
+  margin: 0 0 var(--gap-md);
+  padding: 10px 14px;
+  border-radius: var(--radius-md);
+  background: var(--models-warn-tint);
+  border: 1px solid var(--accent-line);
+  font-size: var(--text-sm);
+  color: var(--text-3);
+}
