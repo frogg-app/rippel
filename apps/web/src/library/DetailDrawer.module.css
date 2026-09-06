@@ -66,6 +66,12 @@
   color: var(--text-4);
 }
 
+.headMeta + .headMeta::before {
+  content: '·';
+  margin-right: 10px;
+  color: var(--text-muted);
+}
+
 .headActions {
   display: flex;
   align-items: center;
@@ -121,6 +127,7 @@
 }
 
 .preview {
+  position: relative;
   height: clamp(280px, 56vh, 640px);
   border-radius: 14px;
   overflow: hidden;
@@ -157,6 +164,105 @@
     transform: none;
     filter: none;
   }
+}
+
+/* Stepping through the grid: the incoming picture slides in from the side it
+   came from. The keyframe overrides the mount entrance once `travel` is set,
+   which it is from the first render, so both share one duration. */
+.fromRight {
+  animation: slide-right var(--dur-slow) var(--ease-out) both;
+}
+
+.fromLeft {
+  animation: slide-left var(--dur-slow) var(--ease-out) both;
+}
+
+@keyframes slide-right {
+  from {
+    opacity: 0;
+    transform: translateX(28px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes slide-left {
+  from {
+    opacity: 0;
+    transform: translateX(-28px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ------------------------------------------------------------ the arrows */
+
+.arrow {
+  position: absolute;
+  top: 50%;
+  z-index: 1;
+  width: 44px;
+  height: 44px;
+  margin-top: -22px;
+  border-radius: 999px;
+  border: 1px solid var(--glass-line);
+  background: var(--glass-panel);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  box-shadow: var(--shadow-1), var(--edge-highlight);
+  color: var(--text-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.85;
+  transition:
+    opacity var(--transition),
+    background var(--transition),
+    color var(--transition),
+    transform var(--dur-slow) var(--ease-spring);
+}
+
+.arrowPrev {
+  left: 14px;
+}
+
+.arrowNext {
+  right: 14px;
+}
+
+.preview:hover .arrow:not(:disabled) {
+  opacity: 1;
+}
+
+.arrow:hover:not(:disabled) {
+  background: var(--glass-panel-strong);
+  color: var(--text);
+  transform: scale(1.08);
+}
+
+.arrow:not(:disabled):active {
+  transform: scale(0.94);
+}
+
+.arrow svg {
+  transition: transform var(--dur-slow) var(--ease-spring);
+}
+
+.arrowPrev:hover:not(:disabled) svg {
+  transform: translateX(-2px);
+}
+
+.arrowNext:hover:not(:disabled) svg {
+  transform: translateX(2px);
+}
+
+.arrow:disabled {
+  opacity: 0;
+  pointer-events: none;
 }
 
 /* ------------------------------------------------------------ below */

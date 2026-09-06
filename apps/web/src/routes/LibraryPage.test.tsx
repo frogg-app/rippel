@@ -20,7 +20,7 @@ vi.mock('../lib/api-library', async () => {
   const { mockLibrary: fixture } = await import('../library/mock');
   return { ...actual, libraryApi: fixture, usingMockLibrary: true };
 });
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { LibraryPage } from './LibraryPage';
@@ -65,5 +65,52 @@ describe('LibraryPage', () => {
     expect(screen.getByRole('button', { name: /Remix/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Re-run/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Download/ })).toBeInTheDocument();
+  });
+
+  it('steps to the next and previous asset with the arrow keys', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    // The first tile is the newest; its neighbour in the grid is the second
+    // fixture prompt. Feed order is grid order.
+    const [tile] = await screen.findAllByRole('button', { name: /rain-slick street/ });
+    await user.click(tile!);
+    const dialog = await screen.findByRole('dialog', { name: 'Asset details' });
+    expect(within(dialog).getByText(/^1 of \d+$/)).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'Previous' })).toBeDisabled();
+
+    await user.keyboard('{ArrowRight}');
+    await waitFor(() =>
+      expect(within(dialog).getByText(/brutalist concrete cathedral/)).toBeInTheDocument(),
+    );
+    expect(within(dialog).getByText(/^2 of \d+$/)).toBeInTheDocument();
+
+    await user.keyboard('{ArrowLeft}');
+    await waitFor(() =>
+      expect(within(dialog).getByText(/rain-slick street/)).toBeInTheDocument(),
+    );
+    expect(within(dialog).getByText(/^1 of \d+$/)).toBeInTheDocument();
+  });
+
+  it('steps with the on-screen arrows too', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    const [tile] = await screen.findAllByRole('button', { name: /rain-slick street/ });
+    await user.click(tile!);
+    const dialog = await screen.findByRole('dialog', { name: 'Asset details' });
+
+    await user.click(within(dialog).getByRole('button', { name: 'Next' }));
+    await waitFor(() =>
+      expect(within(dialog).getByText(/brutalist concrete cathedral/)).toBeInTheDocument(),
+    );
+    expect(within(dialog).getByRole('button', { name: 'Previous' })).toBeEnabled();
+
+    // Arrow keys are for the grid, not for a text field the user is in.
+    // Escape still closes.
+    await user.keyboard('{Escape}');
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'Asset details' })).not.toBeInTheDocument(),
+    );
   });
 });

@@ -1,17 +1,19 @@
-import { useEffect, useMemo, useState } from "react";
-import { createPortal } from "react-dom";
+import { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type {
   Collection,
   LibraryApi,
   LibraryAsset,
   LibraryJob,
-} from "../lib/api-library";
-import { downloadAsset, libraryApi as defaultApi } from "../lib/api-library";
-import { renderTime } from "./grouping";
-import { buildPrefill, type CreatePrefill, type PrefillMode } from "./remix";
-import { useClipboard } from "./useClipboard";
+} from '../lib/api-library';
+import { downloadAsset, libraryApi as defaultApi } from '../lib/api-library';
+import { renderTime } from './grouping';
+import { buildPrefill, type CreatePrefill, type PrefillMode } from './remix';
+import { useClipboard } from './useClipboard';
 import {
   CheckIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
   CloseIcon,
   CopyIcon,
   DownloadIcon,
@@ -20,8 +22,8 @@ import {
   RemixIcon,
   StarIcon,
   TrashIcon,
-} from "./icons";
-import styles from "./DetailDrawer.module.css";
+} from './icons';
+import styles from './DetailDrawer.module.css';
 
 /**
  * The detail view: a centred modal over the grid.
@@ -43,6 +45,10 @@ import styles from "./DetailDrawer.module.css";
  */
 export function DetailDrawer({
   asset,
+  position,
+  hasPrev = false,
+  hasNext = false,
+  onNavigate,
   onClose,
   onToggleStar,
   onDelete,
@@ -54,6 +60,12 @@ export function DetailDrawer({
   api = defaultApi,
 }: {
   asset: LibraryAsset;
+  /** Where this asset sits in the grid, for the "3 of 40" readout. */
+  position?: { index: number; total: number };
+  hasPrev?: boolean;
+  hasNext?: boolean;
+  /** Step to the neighbouring asset; the page changes `asset`. */
+  onNavigate?: (direction: -1 | 1) => void;
   onClose: () => void;
   onToggleStar: (asset: LibraryAsset) => void;
   onDelete: (asset: LibraryAsset) => void;
@@ -114,14 +126,36 @@ export function DetailDrawer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [api, asset.id]);
 
-  // Escape closes, as it must for anything that overlays content.
+  // The direction of the last step, so the incoming media slides from that
+  // side; 0 until the first step, so the open plays the plain entrance.
+  const [travel, setTravel] = useState<-1 | 0 | 1>(0);
+  const step = (direction: -1 | 1) => {
+    if (!onNavigate) return;
+    if (direction === -1 && !hasPrev) return;
+    if (direction === 1 && !hasNext) return;
+    setTravel(direction);
+    onNavigate(direction);
+  };
+
+  // Escape closes, as it must for anything that overlays content; the arrow
+  // keys step through the grid, unless the user is typing somewhere.
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
-      if (event.key === "Escape") onClose();
+      if (event.key === 'Escape') {
+        onClose();
+        return;
+      }
+      if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+      const target = event.target as HTMLElement | null;
+      if (target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return;
+      if (target?.isContentEditable) return;
+      event.preventDefault();
+      step(event.key === 'ArrowLeft' ? -1 : 1);
     }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+    // `step` closes over the latest props; re-binding per render is cheap.
+  });
 
   const params = job?.params;
   const advanced = params?.advanced;
@@ -134,54 +168,54 @@ export function DetailDrawer({
       value: React.ReactNode;
       mono?: boolean;
     }> = [];
-    entries.push({ label: "Model", value: job.modelName ?? "—" });
+    entries.push({ label: 'Model', value: job.modelName ?? '—' });
     if (job.loraNames.length && params.loras?.length) {
       entries.push({
-        label: job.loraNames.length > 1 ? "LoRAs" : "LoRA",
+        label: job.loraNames.length > 1 ? 'LoRAs' : 'LoRA',
         value: job.loraNames.map((name, index) => (
           <span key={name}>
-            {name}{" "}
+            {name}{' '}
             <span className={`mono ${styles.weight}`}>
               {params.loras?.[index]?.weight.toFixed(2)}
             </span>
-            {index < job.loraNames.length - 1 ? ", " : ""}
+            {index < job.loraNames.length - 1 ? ', ' : ''}
           </span>
         )),
       });
     }
     entries.push({
-      label: "Size",
+      label: 'Size',
       value: `${asset.width} × ${asset.height}`,
       mono: true,
     });
     entries.push({
-      label: "Steps · Guidance",
-      value: `${advanced?.steps ?? "—"} · ${advanced?.guidance ?? "—"}`,
+      label: 'Steps · Guidance',
+      value: `${advanced?.steps ?? '—'} · ${advanced?.guidance ?? '—'}`,
       mono: true,
     });
     entries.push({
-      label: "Sampler",
-      value: advanced?.sampler ?? "—",
+      label: 'Sampler',
+      value: advanced?.sampler ?? '—',
       mono: true,
     });
-    if (asset.kind === "video" && params.video) {
+    if (asset.kind === 'video' && params.video) {
       entries.push({
-        label: "Length · FPS",
+        label: 'Length · FPS',
         value: `${params.video.lengthSeconds}s · ${params.video.fps}`,
         mono: true,
       });
     }
     entries.push({
-      label: "Rendered on",
+      label: 'Rendered on',
       value:
         job.backendName === null && job.durationMs === null
-          ? "—"
+          ? '—'
           : [
               job.backendName,
               job.durationMs === null ? null : renderTime(job.durationMs),
             ]
               .filter(Boolean)
-              .join(" · "),
+              .join(' · '),
     });
     return entries;
   }, [advanced, asset.height, asset.kind, asset.width, job, params]);
@@ -202,19 +236,27 @@ export function DetailDrawer({
       >
         <header className={styles.head}>
           <span className={styles.headTitle}>
-            {asset.kind === "video" ? "Video" : "Image"}
+            {asset.kind === 'video' ? 'Video' : 'Image'}
             <span className={`mono ${styles.headMeta}`}>
               {asset.width} × {asset.height}
             </span>
+            {position && position.index >= 0 ? (
+              <span
+                className={`mono ${styles.headMeta}`}
+                aria-label="Position in library"
+              >
+                {position.index + 1} of {position.total}
+              </span>
+            ) : null}
           </span>
           <div className={styles.headActions}>
             <button
               type="button"
-              className={`${styles.iconButton} ${asset.starred ? styles.iconOn : ""}`}
+              className={`${styles.iconButton} ${asset.starred ? styles.iconOn : ''}`}
               onClick={() => onToggleStar(asset)}
               aria-pressed={asset.starred}
-              aria-label={asset.starred ? "Unstar" : "Star"}
-              title={asset.starred ? "Unstar" : "Star"}
+              aria-label={asset.starred ? 'Unstar' : 'Star'}
+              title={asset.starred ? 'Unstar' : 'Star'}
             >
               <StarIcon size={17} filled={asset.starred} />
             </button>
@@ -242,10 +284,11 @@ export function DetailDrawer({
         <div className={styles.body}>
           <div className={styles.stage}>
             <div className={styles.preview}>
-              {asset.kind === "video" ? (
+              {asset.kind === 'video' ? (
                 // eslint-disable-next-line jsx-a11y/media-has-caption
                 <video
-                  className={styles.media}
+                  key={asset.id}
+                  className={`${styles.media} ${travel === 1 ? styles.fromRight : travel === -1 ? styles.fromLeft : ''}`}
                   src={asset.url}
                   poster={asset.thumbUrl}
                   controls
@@ -253,11 +296,36 @@ export function DetailDrawer({
                 />
               ) : (
                 <img
-                  className={styles.media}
+                  key={asset.id}
+                  className={`${styles.media} ${travel === 1 ? styles.fromRight : travel === -1 ? styles.fromLeft : ''}`}
                   src={asset.url}
-                  alt={asset.prompt ?? ""}
+                  alt={asset.prompt ?? ''}
                 />
               )}
+              {onNavigate ? (
+                <>
+                  <button
+                    type="button"
+                    className={`${styles.arrow} ${styles.arrowPrev}`}
+                    onClick={() => step(-1)}
+                    disabled={!hasPrev}
+                    aria-label="Previous"
+                    title="Previous (←)"
+                  >
+                    <ChevronLeftIcon size={20} />
+                  </button>
+                  <button
+                    type="button"
+                    className={`${styles.arrow} ${styles.arrowNext}`}
+                    onClick={() => step(1)}
+                    disabled={!hasNext}
+                    aria-label="Next"
+                    title="Next (→)"
+                  >
+                    <ChevronRightIcon size={20} />
+                  </button>
+                </>
+              ) : null}
             </div>
           </div>
 
@@ -274,12 +342,12 @@ export function DetailDrawer({
               <button
                 type="button"
                 className={styles.action}
-                onClick={() => prefill("remix")}
+                onClick={() => prefill('remix')}
                 disabled={!job}
                 title={
                   job
-                    ? "Open in Create with these settings and a new seed"
-                    : "No job to remix"
+                    ? 'Open in Create with these settings and a new seed'
+                    : 'No job to remix'
                 }
               >
                 <RemixIcon size={14} />
@@ -288,12 +356,12 @@ export function DetailDrawer({
               <button
                 type="button"
                 className={`${styles.action} ${styles.actionAccent}`}
-                onClick={() => prefill("animate")}
-                disabled={!job || asset.kind === "video"}
+                onClick={() => prefill('animate')}
+                disabled={!job || asset.kind === 'video'}
                 title={
-                  asset.kind === "video"
-                    ? "Already a video"
-                    : "Use this frame to start a video"
+                  asset.kind === 'video'
+                    ? 'Already a video'
+                    : 'Use this frame to start a video'
                 }
               >
                 <PlayIcon size={13} />
@@ -303,12 +371,12 @@ export function DetailDrawer({
               <button
                 type="button"
                 className={styles.action}
-                onClick={() => prefill("re-run")}
+                onClick={() => prefill('re-run')}
                 disabled={!job}
                 title={
                   job
-                    ? "Run these exact settings again, same seed"
-                    : "No job to re-run"
+                    ? 'Run these exact settings again, same seed'
+                    : 'No job to re-run'
                 }
               >
                 <RemixIcon size={14} />
@@ -324,8 +392,8 @@ export function DetailDrawer({
                   disabled={collections.length === 0}
                   title={
                     collections.length === 0
-                      ? "Make a collection in the sidebar first"
-                      : "Add to a collection"
+                      ? 'Make a collection in the sidebar first'
+                      : 'Add to a collection'
                   }
                 >
                   <FolderIcon size={14} />
@@ -434,7 +502,7 @@ export function DetailDrawer({
                       <div key={row.label} className={styles.metaRow}>
                         <dt className={styles.metaLabel}>{row.label}</dt>
                         <dd
-                          className={`${styles.metaValue} ${row.mono ? "mono" : ""}`}
+                          className={`${styles.metaValue} ${row.mono ? 'mono' : ''}`}
                         >
                           {row.value}
                         </dd>
@@ -444,7 +512,7 @@ export function DetailDrawer({
                     <div className={styles.metaRow}>
                       <dt className={styles.metaLabel}>Seed</dt>
                       <dd className={`mono ${styles.metaValue} ${styles.seed}`}>
-                        {seed ?? "—"}
+                        {seed ?? '—'}
                         {seed !== null ? (
                           <CopyButton
                             id="seed"
@@ -479,22 +547,22 @@ function CopyButton({
   clipboard: ReturnType<typeof useClipboard>;
 }) {
   const active = clipboard.key === id;
-  const copied = active && clipboard.state === "copied";
-  const failed = active && clipboard.state === "failed";
+  const copied = active && clipboard.state === 'copied';
+  const failed = active && clipboard.state === 'failed';
 
   return (
     <button
       type="button"
-      className={`${styles.copy} ${copied ? styles.copyOk : ""}`}
+      className={`${styles.copy} ${copied ? styles.copyOk : ''}`}
       onClick={() => void clipboard.copy(text, id)}
       aria-label={label}
-      title={failed ? "Copying is blocked in this browser" : label}
+      title={failed ? 'Copying is blocked in this browser' : label}
     >
       {copied ? <CheckIcon size={13} /> : <CopyIcon size={13} />}
       {/* A live region rather than only a colour change, so the confirmation
           reaches someone who is not looking at the button. */}
       <span role="status" className={styles.copyStatus}>
-        {copied ? "Copied" : failed ? "Failed" : ""}
+        {copied ? 'Copied' : failed ? 'Failed' : ''}
       </span>
     </button>
   );

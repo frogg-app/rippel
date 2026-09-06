@@ -1,6 +1,10 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import type { Collection, LibraryAsset, LibraryFilters } from '../lib/api-library';
+import type {
+  Collection,
+  LibraryAsset,
+  LibraryFilters,
+} from '../lib/api-library';
 import { usingMockLibrary } from '../lib/api-library';
 import { AssetGrid } from '../library/AssetGrid';
 import { CollectionsRail } from '../library/CollectionsRail';
@@ -39,7 +43,8 @@ export function LibraryPage() {
   const collections = useCollections();
 
   const onRemoved = useCallback(
-    (assetId: string) => setSelected((current) => (current?.id === assetId ? null : current)),
+    (assetId: string) =>
+      setSelected((current) => (current?.id === assetId ? null : current)),
     [],
   );
   const actions = useLibraryActions({ feed, onRemoved });
@@ -48,8 +53,32 @@ export function LibraryPage() {
   // taken when it was clicked, so an optimistic star shows in both places at
   // once and neither can drift from the other.
   const openAsset = useMemo(
-    () => (selected ? (feed.items.find((item) => item.id === selected.id) ?? selected) : null),
+    () =>
+      selected
+        ? (feed.items.find((item) => item.id === selected.id) ?? selected)
+        : null,
     [feed.items, selected],
+  );
+
+  // Where the open asset sits in what the grid shows. The grid renders the
+  // feed in feed order (grouping only inserts headings), so stepping through
+  // `feed.items` is stepping through the tiles as the user sees them.
+  const openIndex = openAsset
+    ? feed.items.findIndex((item) => item.id === openAsset.id)
+    : -1;
+  const navigate_ = useCallback(
+    (direction: -1 | 1) => {
+      if (openIndex < 0) return;
+      const next = feed.items[openIndex + direction];
+      if (next) {
+        setSelected(next);
+      } else if (direction === 1 && feed.hasMore) {
+        // Off the end of what is loaded: fetch the next page, and the user's
+        // next press lands on it.
+        feed.loadMore();
+      }
+    },
+    [feed, openIndex],
   );
 
   const filtered =
@@ -58,7 +87,9 @@ export function LibraryPage() {
     Boolean(filters.collectionId) ||
     Boolean(filters.q?.trim());
 
-  const activeCollection = collections.collections.find((c) => c.id === filters.collectionId);
+  const activeCollection = collections.collections.find(
+    (c) => c.id === filters.collectionId,
+  );
 
   const handlePrefill = useCallback(
     (prefill: CreatePrefill) => {
@@ -78,7 +109,9 @@ export function LibraryPage() {
         activeCollectionId={filters.collectionId ?? null}
         starredOnly={Boolean(filters.starred)}
         onSelectAll={() => setFilters((prev) => ({ q: prev.q }))}
-        onSelectStarred={() => setFilters((prev) => ({ q: prev.q, starred: true }))}
+        onSelectStarred={() =>
+          setFilters((prev) => ({ q: prev.q, starred: true }))
+        }
         onSelectCollection={(collection: Collection) =>
           setFilters((prev) =>
             // Clicking the collection you are already in leaves it, which is
@@ -92,12 +125,20 @@ export function LibraryPage() {
       />
 
       <div className={styles.main}>
-        <LibraryToolbar filters={filters} onChange={setFilters} count={feed.items.length} />
+        <LibraryToolbar
+          filters={filters}
+          onChange={setFilters}
+          count={feed.items.length}
+        />
 
         {activeCollection ? (
           <div className={styles.context}>
             Showing <strong>{activeCollection.name}</strong>
-            <button type="button" className={styles.clear} onClick={() => setFilters((prev) => ({ q: prev.q }))}>
+            <button
+              type="button"
+              className={styles.clear}
+              onClick={() => setFilters((prev) => ({ q: prev.q }))}
+            >
               Show everything
             </button>
           </div>
@@ -107,18 +148,29 @@ export function LibraryPage() {
           {feed.loading ? (
             <div className={styles.skeletonGrid} aria-hidden>
               {Array.from({ length: 8 }, (_, index) => (
-                <div key={index} className={`skeleton ${styles.skeleton}`} style={{ '--i': index } as React.CSSProperties} />
+                <div
+                  key={index}
+                  className={`skeleton ${styles.skeleton}`}
+                  style={{ '--i': index } as React.CSSProperties}
+                />
               ))}
             </div>
           ) : feed.error ? (
             <div className={styles.failure} role="alert">
               <p className={styles.failureText}>{feed.error}</p>
-              <button type="button" className={styles.clear} onClick={feed.reload}>
+              <button
+                type="button"
+                className={styles.clear}
+                onClick={feed.reload}
+              >
                 Try again
               </button>
             </div>
           ) : feed.items.length === 0 ? (
-            <EmptyState filtered={filtered} onClearFilters={() => setFilters({})} />
+            <EmptyState
+              filtered={filtered}
+              onClearFilters={() => setFilters({})}
+            />
           ) : (
             <AssetGrid
               items={feed.items}
@@ -134,7 +186,11 @@ export function LibraryPage() {
         </div>
 
         {actions.error ? (
-          <UndoBar message={actions.error} tone="danger" onDismiss={actions.clearError} />
+          <UndoBar
+            message={actions.error}
+            tone="danger"
+            onDismiss={actions.clearError}
+          />
         ) : actions.pendingDelete ? (
           <UndoBar
             message="Deleted."
@@ -153,8 +209,11 @@ export function LibraryPage() {
 
       {openAsset ? (
         <DetailDrawer
-          key={openAsset.id}
           asset={openAsset}
+          position={{ index: openIndex, total: feed.items.length }}
+          hasPrev={openIndex > 0}
+          hasNext={openIndex < feed.items.length - 1 || feed.hasMore}
+          onNavigate={navigate_}
           onClose={() => setSelected(null)}
           onToggleStar={actions.toggleStar}
           onDelete={actions.remove}
