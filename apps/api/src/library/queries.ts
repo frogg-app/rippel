@@ -32,6 +32,47 @@ export const realDb: LibraryDb = { query: defaultQuery, queryOne: defaultQueryOn
 const ASSET_COLUMNS = `a.id, a.job_id, a.user_id, a.kind, a.storage_key, a.thumb_key,
                        a.width, a.height, a.duration, a.size_bytes, a.starred, a.created_at`;
 
+/**
+ * What the grid shows on a tile beyond the image itself.
+ *
+ * Denormalised into the list query rather than left to the client, because the
+ * alternative is a detail fetch per tile: a hundred-tile scroll would issue a
+ * hundred requests to render captions. The joins are left, not inner — an asset
+ * whose job row was deleted still belongs in your library.
+ */
+const TILE_COLUMNS = `j.params->>'prompt' AS prompt,
+                      m.display_name AS model_name,
+                      COALESCE(
+                        (SELECT array_agg(ca2.collection_id)
+                           FROM collection_assets ca2 WHERE ca2.asset_id = a.id),
+                        '{}'
+                      ) AS collection_ids`;
+
+const TILE_JOINS = `LEFT JOIN jobs j ON j.id = a.job_id AND j.user_id = a.user_id
+                    LEFT JOIN models m ON m.id = (j.params->>'modelId')::uuid`;
+
+/** The extra tile fields, as they come back from Postgres. */
+export interface TileRow extends AssetRow {
+  prompt: string | null;
+  model_name: string | null;
+  collection_ids: string[] | null;
+}
+
+export interface LibraryAsset extends ReturnType<typeof rowToAsset> {
+  prompt: string | null;
+  modelName: string | null;
+  collectionIds: string[];
+}
+
+export function toLibraryAsset(row: TileRow): LibraryAsset {
+  return {
+    ...rowToAsset(row),
+    prompt: row.prompt,
+    modelName: row.model_name,
+    collectionIds: row.collection_ids ?? [],
+  };
+}
+
 // ---------------------------------------------------------------- listing
 
 export interface ListAssetsFilter {
@@ -47,7 +88,7 @@ export interface ListAssetsFilter {
 }
 
 export interface AssetPage {
-  assets: Asset[];
+  assets: LibraryAsset[];
   nextCursor: string | null;
 }
 
@@ -71,9 +112,11 @@ export async function listAssets(db: LibraryDb, filter: ListAssetsFilter): Promi
     // job that produced the asset. Not search — no stemming, no ranking, no
     // index. At a few thousand images per user that is genuinely fine, and it
     // is better to say so here than to dress a LIKE up as something it isn't.
-    // The join is inner: an asset whose job row is gone has no prompt to match.
+    // No join needed: the tile columns already LEFT JOIN jobs as `j`. An asset
+    // whose job row is gone has a NULL prompt, and NULL ILIKE anything is not
+    // true, so those drop out of a search exactly as an inner join would have
+    // made them — without a second alias for the same table.
     params.push(`%${escapeLike(filter.q)}%`);
-    joins.push(`JOIN jobs j ON j.id = a.job_id AND j.user_id = $1`);
     where.push(`j.params->>'prompt' ILIKE $${params.length}`);
   }
 
@@ -101,10 +144,11 @@ export async function listAssets(db: LibraryDb, filter: ListAssetsFilter): Promi
   // COUNT, which would be stale by the time the client used it.
   params.push(filter.limit + 1);
 
-  const rows = await db.query<AssetRow>(
+  const rows = await db.query<TileRow>(
     `-- library:list-assets
-     SELECT ${ASSET_COLUMNS}
+     SELECT ${ASSET_COLUMNS}, ${TILE_COLUMNS}
        FROM assets a
+       ${TILE_JOINS}
        ${joins.join('\n       ')}
       WHERE ${where.join(' AND ')}
       ORDER BY a.created_at DESC, a.id DESC
@@ -119,7 +163,7 @@ export async function listAssets(db: LibraryDb, filter: ListAssetsFilter): Promi
       ? encodeCursor({ createdAt: new Date(last.created_at).toISOString(), id: last.id })
       : null;
 
-  return { assets: page.map(rowToAsset), nextCursor };
+  return { assets: page.map(toLibraryAsset), nextCursor };
 }
 
 /** `%` and `_` in a user's search box mean those characters, not wildcards. */
@@ -283,6 +327,35 @@ export async function softDeleteAsset(
     [assetId, userId],
   );
   return row !== null;
+}
+
+/**
+ * Undo a soft delete.
+ *
+ * The bytes were never removed — `softDeleteAsset` only stamps `deleted_at` —
+ * so this is genuinely a restore rather than a re-upload, which is what makes
+ * an undo affordance honest. Scoped to rows that *are* deleted so that
+ * restoring twice is a 404 rather than silently succeeding.
+ */
+export async function restoreAsset(
+  db: LibraryDb,
+  assetId: string,
+  userId: string,
+): Promise<LibraryAsset | null> {
+  const row = await db.queryOne<TileRow>(
+    `-- library:restore-asset
+     WITH restored AS (
+       UPDATE assets a
+          SET deleted_at = NULL
+        WHERE a.id = $1 AND a.user_id = $2 AND a.deleted_at IS NOT NULL
+        RETURNING a.*
+     )
+     SELECT ${ASSET_COLUMNS}, ${TILE_COLUMNS}
+       FROM restored a
+       ${TILE_JOINS}`,
+    [assetId, userId],
+  );
+  return row ? toLibraryAsset(row) : null;
 }
 
 // ---------------------------------------------------------------- collections

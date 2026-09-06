@@ -1,0 +1,115 @@
+.screen {
+  flex-grow: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+}
+
+.main {
+  flex-grow: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  /* The undo bar and the mock flag are absolutely positioned against this. */
+  position: relative;
+}
+
+.scroller {
+  flex-grow: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--library-pad-y) var(--gap-xl) 40px;
+  /* So the empty state can sit in the middle of the pane rather than at the
+     top of it. */
+  display: flex;
+  flex-direction: column;
+}
+
+.context {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--gap);
+  padding: 10px var(--gap-xl);
+  border-bottom: 1px solid var(--line);
+  font-size: var(--text-sm);
+  color: var(--text-3);
+}
+
+.context strong {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.clear {
+  font-size: var(--text-sm);
+  color: var(--accent);
+  transition: color var(--transition);
+}
+
+.clear:hover {
+  color: var(--accent-hover);
+}
+
+.skeletonGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(var(--library-tile-min), 1fr));
+  gap: var(--library-gap);
+}
+
+.skeleton {
+  aspect-ratio: var(--library-tile-ratio);
+  border-radius: var(--library-tile-radius);
+  background: var(--surface-2);
+  animation: breathe 1.6s var(--ease) infinite;
+}
+
+.skeleton:nth-child(2n) {
+  animation-delay: 120ms;
+}
+
+.skeleton:nth-child(3n) {
+  animation-delay: 240ms;
+}
+
+@keyframes breathe {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 0.85;
+  }
+}
+
+.failure {
+  margin: auto;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--gap-sm);
+  max-width: 360px;
+}
+
+.failureText {
+  margin: 0;
+  font-size: var(--text-base);
+  color: var(--text-3);
+}
+
+/* A dev-only marker. It has to be visible enough that nobody demos fixtures by
+   accident, and quiet enough to ignore while working. */
+.mockFlag {
+  position: absolute;
+  bottom: 10px;
+  right: 14px;
+  padding: 3px 9px;
+  border-radius: var(--radius-sm);
+  border: 1px dashed var(--line-dashed);
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  pointer-events: none;
+}

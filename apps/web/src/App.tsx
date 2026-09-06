@@ -4,6 +4,7 @@ import { RedirectIfSignedIn, RequireAuth } from './auth/RequireAuth';
 import { AppShell } from './shell/AppShell';
 import { AuthPage } from './routes/AuthPage';
 import { CreatePage } from './routes/CreatePage';
+import { LibraryPage } from './routes/LibraryPage';
 import { NotFoundPage } from './routes/NotFoundPage';
 
 /**
@@ -13,7 +14,7 @@ import { NotFoundPage } from './routes/NotFoundPage';
  *   /create             the creation surface (the default landing place)
  *   /                   → /create
  *
- * Library and Models are later phases; their tabs are visible but inert, so
+ * Models is a later phase; its tab is visible but inert, so
  * adding them later is a route and a screen, not a change to the chrome.
  */
 export function App() {
@@ -30,6 +31,7 @@ export function App() {
             <Route element={<AppShell />}>
               <Route path="/" element={<Navigate to="/create" replace />} />
               <Route path="/create" element={<CreatePage />} />
+              <Route path="/library" element={<LibraryPage />} />
               <Route path="*" element={<NotFoundPage />} />
             </Route>
           </Route>

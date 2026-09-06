@@ -18,6 +18,7 @@ import {
   addAssetToCollection,
   createCollection,
   deleteCollection,
+  restoreAsset,
   getAsset,
   getAssetJobId,
   getJobForAsset,
@@ -132,6 +133,20 @@ export default async function libraryRoutes(app: FastifyInstance) {
     const deleted = await softDeleteAsset(db, parsed.data.id, user.id);
     if (!deleted) return reply.code(404).send(notFound);
     return reply.code(204).send();
+  });
+
+  /**
+   * Undo the delete above. The row is only ever flagged, never removed, so this
+   * restores the same asset rather than producing a new one — which is what
+   * makes the grid's undo bar something other than a lie.
+   */
+  app.post('/library/assets/:id/restore', { onRequest: [app.requireAuth] }, async (req, reply) => {
+    const parsed = idParams.safeParse(req.params);
+    if (!parsed.success) return reply.code(404).send(notFound);
+
+    const asset = await restoreAsset(db, parsed.data.id, req.user!.id);
+    if (!asset) return reply.code(404).send(notFound);
+    return { asset };
   });
 
   // -------------------------------------------------------------- collections

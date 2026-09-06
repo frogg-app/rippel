@@ -107,3 +107,38 @@
   --ease: cubic-bezier(0.2, 0.6, 0.3, 1);
   --transition: 140ms var(--ease);
 }
+
+/* -------------------------------------------------- library
+   Measured off design/parts/Library.body.html: the tile grid is a 13px gutter
+   with 13px-radius tiles about 215x186 in the artboard's 1440px frame, the
+   detail drawer is a fixed 404px with a hard left shadow, and the collections
+   rail sits on the same sunken ground as the shell's nav rail. */
+:root {
+  --library-pad-y: 20px;
+  --library-gap: 13px;
+  --library-tile-min: 200px;
+  /* 215 x 186 in the artboard — the tiles keep that ratio as columns reflow. */
+  --library-tile-ratio: 215 / 186;
+  --library-tile-radius: 13px;
+  --library-rail-width: 208px;
+  --library-drawer-width: 404px;
+  --library-drawer-bg: #0e0e11;
+  --library-drawer-shadow: -24px 0 60px rgba(0, 0, 0, 0.5);
+  /* The badge over a thumbnail: dark enough to read on any image. */
+  --badge: rgba(8, 7, 10, 0.7);
+  --badge-strong: rgba(8, 7, 10, 0.86);
+
+  /* Two greys the artboards use that the text ramp above does not name: the
+     inactive segment label, and the drawer's icon row and negative prompt. */
+  --text-dim: #7a7a84;
+  --text-soft: #8d8d97;
+  --text-quiet: #83838d;
+  /* The faintest hairline in the set — only the segmented control uses it. */
+  --line-faint: rgba(255, 255, 255, 0.07);
+  /* The accent button in the drawer sits a step above --accent-tint-strong. */
+  --accent-line-strong: rgba(227, 176, 75, 0.32);
+  --accent-tint-hover: rgba(227, 176, 75, 0.22);
+  /* Things that float over the page: the collections menu, the undo bar. */
+  --shadow-pop: 0 16px 40px rgba(0, 0, 0, 0.55);
+  --shadow-float: 0 14px 40px rgba(0, 0, 0, 0.5);
+}

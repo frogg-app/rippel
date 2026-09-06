@@ -1,0 +1,114 @@
+.group {
+  margin-bottom: var(--gap-lg);
+}
+
+.heading {
+  margin: 0 0 var(--gap) 0;
+  font-weight: 400;
+}
+
+/* The artboard is a fixed four-column grid in a 1440px frame. `auto-fill` on
+   the same tile width keeps the tile *size* rather than the column count as
+   the window changes, so tiles never stretch into letterboxes on a wide
+   monitor. */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(var(--library-tile-min), 1fr));
+  gap: var(--library-gap);
+}
+
+.tile {
+  position: relative;
+  aspect-ratio: var(--library-tile-ratio);
+  border-radius: var(--library-tile-radius);
+  overflow: hidden;
+  background: var(--surface-2);
+  /* The ring is always drawn so selecting one does not resize it by 1.5px and
+     nudge the whole row. */
+  box-shadow: inset 0 0 0 1.5px transparent;
+  transition: box-shadow var(--transition), transform var(--transition);
+}
+
+.tile:hover {
+  box-shadow: inset 0 0 0 1.5px var(--line-input);
+}
+
+.tileSelected,
+.tileSelected:hover {
+  box-shadow: inset 0 0 0 1.5px var(--accent);
+}
+
+.tileButton {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+}
+
+.thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  /* Until the bytes land the tile is a flat panel, not a white flash. */
+  background: var(--surface-2);
+}
+
+.duration {
+  position: absolute;
+  top: 9px;
+  left: 9px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: var(--gap-xs);
+  background: var(--badge);
+  font-size: 10.5px;
+  color: var(--text-bright);
+  pointer-events: none;
+}
+
+.star {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--badge);
+  color: var(--text-3);
+  opacity: 0;
+  transition: opacity var(--transition), color var(--transition);
+}
+
+/* Shown on hover, on keyboard focus, and always once it is on — an invisible
+   star would make "which of these did I keep?" unanswerable at a glance. */
+.tile:hover .star,
+.star:focus-visible,
+.starOn {
+  opacity: 1;
+}
+
+.star:hover {
+  color: var(--text);
+}
+
+.starOn {
+  color: var(--accent);
+}
+
+.sentinel {
+  height: 1px;
+}
+
+.more {
+  margin: 0;
+  padding: var(--gap) 0 var(--gap-lg);
+  text-align: center;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
