@@ -244,26 +244,43 @@ export function extractModels(info: ObjectInfo): DiscoveredModel[] {
 
 /** "flux1-dev-fp8.safetensors" -> "Flux1 Dev Fp8" */
 /**
- * Words that are acronyms or product names, not English, and must not be
- * title-cased. Without this, "sd_xl_base_1.0" becomes "Sd Xl Base 1.0", which
- * reads as a typo — and it is the largest text on screen while a model loads.
+ * Filenames are not English, so title-casing them mangles the words that carry
+ * the most meaning. This is the largest text on screen while a model loads, and
+ * "Sd Xl Base 1.0" reads as a typo.
+ *
+ * Two mechanisms, because two things go wrong. Some tokens are acronyms that
+ * want full caps; some are mixed-case brand names that a blanket upper() would
+ * ruin — LoRA is not LORA. And a few names are split across tokens by the
+ * separator ("sd_xl" is one word, SDXL), so those are joined before casing.
  */
-const KEEP_UPPERCASE = new Set([
-  'sd', 'sdxl', 'xl', 'vae', 'clip', 'lora', 'ltx', 'ltxv', 't5', 'fp8', 'fp16',
-  'bf16', 'gguf', 'ip', 'esrgan', 'nsfw', 'ai', '3d', 'hd', 'v1', 'v2', 'v3',
-]);
+const CASED_TOKENS: Record<string, string> = {
+  sdxl: 'SDXL', sd: 'SD', xl: 'XL', vae: 'VAE', clip: 'CLIP', unet: 'UNet',
+  lora: 'LoRA', loras: 'LoRAs', ltx: 'LTX', ltxv: 'LTXV', t5: 'T5',
+  fp8: 'FP8', fp16: 'FP16', fp32: 'FP32', bf16: 'BF16', gguf: 'GGUF',
+  esrgan: 'ESRGAN', ip: 'IP', ai: 'AI', nsfw: 'NSFW', hd: 'HD', '3d': '3D',
+  controlnet: 'ControlNet', comfyui: 'ComfyUI', flux: 'FLUX',
+};
+
+/** Token pairs that are really one word once the separator is gone. */
+const JOINED_PAIRS: Record<string, string> = { 'sd xl': 'SDXL' };
 
 export function prettyModelName(filename: string): string {
   const base = filename.replace(/\.[^.]+$/, '').split(/[\\/]/).pop() ?? filename;
-  return base
-    .replace(/[_-]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
+  let words = base.replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
+
+  for (const [pair, joined] of Object.entries(JOINED_PAIRS)) {
+    words = words.replace(new RegExp(`\\b${pair}\\b`, 'g'), joined.toLowerCase());
+  }
+
+  return words
     .split(' ')
-    .map((word) =>
-      KEEP_UPPERCASE.has(word.toLowerCase())
-        ? word.toUpperCase()
-        : word.replace(/^\w/, (c) => c.toUpperCase()),
-    )
+    .map((word) => {
+      const known = CASED_TOKENS[word];
+      if (known) return known;
+      // "sd15", "sd21" — a version glued to an acronym, common enough to matter.
+      const versioned = /^(sd|sdxl|ltx|flux)(\d.*)$/.exec(word);
+      if (versioned) return (CASED_TOKENS[versioned[1]!] ?? versioned[1]!) + versioned[2]!;
+      return word.replace(/^\w/, (c) => c.toUpperCase());
+    })
     .join(' ');
 }

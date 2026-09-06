@@ -54,10 +54,10 @@ function queueJob(id: string, userId: string, prompt?: string) {
     finishedAt: null,
     assets: [],
   };
-  // A foreign job arrives with no `params` key at all — that absence is the
-  // contract, so the fixture reproduces it rather than sending an empty object.
+  // A foreign job arrives with `params: null` — the server withholds it in the
+  // SELECT — so the fixture reproduces that rather than an empty object.
   return prompt === undefined
-    ? job
+    ? { ...job, params: null }
     : {
         ...job,
         params: {

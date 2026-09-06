@@ -17,43 +17,32 @@
  *     live", so the store reports `live: false` and every consumer falls back to
  *     what it showed before. Nothing throws, nothing turns red, and the moment
  *     the route exists the UI lights up with no other change.
- *  2. **Another user's params are absent, not empty.** A non-admin sees a
- *     foreign entry's position and owner and nothing else — `job.params` is
- *     withheld on purpose. The type says so (`params?`), so anything that wants
- *     to render a prompt has to check first, and "undefined" can never reach the
- *     screen.
+ *  2. **Another user's params are withheld, not empty.** A non-admin sees a
+ *     foreign entry's position and owner and nothing else — `job.params` comes
+ *     back `null` on purpose. The shared type says so, so anything that wants
+ *     to render a prompt has to check first, and "undefined" can never reach
+ *     the screen.
  */
 import { useSyncExternalStore } from 'react';
-import type { GenerationParams, Job } from '@comfy/shared';
+import type { QueueEntry, QueueView } from '@comfy/shared';
 import { ApiRequestError } from './api';
 
 const BASE = '/api';
 
 /**
- * A job as the queue reports it.
+ * `QueueEntry`, `QueueJob` and `QueueView` now live in `@comfy/shared`, which
+ * is where they belong — the API and this screen have to agree about them, and
+ * a local copy is a copy that rots. Re-exported here so the components that
+ * render the queue import one module rather than two.
  *
- * `QueueEntry` is not in `@comfy/shared` yet — the API workstream owns that
- * file and is adding it. This mirrors the contract exactly, and the day the
- * shared type lands this alias is deleted in favour of importing it.
- *
- * The one shape change from `Job` is the point of the whole endpoint: `params`
- * is optional, because the contract withholds it for other people's jobs. The
- * length of the queue is not private; what somebody typed into it is.
+ * The shape that matters: `QueueJob.params` is `GenerationParams | null`, and
+ * the `null` is deliberate. A non-admin sees a foreign entry's position and
+ * owner name with its params withheld, and the type says so, so anything that
+ * wants to render a prompt has to ask first.
  */
-export type QueueJob = Omit<Job, 'params'> & { params?: GenerationParams | null };
+export type { QueueEntry, QueueJob, QueueView } from '@comfy/shared';
 
-export interface QueueEntry {
-  job: QueueJob;
-  /** Global position in the line — not `Job.queuePosition`, which is per-user. */
-  position: number;
-  ownerName: string | null;
-  ownerId: string;
-}
-
-export interface QueueSnapshot {
-  /** Waiting, in order. The running job is not among them. */
-  entries: QueueEntry[];
-  running: QueueEntry | null;
+export interface QueueSnapshot extends QueueView {
   /**
    * Whether the endpoint answered. `false` means we have no queue information
    * at all — either the route does not exist yet or the server is unreachable —

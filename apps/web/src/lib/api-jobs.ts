@@ -240,6 +240,144 @@ export function isFallbackFamily(
   return (capabilities.fallbackFamilies ?? []).includes(normalizeFamily(model.baseModel));
 }
 
+// ---------------------------------------------------------------- readiness
+
+/**
+ * `GET /backends/:id/readiness?modelId&capability` — can this model actually
+ * run this kind of job on this machine, and if not, what would fix it.
+ *
+ * This is the endpoint that makes the model picker honest. The capability map
+ * above is a *family* answer derived from `/workflows`, which is not built yet,
+ * so it falls back to a hardcoded mirror that knows only `txt2img` for SDXL.
+ * On a box whose other two checkpoints are video models that fallback is wrong
+ * in the most visible way possible: switch to Video and every tile says "No
+ * template" even though the server holds `txt2vid-ltxv` and would happily
+ * compile it. Readiness asks the server the exact question the user is asking
+ * — this model, this kind of job, right now — and answers with the truth,
+ * including the case that no family-level answer can express: the template
+ * exists, and something on the backend is missing or misfiled.
+ *
+ * Three outcomes, and a fourth for "we could not ask":
+ *   ready        — selectable.
+ *   blocked      — the workflow exists; the backend is not set up for it. This
+ *                  is the one worth reading, because it has a fix.
+ *   no-template  — nobody has written a graph for this family and capability.
+ *   unknown      — the endpoint is unreachable or not deployed. Callers must
+ *                  fall back to the capability map rather than blocking a model
+ *                  because we failed to ask about it.
+ */
+export type ReadinessState = 'ready' | 'blocked' | 'no-template' | 'unknown';
+
+export interface ModelReadiness {
+  state: ReadinessState;
+  /** "Text to video (LTX-Video)" — what would run, when something would. */
+  templateLabel: string | null;
+  isFallback: boolean;
+  /** One sentence naming what is wrong, for the tile's tooltip and the note. */
+  summary: string | null;
+  /** What a person would have to do about it, in the server's own words. */
+  steps: string[];
+}
+
+const UNKNOWN_READINESS: ModelReadiness = {
+  state: 'unknown',
+  templateLabel: null,
+  isFallback: false,
+  summary: null,
+  steps: [],
+};
+
+/** The slice of the readiness payload this screen reads. It sends much more. */
+interface ReadinessPayload {
+  templateLabel?: string | null;
+  isFallback?: boolean;
+  ready?: boolean;
+  requirements?: {
+    id: string;
+    label: string;
+    status?: string;
+    misfiled?: { instruction?: string } | null;
+  }[];
+  manualSteps?: string[];
+  installable?: { name?: string; filename?: string }[];
+}
+
+export const readinessApi = {
+  async get(
+    backendId: string,
+    modelId: string,
+    capability: JobKind,
+    signal?: AbortSignal,
+  ): Promise<ModelReadiness> {
+    const search = new URLSearchParams({ modelId, capability });
+    try {
+      const { readiness } = await request<{ readiness: ReadinessPayload }>(
+        `/backends/${backendId}/readiness?${search}`,
+        { signal },
+      );
+      return toReadiness(readiness);
+    } catch (error) {
+      // 400 `bad_request` is the server saying "no workflow exists for this
+      // family and capability" — a real, useful answer, not a failure. Anything
+      // else means we could not ask, which is a different thing and must not be
+      // rendered as "this model cannot do it".
+      if (error instanceof ApiRequestError && error.status === 400) {
+        return { ...UNKNOWN_READINESS, state: 'no-template', summary: error.message };
+      }
+      if (signal?.aborted) throw error;
+      return UNKNOWN_READINESS;
+    }
+  },
+};
+
+function toReadiness(payload: ReadinessPayload): ModelReadiness {
+  const templateLabel = payload.templateLabel ?? null;
+  const isFallback = payload.isFallback === true;
+  if (payload.ready) {
+    return { state: 'ready', templateLabel, isFallback, summary: null, steps: [] };
+  }
+
+  const unmet = (payload.requirements ?? []).filter(
+    (requirement) => requirement.status && requirement.status !== 'ok',
+  );
+  // The server's own instruction is always better than anything assembled
+  // here — it knows the folder, the filename and the machine.
+  const steps = [
+    ...(payload.manualSteps ?? []),
+    ...(payload.installable ?? [])
+      .map((offer) => offer.name ?? offer.filename)
+      .filter((name): name is string => Boolean(name))
+      .map((name) => `Install ${name}.`),
+  ];
+
+  return {
+    state: 'blocked',
+    templateLabel,
+    isFallback,
+    summary: unmet.length > 0 ? summarise(unmet) : 'the backend is not set up for it yet.',
+    steps,
+  };
+}
+
+/** "the checkpoint is in the wrong folder, and the T5 text encoder is missing." */
+function summarise(
+  unmet: { label: string; status?: string }[],
+): string {
+  const phrases = unmet.map((requirement) => {
+    // Mid-sentence, so the label drops its capital — unless it starts with an
+    // acronym, where lowercasing turns "T5 text encoder" into "t5 text
+    // encoder" and makes the product look like it cannot spell.
+    const label = requirement.label;
+    const what = /^[A-Z]{2,}|^[A-Z]\d/.test(label)
+      ? label
+      : label.charAt(0).toLowerCase() + label.slice(1);
+    if (requirement.status === 'misfiled') return `the ${what} is in a folder ComfyUI cannot load it from`;
+    return `the ${what} is not installed`;
+  });
+  if (phrases.length === 1) return `${phrases[0]}.`;
+  return `${phrases.slice(0, -1).join(', ')} and ${phrases[phrases.length - 1]}.`;
+}
+
 // ---------------------------------------------------------------- jobs
 
 export const jobsApi = {

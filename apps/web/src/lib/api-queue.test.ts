@@ -69,15 +69,17 @@ function entry(overrides: Partial<QueueEntry> = {}): QueueEntry {
   };
 }
 
-/** What the server sends for somebody else's job: no `params` key at all. */
+/**
+ * What the server sends for somebody else's job: the row arrives with `params`
+ * already null — a projection in the SELECT, not a field deleted afterwards.
+ */
 function foreign(): QueueEntry {
   const { job } = entry();
-  const { params: _withheld, ...withoutParams } = job;
   return {
-    position: 1,
+    position: 2,
     ownerName: 'Ada',
     ownerId: 'user-2',
-    job: { ...withoutParams, id: 'job-2', userId: 'user-2' },
+    job: { ...job, id: 'job-2', userId: 'user-2', params: null },
   };
 }
 
