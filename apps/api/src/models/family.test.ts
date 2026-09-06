@@ -14,7 +14,13 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { FAMILIES, familyFromCatalogueBase, familyFromFilename, inferFamily } from './family.js';
+import {
+  claimFromCatalogueBase,
+  FAMILIES,
+  familyFromCatalogueBase,
+  familyFromFilename,
+  inferFamily,
+} from './family.js';
 import { findTemplate, normalizeBaseModel } from '../workflows/registry.js';
 
 describe('familyFromFilename', () => {
@@ -84,6 +90,19 @@ describe('familyFromFilename', () => {
     expect(familyFromFilename('hunyuan-video-t2v-720p.safetensors')).toBe(FAMILIES.hunyuanVideo);
   });
 
+  it('does not read a T5-XXL text encoder as an SDXL model', () => {
+    // The "…XL" convention rule used to match "t5xxl", so every T5 encoder on
+    // the catalogue — 18 of the live 372 entries — came back as SDXL, and an
+    // installed t5xxl_fp16.safetensors was filed under SDXL in the models
+    // table. "XXL" there is a parameter count, not a model family.
+    expect(familyFromFilename('t5xxl_fp16.safetensors')).toBeNull();
+    expect(familyFromFilename('t5xxl_fp8_e4m3fn_scaled.safetensors')).toBeNull();
+    expect(familyFromFilename('umt5_xxl_fp16.safetensors')).toBeNull();
+    // …while the convention it exists for still works.
+    expect(familyFromFilename('juggernautXL_v9.safetensors')).toBe(FAMILIES.sdxl);
+    expect(familyFromFilename('dreamshaperXL_v21.safetensors')).toBe(FAMILIES.sdxl);
+  });
+
   it('ignores the file extension when matching', () => {
     // ".pt" and ".bin" must not become family words in their own right.
     expect(familyFromFilename('sdxl_vae.pt')).toBe(FAMILIES.sdxl);
@@ -110,6 +129,36 @@ describe('familyFromCatalogueBase', () => {
     expect(familyFromCatalogueBase('')).toBeNull();
     expect(familyFromCatalogueBase(null)).toBeNull();
     expect(familyFromCatalogueBase('something we have never heard of')).toBeNull();
+  });
+});
+
+describe('claimFromCatalogueBase', () => {
+  // `familyFromCatalogueBase` collapses three situations onto null, which is
+  // right for inference and wrong for anything that has to explain itself.
+
+  it('separates "we know it" from "it named something we do not know"', () => {
+    expect(claimFromCatalogueBase('SDXL')).toEqual({
+      kind: 'family',
+      family: FAMILIES.sdxl,
+      stated: 'SDXL',
+    });
+    // The case the Models screen was getting wrong: a real family, stated
+    // plainly, reported to the user as "we could not work out what this is".
+    expect(claimFromCatalogueBase('Stable Cascade')).toEqual({
+      kind: 'named',
+      stated: 'Stable Cascade',
+    });
+    expect(claimFromCatalogueBase('Hunyuan-DiT')).toEqual({ kind: 'named', stated: 'Hunyuan-DiT' });
+  });
+
+  it('knows the catalogue\'s non-family buckets from a family it has not met', () => {
+    expect(claimFromCatalogueBase('upscale')).toEqual({ kind: 'not-a-family', stated: 'upscale' });
+    expect(claimFromCatalogueBase('etc')).toEqual({ kind: 'not-a-family', stated: 'etc' });
+  });
+
+  it('says nothing was stated when nothing was', () => {
+    expect(claimFromCatalogueBase(null)).toEqual({ kind: 'unstated' });
+    expect(claimFromCatalogueBase('   ')).toEqual({ kind: 'unstated' });
   });
 });
 

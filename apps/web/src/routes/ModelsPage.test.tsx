@@ -21,6 +21,8 @@
  *     opening before a download rather than after one.
  *  6. An installed model that cannot run says why. Two video checkpoints sat in
  *     that list looking available while every job against them failed.
+ *  7. The open tab survives a reload, because it is in the URL. It used to be
+ *     component state, so every refresh dropped the operator back on Installed.
  *
  * Plus the admin gate, since every install route 403s for a non-admin.
  *
@@ -31,6 +33,7 @@ import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
+import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom';
 import type { User } from '@comfy/shared';
 import { AuthContext, type AuthState } from '../auth/context';
 import { ApiRequestError } from '../lib/api';
@@ -66,8 +69,42 @@ function withAuth(user: User, children: ReactNode) {
   return <AuthContext value={value}>{children}</AuthContext>;
 }
 
-function renderPage(api: ModelsApi, user: User = admin) {
-  return render(withAuth(user, <ModelsPage api={api} />));
+/**
+ * Reports the query string, and offers a Back button.
+ *
+ * The tab lives in the URL, so "did switching tabs actually navigate" is a
+ * question about the location rather than about the DOM — and pressing Back is
+ * the behaviour that motivated putting it there.
+ */
+function LocationProbe() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  return (
+    <>
+      <span data-testid="search">{location.search}</span>
+      <button type="button" onClick={() => navigate(-1)}>
+        Go back
+      </button>
+    </>
+  );
+}
+
+function renderPage(api: ModelsApi, user: User = admin, url = '/models') {
+  return render(
+    <MemoryRouter initialEntries={[url]}>
+      {withAuth(user, (
+        <>
+          <ModelsPage api={api} />
+          <LocationProbe />
+        </>
+      ))}
+    </MemoryRouter>,
+  );
+}
+
+/** The query string as the address bar would show it. */
+function search() {
+  return screen.getByTestId('search').textContent;
 }
 
 /** Wait for the initial backends+models load to land. */
@@ -266,6 +303,30 @@ describe('ModelsPage', () => {
       expect(screen.queryByRole('article', { name: 'RealESRGAN x2' })).not.toBeInTheDocument();
     });
 
+    it('opens the large rendition when the preview is clicked', async () => {
+      // Most of these images are contact sheets; the card shows one at a size
+      // where each sample is a thumbnail. The click is what makes them useful,
+      // and it must fetch the *large* rendition, not blow up the card's.
+      const api = makeStubApi();
+      renderPage(api);
+      await ready();
+      const user = await openTab(/Discover/);
+
+      const sdxl = await screen.findByRole('article', { name: 'SDXL Base 1.0' });
+      await user.click(
+        within(sdxl).getByRole('button', { name: /See the full-size preview of SDXL Base 1.0/ }),
+      );
+
+      const dialog = await screen.findByRole('dialog', { name: 'Preview of SDXL Base 1.0' });
+      expect(within(dialog).getByRole('img')).toHaveAttribute(
+        'src',
+        '/api/model-previews/2f2a1b0c9d8e7f6a5b4c?full=1',
+      );
+
+      await user.keyboard('{Escape}');
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    });
+
     it('falls back to the family gradient when a preview will not load', async () => {
       const api = makeStubApi();
       renderPage(api);
@@ -392,6 +453,60 @@ describe('ModelsPage', () => {
       // No badge on a healthy row: with one on every row the two that matter
       // would have nowhere to stand out.
       expect(screen.queryByText('Will run')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('which tab is open', () => {
+    it('opens the tab named in the URL, so a reload keeps your place', async () => {
+      const api = makeStubApi();
+      renderPage(api, admin, '/models?tab=discover');
+      await ready();
+
+      // Straight into Discover: no click, and the admin-only catalogue was
+      // fetched, which only happens on that tab.
+      expect(await screen.findByLabelText('Search the catalogue')).toBeInTheDocument();
+      expect(api.calls).toContain('catalogue');
+    });
+
+    it('puts the tab in the URL when you switch, and takes it out again', async () => {
+      const api = makeStubApi();
+      renderPage(api);
+      await ready();
+      expect(search()).toBe('');
+
+      const user = await openTab(/Discover/);
+      await waitFor(() => expect(search()).toBe('?tab=discover'));
+
+      await user.click(screen.getByRole('button', { name: /Downloads/ }));
+      await waitFor(() => expect(search()).toBe('?tab=downloads'));
+
+      // Installed is the default, and is spelled by the absence of the
+      // parameter — `/models` stays a clean URL.
+      await user.click(screen.getByRole('button', { name: /Installed/ }));
+      await waitFor(() => expect(search()).toBe(''));
+    });
+
+    it('steps back through the tabs with the browser Back button', async () => {
+      const api = makeStubApi();
+      renderPage(api);
+      await ready();
+
+      const user = await openTab(/Discover/);
+      await waitFor(() => expect(search()).toBe('?tab=discover'));
+
+      await user.click(screen.getByRole('button', { name: 'Go back' }));
+      await waitFor(() => expect(search()).toBe(''));
+      // And the screen followed the URL, not the other way round.
+      expect(screen.queryByLabelText('Search the catalogue')).not.toBeInTheDocument();
+    });
+
+    it('falls back to Installed for a tab nobody has ever heard of', async () => {
+      const api = makeStubApi();
+      renderPage(api, admin, '/models?tab=nonsense');
+      await ready();
+
+      expect(screen.queryByLabelText('Search the catalogue')).not.toBeInTheDocument();
+      expect(await screen.findByLabelText('Search installed models')).toBeInTheDocument();
     });
   });
 

@@ -77,6 +77,20 @@ export const LinkIcon = (props: IconProps) => (
   </Icon>
 );
 
+/** Closes the enlarged preview. */
+export const CloseIcon = (props: IconProps) => (
+  <Icon {...props} strokeWidth={1.9}>
+    <path d="M6 6l12 12M18 6L6 18" />
+  </Icon>
+);
+
+/** On a card whose picture can be opened: the affordance, not decoration. */
+export const ExpandIcon = (props: IconProps) => (
+  <Icon {...props} strokeWidth={1.8}>
+    <path d="M9 4H4v5M15 20h5v-5M20 9V4h-5M4 15v5h5" />
+  </Icon>
+);
+
 export const ChevronIcon = (props: IconProps) => (
   <Icon {...props} strokeWidth={1.8}>
     <path d="M6 9l6 6 6-6" />

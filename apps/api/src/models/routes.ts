@@ -118,7 +118,7 @@ export default async function modelInstallRoutes(app: FastifyInstance) {
    * are served from our own origin on purpose — the browser must never be sent
    * to huggingface.co once per tile. See metadata.ts.
    */
-  app.get<{ Params: { previewId: string } }>(
+  app.get<{ Params: { previewId: string }; Querystring: { full?: string } }>(
     '/model-previews/:previewId',
     { onRequest: [app.requireAuth] },
     async (req, reply) => {
@@ -127,12 +127,18 @@ export default async function modelInstallRoutes(app: FastifyInstance) {
       if (!/^[0-9a-f]{20}$/.test(req.params.previewId)) {
         return reply.code(404).send({ error: 'not_found', message: 'No such preview' });
       }
-      const found = await previewBytes(req.params.previewId);
+      // `?full=1` is the ~1600px rendition, fetched only when somebody opens a
+      // preview to look at it properly. The grid never asks for it: 48 cards of
+      // it would be several megabytes to show pictures at 300px.
+      const variant = req.query.full === '1' ? 'full' : 'tile';
+      const found = await previewBytes(req.params.previewId, variant);
       if (!found) return reply.code(404).send({ error: 'not_found', message: 'No such preview' });
 
       // The bytes for an id change only when the sweep re-reads the model page,
-      // which is monthly, so a long cache with a revalidation tag is right.
-      const etag = `"${req.params.previewId}-${found.fetchedAt.getTime()}"`;
+      // which is monthly, so a long cache with a revalidation tag is right. The
+      // variant is part of the tag, or a browser holding the tile would answer
+      // the enlarged request from its own cache.
+      const etag = `"${req.params.previewId}-${variant}-${found.fetchedAt.getTime()}"`;
       if (req.headers['if-none-match'] === etag) return reply.code(304).send();
 
       return reply

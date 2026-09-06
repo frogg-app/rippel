@@ -306,6 +306,15 @@ export interface ModelCatalogInfo {
   /** `/api/model-previews/<id>` on this API, or null when we found no image. */
   previewUrl: string | null;
   /**
+   * The same picture at ~1600px instead of ~640px, for a click-to-enlarge view.
+   * Worth having as its own field rather than a flag: a great many of these
+   * images are contact sheets — a 3x3 or 4x4 grid of samples — where the card
+   * only ever shows a thumbnail of a thumbnail, and enlarging is the only way
+   * to actually see what a model produces. Null when only the small rendition
+   * exists, which is how a row cached by an older build reads.
+   */
+  previewFullUrl: string | null;
+  /**
    * Where that picture came from, as a human string ("huggingface.co/x/y").
    * Shown, not linked: provenance for an image we chose out of a repo.
    */

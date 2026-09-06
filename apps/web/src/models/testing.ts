@@ -132,6 +132,7 @@ export function makeCatalogue(): ModelCatalogEntry[] {
       installed: true,
       info: {
         previewUrl: '/api/model-previews/2f2a1b0c9d8e7f6a5b4c',
+        previewFullUrl: '/api/model-previews/2f2a1b0c9d8e7f6a5b4c?full=1',
         previewFrom: 'huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/01.png',
         previewBorrowedFrom: null,
         license: 'openrail++',

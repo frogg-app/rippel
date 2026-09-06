@@ -65,9 +65,28 @@ const SWEEP_CONCURRENCY = 4;
 /** Refuse to pull an original bigger than this. Some sample GIFs are 37 MB. */
 const MAX_DOWNLOAD_BYTES = 24 * 1024 * 1024;
 
-/** The card's art band is a wide strip; 640x360 covers it at 2x on any screen. */
-const PREVIEW_WIDTH = 640;
-const PREVIEW_HEIGHT = 360;
+/**
+ * Two renditions, because a card and a proper look are different jobs.
+ *
+ * A large share of these images are **contact sheets** - a 3x3 or 4x4 grid of
+ * samples in one file - and the sources are big: mean 2449px wide across the
+ * live catalogue, up to 7955px. One 640px rendition made each cell of a 4x4
+ * grid 160 pixels, which is what "the previews are too small" actually meant;
+ * scaling the card up against a 640px cache would only have made it soft.
+ *
+ * Neither is cropped. The card crops with CSS, so the enlarged view can still
+ * show the whole sheet - cropping at store time would throw away the rows of a
+ * contact sheet permanently.
+ */
+const TILE_MAX = 640;
+const FULL_MAX = 1600;
+
+/**
+ * Bump when the rendering above changes. Rows stamped with an older revision
+ * are re-resolved by the ordinary staleness sweep; until one succeeds they keep
+ * serving the picture they have, so a deploy never blanks the grid.
+ */
+const PREVIEW_REV = 2;
 
 export interface MetaRow {
   source_key: string;
@@ -81,6 +100,8 @@ export interface MetaRow {
   preview_borrowed_from: string | null;
   preview_type: string | null;
   has_preview: boolean;
+  has_full: boolean;
+  preview_rev: number;
   error: string | null;
   fetched_at: Date;
 }
@@ -96,6 +117,9 @@ export function previewIdFor(sourceKey: string): string {
 function toInfo(row: MetaRow): ModelCatalogInfo {
   return {
     previewUrl: row.has_preview ? `/api/model-previews/${row.preview_id}` : null,
+    // Only offered when a bigger rendition really exists, so the UI can decide
+    // whether a card is worth making clickable rather than guessing.
+    previewFullUrl: row.has_full ? `/api/model-previews/${row.preview_id}?full=1` : null,
     previewFrom: row.has_preview ? row.preview_source : null,
     previewBorrowedFrom: row.has_preview ? row.preview_borrowed_from : null,
     license: row.license,
@@ -113,8 +137,10 @@ async function loadRows(keys: string[]): Promise<Map<string, MetaRow>> {
   if (keys.length === 0) return new Map();
   const rows = await query<MetaRow>(
     `SELECT source_key, preview_id, reference_url, license, downloads, likes, pipeline_tag,
-            preview_source, preview_borrowed_from, preview_type,
-            preview_bytes IS NOT NULL AS has_preview, error, fetched_at
+            preview_source, preview_borrowed_from, preview_type, preview_rev,
+            preview_bytes IS NOT NULL AS has_preview,
+            preview_full_bytes IS NOT NULL AS has_full,
+            error, fetched_at
        FROM model_catalogue_meta
       WHERE source_key = ANY($1::text[])`,
     [keys],
@@ -123,6 +149,10 @@ async function loadRows(keys: string[]): Promise<Map<string, MetaRow>> {
 }
 
 function isStale(row: MetaRow): boolean {
+  // A row rendered by an older pipeline is stale however recently it was
+  // written: that is how a change to the rendition sizes reaches rows that are
+  // otherwise good for another month.
+  if (row.preview_rev < PREVIEW_REV && !row.error) return true;
   const age = Date.now() - row.fetched_at.getTime();
   return row.error ? age > RETRY_MS : age > FRESH_MS;
 }
@@ -250,7 +280,7 @@ async function resolveOne(ref: SourceRef): Promise<boolean> {
 
   // Three attempts, not one: the top-ranked candidate is sometimes a link to a
   // file that has been deleted, or an LFS pointer that serves as text/plain.
-  let preview: { bytes: Buffer; from: string } | null = null;
+  let preview: Preview | null = null;
   for (const candidate of candidates.slice(0, 3)) {
     preview = await downloadPreview(candidate);
     if (preview) break;
@@ -276,7 +306,15 @@ async function resolveOne(ref: SourceRef): Promise<boolean> {
  * served with a 200, a 37 MB animated GIF, a file sharp cannot decode — and all
  * of it means "try the next candidate", never "fail the entry".
  */
-async function downloadPreview(url: string): Promise<{ bytes: Buffer; from: string } | null> {
+interface Preview {
+  /** ~640px, for the card in a grid of hundreds. */
+  tile: Buffer;
+  /** ~1600px, fetched only when somebody clicks to enlarge one. */
+  full: Buffer;
+  from: string;
+}
+
+async function downloadPreview(url: string): Promise<Preview | null> {
   try {
     const res = await fetch(url, {
       headers: { 'user-agent': 'comfy-studio/0.1 (self-hosted)' },
@@ -291,14 +329,16 @@ async function downloadPreview(url: string): Promise<{ bytes: Buffer; from: stri
     const original = Buffer.from(await res.arrayBuffer());
     if (original.byteLength === 0 || original.byteLength > MAX_DOWNLOAD_BYTES) return null;
 
-    const bytes = await sharp(original, { animated: false })
-      // `attention` crops towards the busiest region, which on a sample sheet
-      // is the picture rather than the whitespace around it.
-      .resize(PREVIEW_WIDTH, PREVIEW_HEIGHT, { fit: 'cover', position: 'attention' })
-      .webp({ quality: 76 })
-      .toBuffer();
+    // `withoutEnlargement` so a small original stays its own size rather than
+    // being blown up into a blur; `inside` so nothing is cropped away.
+    const render = (max: number, quality: number) =>
+      sharp(original, { animated: false })
+        .resize(max, max, { fit: 'inside', withoutEnlargement: true })
+        .webp({ quality })
+        .toBuffer();
 
-    return { bytes, from: hostAndPath(url) };
+    const [tile, full] = await Promise.all([render(TILE_MAX, 72), render(FULL_MAX, 78)]);
+    return { tile, full, from: hostAndPath(url) };
   } catch {
     return null;
   }
@@ -321,7 +361,7 @@ async function store(params: {
   downloads?: number | null;
   likes?: number | null;
   pipelineTag?: string | null;
-  preview?: { bytes: Buffer; from: string } | null;
+  preview?: Preview | null;
   borrowedFrom?: string | null;
   error?: string | null;
 }): Promise<void> {
@@ -329,8 +369,9 @@ async function store(params: {
   await query(
     `INSERT INTO model_catalogue_meta
        (source_key, preview_id, reference_url, license, downloads, likes, pipeline_tag,
-        preview_source, preview_borrowed_from, preview_bytes, preview_type, error, fetched_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, now())
+        preview_source, preview_borrowed_from, preview_bytes, preview_type, error, fetched_at,
+        preview_full_bytes, preview_full_type, preview_rev)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, now(), $13, $14, $15)
      ON CONFLICT (source_key) DO UPDATE SET
        reference_url = EXCLUDED.reference_url,
        license = EXCLUDED.license,
@@ -346,6 +387,16 @@ async function store(params: {
          ELSE model_catalogue_meta.preview_borrowed_from END,
        preview_bytes = COALESCE(EXCLUDED.preview_bytes, model_catalogue_meta.preview_bytes),
        preview_type = COALESCE(EXCLUDED.preview_type, model_catalogue_meta.preview_type),
+       preview_full_bytes = COALESCE(EXCLUDED.preview_full_bytes, model_catalogue_meta.preview_full_bytes),
+       preview_full_type = COALESCE(EXCLUDED.preview_full_type, model_catalogue_meta.preview_full_type),
+       -- Stamped on every successful read of the model page, not only when new
+       -- bytes arrived. A repo that simply has no image would otherwise stay
+       -- permanently stale and be re-fetched on every single catalogue read —
+       -- 62 of the live catalogue's 130 model pages are in exactly that state.
+       -- The cost is that a row whose image has since 404'd keeps serving the
+       -- rendition it already had until the ordinary 30-day refresh; a slightly
+       -- small picture is a much better failure than a fetch storm.
+       preview_rev = EXCLUDED.preview_rev,
        error = EXCLUDED.error,
        fetched_at = now()`,
     [
@@ -358,28 +409,46 @@ async function store(params: {
       params.pipelineTag ?? null,
       preview?.from ?? null,
       params.borrowedFrom ?? null,
-      preview?.bytes ?? null,
+      preview?.tile ?? null,
       preview ? 'image/webp' : null,
       params.error ?? null,
+      preview?.full ?? null,
+      preview ? 'image/webp' : null,
+      PREVIEW_REV,
     ],
   );
 }
 
-/** The bytes behind `/api/model-previews/:id`, or null. */
+/**
+ * The bytes behind `/api/model-previews/:id`, or null.
+ *
+ * `full` asks for the large rendition and falls back to the tile rather than
+ * 404ing: a row written before the second rendition existed still has a picture
+ * worth showing, and an empty lightbox is a worse answer than a small one.
+ */
 export async function previewBytes(
   previewId: string,
+  variant: 'tile' | 'full' = 'tile',
 ): Promise<{ bytes: Buffer; contentType: string; fetchedAt: Date } | null> {
-  const rows = await query<{ preview_bytes: Buffer; preview_type: string | null; fetched_at: Date }>(
-    `SELECT preview_bytes, preview_type, fetched_at
+  const rows = await query<{
+    preview_bytes: Buffer;
+    preview_type: string | null;
+    preview_full_bytes: Buffer | null;
+    preview_full_type: string | null;
+    fetched_at: Date;
+  }>(
+    `SELECT preview_bytes, preview_type, preview_full_bytes, preview_full_type, fetched_at
        FROM model_catalogue_meta
       WHERE preview_id = $1 AND preview_bytes IS NOT NULL`,
     [previewId],
   );
   const row = rows[0];
   if (!row) return null;
+
+  const full = variant === 'full' && row.preview_full_bytes ? row.preview_full_bytes : null;
   return {
-    bytes: row.preview_bytes,
-    contentType: row.preview_type ?? 'image/webp',
+    bytes: full ?? row.preview_bytes,
+    contentType: (full ? row.preview_full_type : row.preview_type) ?? 'image/webp',
     fetchedAt: row.fetched_at,
   };
 }

@@ -185,17 +185,95 @@
   color: var(--accent-deep);
 }
 
+/* -------------------------------------------------- enlarged preview */
+
+.lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(8, 7, 11, 0.86);
+  backdrop-filter: blur(3px);
+}
+
+.lightboxInner {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: min(1600px, 94vw);
+  max-height: 92vh;
+}
+
+.lightboxBar {
+  display: flex;
+  align-items: center;
+  gap: var(--gap);
+}
+
+.lightboxName {
+  margin: 0;
+  flex-grow: 1;
+  font-size: var(--text-md);
+  color: var(--text-bright);
+}
+
+.lightboxClose {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius);
+  border: 1px solid var(--line-strong);
+  color: var(--text-2);
+  transition: color var(--transition), border-color var(--transition);
+}
+
+.lightboxClose:hover {
+  color: var(--text-bright);
+  border-color: var(--accent-line);
+}
+
+/* The image, at whatever size fits — never stretched past its own pixels, so a
+   small sample stays sharp instead of being blown up to fill the screen. */
+.lightboxImage {
+  min-height: 0;
+  max-width: 100%;
+  max-height: 82vh;
+  object-fit: contain;
+  border-radius: var(--radius-md);
+  background: #0f0d14;
+}
+
+.lightboxSource {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--text-4);
+  word-break: break-word;
+}
+
 /* -------------------------------------------------- catalogue grid */
 
+/* Wider than the token's 244px, and deliberately so: these cards carry a
+   photograph now, and a large share of those photographs are contact sheets —
+   a 3x3 or 4x4 grid of samples in one image. At 244px each sample in a 4x4 was
+   about 55 pixels. 320px is roughly the widest that still gives four columns on
+   a 1440px pane, and the click-to-enlarge covers the rest. */
 .grid {
+  --models-card-min: 320px;
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(var(--models-card-min), 1fr));
   gap: var(--models-gap);
   align-content: start;
 }
 
+/* Roughly a card with a picture on it: a skeleton much shorter than what
+   replaces it makes the whole grid jump when the catalogue lands. */
 .skeleton {
-  height: 190px;
+  height: 320px;
   border-radius: var(--models-card-radius);
   background: var(--surface-1);
   border: 1px solid var(--line);
@@ -222,13 +300,59 @@
   flex-shrink: 0;
 }
 
-/* A card that has a real preview earns a taller band. The 84px in tokens.css is
-   sized for a gradient, which carries a family and nothing else; a photograph
-   at 84px in a 244px column is a letterbox slit. Only cards with an image pay
-   the extra height, so a grid of text encoders stays as compact as it was. */
+/* A card that has a real preview earns a much taller band. The 84px in
+   tokens.css is sized for a gradient, which carries a family and nothing else;
+   a photograph at 84px is a letterbox slit. An aspect ratio rather than a fixed
+   height, so the band grows with the column and a sample sheet gets as much
+   room as the layout can give it. Only cards with an image pay for this, so a
+   grid of text encoders stays as compact as it was. */
 .cardArtPhoto {
-  height: 132px;
+  height: auto;
+  aspect-ratio: 16 / 10;
   background: #0f0d14;
+}
+
+/* The whole band is the control when there is a bigger rendition to open. */
+.cardArtButton {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  cursor: zoom-in;
+  overflow: hidden;
+}
+
+.cardArtButton .cardImage {
+  transition: transform var(--transition);
+}
+
+.cardArtButton:hover .cardImage,
+.cardArtButton:focus-visible .cardImage {
+  transform: scale(1.03);
+}
+
+/* The affordance. Faint until the card is under the pointer: on a grid of
+   hundreds it would otherwise be a hundred competing icons. */
+.cardExpand {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-sm);
+  background: rgba(12, 10, 16, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: rgba(255, 255, 255, 0.82);
+  opacity: 0;
+  transition: opacity var(--transition);
+}
+
+.cardArtButton:hover .cardExpand,
+.cardArtButton:focus-visible .cardExpand {
+  opacity: 1;
 }
 
 .cardImage {
@@ -336,13 +460,14 @@
   color: var(--text-4);
 }
 
+/* No clamp. The line-clamp that used to be here cut the caption mid-word —
+   "…the generic Stable-Diffusion gra…" — which reads as a rendering bug rather
+   than as a sentence. The captions are written short instead (median 57
+   characters against the live catalogue), so at most one card in a row grows a
+   line, and every one of them can be read to the end. */
 .verdictText {
   color: var(--text-muted);
   line-height: 1.45;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
 }
 
 .verdict_good .verdictChip {

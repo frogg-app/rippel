@@ -49,6 +49,7 @@
  *    fail-open rule preflight uses, for the same reason.
  */
 
+import type { CatalogueBaseClaim } from './family.js';
 import type {
   JobKind,
   MissingCompanion,
@@ -61,7 +62,7 @@ import type { ObjectInfo } from '../lib/comfy.js';
 import { checkGraph } from '../orchestrator/preflight.js';
 import type { ComfyApiGraph, WorkflowTemplate } from '../workflows/types.js';
 import { capabilityOffersFor, findTemplateById } from '../workflows/registry.js';
-import { inferFamily } from './family.js';
+import { claimFromCatalogueBase, inferFamily } from './family.js';
 import { folderForType } from './installs.js';
 
 /**
@@ -122,11 +123,11 @@ function listWords(items: string[]): string {
 
 /** What a support file is for, in the words a person would use. */
 const SUPPORT_WORDS: Partial<Record<ModelType, string>> = {
-  lora: 'A LoRA: it adapts a checkpoint you already have rather than generating on its own.',
-  vae: 'A VAE: a workflow uses it to decode latents, in place of the one inside a checkpoint.',
-  controlnet: 'A ControlNet: it steers a checkpoint from a reference image.',
-  upscaler: 'An upscaling model, used by an upscale workflow rather than a generation one.',
-  clip: 'A text encoder: some model families need one alongside their weights.',
+  lora: 'Adapts a checkpoint rather than generating on its own.',
+  vae: 'Decodes latents, in place of the VAE inside a checkpoint.',
+  controlnet: 'Steers a checkpoint from a reference image.',
+  upscaler: 'Used by an upscale workflow rather than a generation one.',
+  clip: 'A text encoder, for the model families that need one alongside their weights.',
 };
 
 export interface RunnabilityInput {
@@ -228,6 +229,43 @@ export function runnabilityFor(input: RunnabilityInput): ModelRunnability {
     };
   }
 
+  // The catalogue states a family for every row it offers, and that statement
+  // is the best evidence there is about a file nobody has downloaded yet. If we
+  // cannot place it, the answer is "we have no workflow for a Stable Cascade
+  // model" — *not* "we do not know what this is, here is the generic
+  // Stable-Diffusion graph". The generic graph exists for unrecognised SD
+  // merges; a model whose own row says PixArt or Hunyuan-DiT is not one, and
+  // running it through CheckpointLoaderSimple would fail after the download.
+  //
+  // Measured on the live 372-entry catalogue before this gate existed: 19
+  // entries — Stable Cascade, SUPIR, Hunyuan-DiT, DynamiCrafter, Depth-FM,
+  // MotionCtrl, ToonCrafter, OmniGen2, PixArt-Sigma, Segmind Vega — were being
+  // promised a generic run. None of them would have run.
+  //
+  // A `named` base overrules the filename, which is the whole point of calling
+  // the catalogue authoritative. "LTX-2 19B" contains the letters "ltx", so the
+  // filename rules place it in the LTX-Video family and it was being measured
+  // against our LTX-Video 0.9 graph — a different node set for a different
+  // model. Its row says LTX-2, and we have no LTX-2 workflow.
+  //
+  // This cannot misfire on an installed model: there the base we pass is
+  // `models.base_model`, which is either one of our own canonical spellings
+  // (`family`) or absent (`unstated`), so neither branch below is reachable and
+  // an unrecognised community merge still gets the generic graph.
+  const claim = claimFromCatalogueBase(input.catalogueBase);
+  if (claim.kind === 'named' || (family === null && claim.kind === 'not-a-family')) {
+    return {
+      ...base,
+      status: 'no-workflow',
+      capabilities: [],
+      summary: 'No workflow for this yet',
+      detail:
+        claim.kind === 'named'
+          ? `No ${claim.stated} workflow yet — this studio cannot generate with one.`
+          : 'No workflow for this kind of checkpoint yet.',
+    };
+  }
+
   const offers = capabilityOffersFor(family);
   if (offers.length === 0) {
     return {
@@ -235,7 +273,7 @@ export function runnabilityFor(input: RunnabilityInput): ModelRunnability {
       status: 'no-workflow',
       capabilities: [],
       summary: 'No workflow for this yet',
-      detail: `${familyWords(family)} needs a graph of its own, and this studio does not ship one — so installing it would not make it usable.`,
+      detail: `No ${displayFamily(family, claim)} workflow yet — this studio cannot generate with one.`,
     };
   }
 
@@ -263,7 +301,18 @@ export function runnabilityFor(input: RunnabilityInput): ModelRunnability {
       // not installed yet — that is the whole point of the screen — so its
       // absence proves nothing. For a file already on disk it proves a great
       // deal: this loader cannot see it.
-      if (input.installed && result.missingFiles.some(isSlot)) notVisibleTo = slot.nodeClass;
+      //
+      // Except that the two sides spell the same file differently. A catalogue
+      // row names `sd_xl_base_1.0.safetensors`; ComfyUI, which installed it
+      // into `checkpoints/SDXL`, lists `SDXL\sd_xl_base_1.0.safetensors`. An
+      // exact-match miss on an installed entry was therefore telling the user
+      // that the one checkpoint on the box that definitely works could not be
+      // seen. So a miss only counts when the loader offers nothing with the
+      // same basename either.
+      const slotMiss = result.missingFiles.find(isSlot);
+      if (input.installed && slotMiss && !offersBasename(slotMiss.available, input.filename)) {
+        notVisibleTo = slot.nodeClass;
+      }
 
       missing = result.missingFiles
         .filter((file) => !isSlot(file))
@@ -299,7 +348,7 @@ export function runnabilityFor(input: RunnabilityInput): ModelRunnability {
         status: 'unknown',
         capabilities,
         summary: 'Probably runs — could not check',
-        detail: `There is ${clean.every((attempt) => attempt.isFallback) ? 'a generic workflow' : 'a workflow'} for ${words} here, but ${input.backendName} could not be asked whether it has the other files that workflow needs.`,
+        detail: `Good for ${words}, if ${input.backendName} has the other files that workflow needs — it was offline, so we could not check.`,
       };
     }
     const authored = clean.some((attempt) => !attempt.isFallback);
@@ -308,11 +357,13 @@ export function runnabilityFor(input: RunnabilityInput): ModelRunnability {
       status: authored ? 'ready' : 'generic',
       capabilities,
       summary: authored ? 'Will run' : 'Will run, on a generic workflow',
+      // About the model, not about us. The old version of the second line
+      // explained our own inference — "we could not work out what family this
+      // is" — which told the reader nothing they could use and was, on 19 of
+      // the 372 catalogue entries, not even true.
       detail: authored
-        ? `${familyWords(family)}, with a workflow written for it. Good for ${words} on ${input.backendName}.`
-        : family
-          ? `No workflow is written for ${familyName(family)} specifically, so this runs on the generic Stable-Diffusion graph — the right nodes, untuned settings. Good for ${words}.`
-          : `We could not work out what family this is, so it runs on the generic Stable-Diffusion graph — which is right for most checkpoints and wrong for a video or FLUX one. Good for ${words}.`,
+        ? `Runs on the ${displayFamily(family, claim)} workflow — ${words}.`
+        : `Runs on the generic Stable Diffusion workflow — ${words}.`,
     };
   }
 
@@ -328,9 +379,8 @@ export function runnabilityFor(input: RunnabilityInput): ModelRunnability {
       capabilities,
       summary: input.installed ? 'On disk, but the workflow cannot see it' : 'Lands in the wrong folder',
       detail: mismatch
-        ? `This file ${input.installed ? 'sits in' : 'installs into'} ComfyUI's "${input.folder}" folder, but the ${familyAdjective(family)} workflow loads it with ${mismatch.loader}, which only reads "${mismatch.wants}". ` +
-          `Moving it into "${mismatch.wants}" on ${input.backendName} is what makes it usable.`
-        : `${input.backendName} has this file, but does not offer it to ${invisible} — the loader the ${familyAdjective(family)} workflow uses. It is filed in a folder that loader does not read, so it needs moving rather than downloading again.`,
+        ? `Installs into "${input.folder}", but the workflow loads it from "${mismatch.wants}" — it would have to be moved there afterwards.`
+        : `On the machine, but in a folder ${invisible} does not read — it needs moving, not downloading again.`,
     };
   }
 
@@ -341,7 +391,7 @@ export function runnabilityFor(input: RunnabilityInput): ModelRunnability {
       status: 'needs-companion',
       capabilities,
       summary: 'Needs a custom node',
-      detail: `The ${familyAdjective(family)} workflow uses the "${blocked.missingNodeClass}" node, which ${input.backendName} does not have. It is a custom node and has to be installed there.`,
+      detail: `Its workflow uses the "${blocked.missingNodeClass}" node, which is not installed on ${input.backendName}.`,
     };
   }
   if (blocked) {
@@ -353,7 +403,7 @@ export function runnabilityFor(input: RunnabilityInput): ModelRunnability {
       capabilities,
       missing: blocked.missing,
       summary: 'Needs another model first',
-      detail: `The ${familyAdjective(family)} workflow also needs ${first!.purpose ? `a ${first!.purpose}, "${first!.filename}"` : `"${first!.filename}"`}${more}, which ${input.backendName} cannot load.`,
+      detail: `Also needs ${first!.purpose ? `a ${first!.purpose}, ${first!.filename}` : first!.filename}${more}, which ${input.backendName} does not have.`,
     };
   }
 
@@ -362,8 +412,26 @@ export function runnabilityFor(input: RunnabilityInput): ModelRunnability {
     status: 'unknown',
     capabilities,
     summary: 'Cannot tell',
-    detail: `There is a workflow for this, but ${input.backendName} could not be asked what it can load.`,
+    detail: `There is a workflow for it, but ${input.backendName} could not be asked what it can load.`,
   };
+}
+
+/** Last path segment, either separator: the backend may be a Windows box. */
+function basename(path: string): string {
+  return path.split(/[\\/]/).pop() ?? path;
+}
+
+/**
+ * Does this loader offer the same file under a folder-qualified name?
+ *
+ * Only ever asked about a file we already know is on the machine — see the note
+ * at the call site. Two different files sharing a basename in two subfolders
+ * would both be loadable anyway, so the looser match cannot invent visibility
+ * that is not there.
+ */
+function offersBasename(available: string[], filename: string): boolean {
+  const target = basename(filename).toLowerCase();
+  return available.some((option) => basename(option).toLowerCase() === target);
 }
 
 /**
@@ -412,25 +480,19 @@ function familyName(family: string): string {
   return FAMILY_NAMES[family] ?? family;
 }
 
-/** "An SDXL", "A FLUX.1". Sounded out, not spelled out: SDXL reads as "ess". */
-function withArticle(name: string): string {
-  return /^[AEIOUFHLMNRSX]/i.test(name[0] ?? '') && name.toUpperCase() === name
-    ? `An ${name}`
-    : /^[aeiou]/i.test(name)
-      ? `An ${name}`
-      : `A ${name}`;
-}
-
-/** Subject of a sentence: "An SDXL model", or the honest thing when we cannot tell. */
-function familyWords(family: string | null): string {
-  return family
-    ? `${withArticle(familyName(family))} model`
-    : 'A model whose family we could not work out';
-}
-
-/** Adjective before "workflow": "the SDXL workflow", "the generic workflow". */
-function familyAdjective(family: string | null): string {
-  return family ? familyName(family) : 'generic';
+/**
+ * What to call this model's family in a sentence, best evidence first: our own
+ * canonical name if we placed it, otherwise the word the catalogue used
+ * ("Stable Cascade"), otherwise nothing worth saying.
+ *
+ * The catalogue's own spelling is deliberately preferred over silence: it is
+ * what the row says, it is what the user sees in the family filter, and it is a
+ * fact about the model rather than a report on our inference.
+ */
+function displayFamily(family: string | null, claim: CatalogueBaseClaim): string {
+  if (family) return familyName(family);
+  if (claim.kind === 'named' || claim.kind === 'family') return claim.stated;
+  return 'generic Stable Diffusion';
 }
 
 /** For the UI's filter: the statuses that mean "this is usable as it stands". */

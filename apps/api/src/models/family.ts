@@ -111,7 +111,14 @@ const RULES: readonly Rule[] = [
   { family: FAMILIES.sdxl, pattern: /\bxl (base|refiner)\b/, strength: 'strong' },
   // The community convention of suffixing the merge name: juggernautXL,
   // dreamshaperXL. Weak: it is only ever two letters at the end of a word.
-  { family: FAMILIES.sdxl, pattern: /\b[a-z0-9]+xl\b/, strength: 'weak' },
+  //
+  // The `[^x]` before the `xl` is load-bearing, not tidiness. Without it this
+  // matched **"t5xxl"** — the T5-XXL text encoder, whose "XXL" is a parameter
+  // count — and every T5 file on the catalogue was being classified as an SDXL
+  // model. 18 of the live catalogue's 372 entries hit that, and an installed
+  // `t5xxl_fp16.safetensors` was filed under SDXL in the models table. No real
+  // XL merge ends in "xxl", so excluding that one letter costs nothing.
+  { family: FAMILIES.sdxl, pattern: /\b[a-z0-9]*[^x\s]xl\b/, strength: 'weak' },
 
   { family: FAMILIES.sdxlTurbo, pattern: /\bsdxl (turbo|lightning)\b/, strength: 'strong' },
   // "turbo" on its own is not enough — SD-Turbo is an SD 2.1 distillation, so
@@ -299,6 +306,50 @@ export function familyFromFilename(filename: string): ModelFamily | null {
 export function familyFromCatalogueBase(base: string | null | undefined): ModelFamily | null {
   if (!base) return null;
   return CATALOGUE_BASES[normalizeBaseModel(base)] ?? null;
+}
+
+/**
+ * What a catalogue's `base` string is *claiming*, rather than what we can do
+ * with it.
+ *
+ * `familyFromCatalogueBase` collapses three different situations onto `null`,
+ * and for inference that is right — all three mean "fall through to the
+ * filename". For talking to a person they are completely different:
+ *
+ *   family        we recognise it: "SDXL" -> sdxl.
+ *   named         it names a family we have never heard of: "Stable Cascade",
+ *                 "Hunyuan-DiT", "SUPIR". This is a *statement about the
+ *                 model*, and treating it as "we do not know what this is" was
+ *                 a real bug — on the live catalogue 19 entries were told they
+ *                 would run on the generic Stable-Diffusion graph, with the
+ *                 caption "we could not work out what family this is", when
+ *                 their own catalogue row said Stable Cascade or PixArt and
+ *                 none of them would have run at all.
+ *   not-a-family  ComfyUI-Manager files things under `base: "upscale"`, "etc",
+ *                 "clip". The row is telling us it is not a generative family.
+ *   unstated      no base at all. The only case where guessing is appropriate.
+ *
+ * Deliberately a separate function rather than a change to `inferFamily`:
+ * inference feeds `models.base_model`, and making a stated-but-unknown base
+ * *veto* a good filename guess there would reclassify installed files. The
+ * distinction is only wanted where we are about to write a sentence.
+ */
+export type CatalogueBaseClaim =
+  | { kind: 'family'; family: ModelFamily; stated: string }
+  | { kind: 'named'; stated: string }
+  | { kind: 'not-a-family'; stated: string }
+  | { kind: 'unstated' };
+
+export function claimFromCatalogueBase(base: string | null | undefined): CatalogueBaseClaim {
+  const stated = base?.trim();
+  if (!stated) return { kind: 'unstated' };
+
+  const key = normalizeBaseModel(stated);
+  if (Object.hasOwn(CATALOGUE_BASES, key)) {
+    const family = CATALOGUE_BASES[key];
+    return family ? { kind: 'family', family, stated } : { kind: 'not-a-family', stated };
+  }
+  return { kind: 'named', stated };
 }
 
 /**

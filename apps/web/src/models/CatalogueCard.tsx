@@ -14,6 +14,12 @@
  * floor, and it is also what a broken image falls back to. A grid where a third
  * of the tiles are broken icons is worse than a grid with no pictures at all.
  *
+ * A card with a picture is **clickable**. Many of these images are contact
+ * sheets — a 3x3 or 4x4 grid of samples in one file — where even an enlarged
+ * card shows each sample at thumbnail size; the API keeps a second, ~1600px
+ * rendition for that click, so opening one is a real gain in detail rather than
+ * the card's own image scaled up.
+ *
  * ## The verdict
  *
  * Every card says whether this file would actually run on the selected backend,
@@ -43,8 +49,9 @@ import {
   formatCount,
   isLive,
 } from './catalogue';
-import { CheckIcon, DownloadCountIcon, InstallIcon, LinkIcon } from './icons';
+import { CheckIcon, DownloadCountIcon, ExpandIcon, InstallIcon, LinkIcon } from './icons';
 import { InstallProgress } from './InstallProgress';
+import { PreviewLightbox } from './PreviewLightbox';
 import styles from './ModelsPanels.module.css';
 
 export interface CatalogueCardProps {
@@ -77,45 +84,70 @@ export function CatalogueCard({
   // A cached preview can still 404 — the row was written before someone
   // cleared the table, say. One failure per card, then the gradient.
   const [imageBroken, setImageBroken] = useState(false);
+  const [enlarged, setEnlarged] = useState(false);
   const preview = imageBroken ? null : entry.info?.previewUrl ?? null;
+  // Rows cached by an earlier build have only the small rendition; those cards
+  // simply are not clickable rather than opening a picture no bigger than the
+  // one already on screen.
+  const full = preview ? entry.info?.previewFullUrl ?? null : null;
 
   const verdict = entry.runnability;
   const info = entry.info;
 
+  const art = (
+    <>
+      {preview ? (
+        <img
+          className={styles.cardImage}
+          src={preview}
+          // Decorative: the model's name is right underneath it, and a
+          // description of somebody's sample render helps nobody.
+          alt=""
+          loading="lazy"
+          decoding="async"
+          onError={() => setImageBroken(true)}
+        />
+      ) : null}
+      <span className={styles.cardType}>{TYPE_LABELS[entry.type].toUpperCase()}</span>
+      {done ? (
+        <span className={styles.cardInstalled}>
+          <CheckIcon size={10} /> Installed
+        </span>
+      ) : null}
+      {full ? (
+        <span className={styles.cardExpand} aria-hidden>
+          <ExpandIcon size={13} />
+        </span>
+      ) : null}
+    </>
+  );
+
+  const artClass = `${styles.cardArt} ${preview ? styles.cardArtPhoto : ''}`;
+  const artStyle = preview
+    ? undefined
+    : {
+        // Two stops off one hue, in the artboard's radial treatment.
+        background: `radial-gradient(120% 100% at 32% 24%, hsl(${hue} 62% 62%) 0%, hsl(${
+          (hue + 28) % 360
+        } 48% 28%) 55%, #0f0d14 100%)`,
+      };
+
   return (
     <article className={`${styles.card} ${live ? styles.cardBusy : ''}`} aria-label={entry.name}>
-      <div
-        className={`${styles.cardArt} ${preview ? styles.cardArtPhoto : ''}`}
-        style={
-          preview
-            ? undefined
-            : {
-                // Two stops off one hue, in the artboard's radial treatment.
-                background: `radial-gradient(120% 100% at 32% 24%, hsl(${hue} 62% 62%) 0%, hsl(${
-                  (hue + 28) % 360
-                } 48% 28%) 55%, #0f0d14 100%)`,
-              }
-        }
-      >
-        {preview ? (
-          <img
-            className={styles.cardImage}
-            src={preview}
-            // Decorative: the model's name is right underneath it, and a
-            // description of somebody's sample render helps nobody.
-            alt=""
-            loading="lazy"
-            decoding="async"
-            onError={() => setImageBroken(true)}
-          />
-        ) : null}
-        <span className={styles.cardType}>{TYPE_LABELS[entry.type].toUpperCase()}</span>
-        {done ? (
-          <span className={styles.cardInstalled}>
-            <CheckIcon size={10} /> Installed
-          </span>
-        ) : null}
-      </div>
+      {full ? (
+        <button
+          type="button"
+          className={`${artClass} ${styles.cardArtButton}`}
+          onClick={() => setEnlarged(true)}
+          aria-label={`See the full-size preview of ${entry.name}`}
+        >
+          {art}
+        </button>
+      ) : (
+        <div className={artClass} style={artStyle}>
+          {art}
+        </div>
+      )}
 
       <div className={styles.cardBody}>
         <div className={styles.cardHead}>
@@ -207,6 +239,16 @@ export function CatalogueCard({
           </p>
         ) : null}
       </div>
+
+      {enlarged && full ? (
+        <PreviewLightbox
+          name={entry.name}
+          src={full}
+          from={info?.previewFrom ?? null}
+          borrowedFrom={info?.previewBorrowedFrom ?? null}
+          onClose={() => setEnlarged(false)}
+        />
+      ) : null}
     </article>
   );
 }

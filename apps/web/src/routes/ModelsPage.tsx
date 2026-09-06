@@ -19,6 +19,11 @@
  *  - 42 base families is a select, not a chip row. See FilterBar.
  *
  * Route: `/models`, inside the `RequireAuth` + `AppShell` block in App.tsx.
+ * Which tab is open lives in the query string — `/models?tab=discover` — not in
+ * component state and not in localStorage. A reload keeps the tab you were on,
+ * the back button steps back through the tabs you opened, and a tab worth
+ * returning to can be pasted to somebody else. A bare `/models` is still valid
+ * and opens Installed, and so does a `tab` value that means nothing.
  *
  * Reading the installed list is open to any signed-in user; the catalogue and
  * every install route are admin-only. A non-admin therefore gets a working
@@ -26,6 +31,7 @@
  * catalogue would be, rather than a 403 that reaches the console.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import type { ModelCatalogEntry, ModelType, Uuid } from '@comfy/shared';
 import { useAuth } from '../auth/context';
 import { modelsApi, type ModelsApi } from '../lib/api-models';
@@ -55,6 +61,16 @@ import styles from './ModelsPage.module.css';
 
 type Tab = 'installed' | 'discover' | 'downloads';
 
+const TABS: readonly Tab[] = ['installed', 'discover', 'downloads'];
+
+/** The default, and the one spelling that is left out of the URL entirely. */
+const DEFAULT_TAB: Tab = 'installed';
+
+function tabFromParams(params: URLSearchParams): Tab {
+  const asked = params.get('tab');
+  return TABS.includes(asked as Tab) ? (asked as Tab) : DEFAULT_TAB;
+}
+
 export interface ModelsPageProps {
   /** Injected in tests. Production always uses the live client. */
   api?: ModelsApi;
@@ -65,7 +81,29 @@ export function ModelsPage({ api = modelsApi }: ModelsPageProps = {}) {
   const isAdmin = user?.role === 'admin';
 
   const library = useModelLibrary(api);
-  const [tab, setTab] = useState<Tab>('installed');
+
+  const [params, setParams] = useSearchParams();
+  const tab = tabFromParams(params);
+  const setTab = useCallback(
+    (next: Tab) => {
+      setParams(
+        (current) => {
+          const updated = new URLSearchParams(current);
+          // Installed is the default, so it is expressed by the absence of the
+          // parameter: `/models` and `/models?tab=installed` are the same page,
+          // and the plain URL is the one worth having in the address bar.
+          if (next === DEFAULT_TAB) updated.delete('tab');
+          else updated.set('tab', next);
+          return updated;
+        },
+        // A push, not a replace: switching tab is a navigation the user means,
+        // and Back returning to the tab they came from is the whole point.
+        { replace: false },
+      );
+    },
+    [setParams],
+  );
+
   const [backendId, setBackendId] = useState<Uuid | null>(null);
 
   // Default to the backend the shell's pill would show: an online one first,

@@ -86,7 +86,7 @@ describe('runnabilityFor', () => {
       folder: 'loras',
     });
     expect(verdict.status).toBe('support');
-    expect(verdict.detail).toContain('adapts a checkpoint');
+    expect(verdict.detail).toContain('Adapts a checkpoint');
     expect(isUsable(verdict.status)).toBe(false);
   });
 
@@ -134,8 +134,9 @@ describe('runnabilityFor', () => {
       folder: 'diffusion_models',
     });
     expect(verdict.status).toBe('wrong-folder');
+    // Names both folders, which is the whole remedy — and says nothing about
+    // node classes, which mean nothing to the person reading the card.
     expect(verdict.detail).toContain('diffusion_models');
-    expect(verdict.detail).toContain('CheckpointLoaderSimple');
     expect(verdict.detail).toContain('checkpoints');
   });
 
@@ -152,7 +153,7 @@ describe('runnabilityFor', () => {
     });
     expect(verdict.status).toBe('wrong-folder');
     expect(verdict.summary).toBe('On disk, but the workflow cannot see it');
-    expect(verdict.detail).toContain('needs moving rather than downloading again');
+    expect(verdict.detail).toContain('needs moving, not downloading again');
   });
 
   it('is happy about an SDXL checkpoint the backend already offers', () => {
@@ -179,7 +180,13 @@ describe('runnabilityFor', () => {
     });
     expect(verdict.status).toBe('generic');
     expect(verdict.family).toBeNull();
-    expect(verdict.detail).toContain('generic Stable-Diffusion graph');
+    // What it will do, not what we failed to work out. The old caption here
+    // read "We could not work out what family this is…", which explained our
+    // inference to somebody who only wanted to know whether to download it.
+    expect(verdict.detail).toBe(
+      'Runs on the generic Stable Diffusion workflow — text-to-image and image-to-image.',
+    );
+    expect(verdict.detail).not.toMatch(/could not work out|we /i);
   });
 
   it('degrades to "cannot tell" instead of guessing when the backend is unreadable', () => {
@@ -192,7 +199,7 @@ describe('runnabilityFor', () => {
       folder: 'checkpoints',
     });
     expect(verdict.status).toBe('unknown');
-    expect(verdict.detail).toContain('could not be asked');
+    expect(verdict.detail).toContain('could not check');
   });
 
   it('still answers the static questions with no backend at all', () => {
@@ -240,5 +247,87 @@ describe('runnabilityFor', () => {
     });
     expect(verdict.status).toBe('ready');
     expect(verdict.capabilities).toEqual(expect.arrayContaining(['txt2vid', 'img2vid']));
+  });
+
+  // ------------------------------------------------------------------------
+  // The catalogue states a family for every row. Believing it is the whole
+  // fix: on the live 372-entry catalogue, 19 checkpoints whose own row said
+  // Stable Cascade, SUPIR, Hunyuan-DiT, PixArt, OmniGen2 (and five others)
+  // were being offered the generic Stable-Diffusion graph and captioned "we
+  // could not work out what family this is". None of them would have run.
+
+  it('believes a family it has never heard of rather than calling it unknown', () => {
+    const verdict = runnabilityFor({
+      ...base,
+      filename: 'stable_cascade_stage_b.safetensors',
+      type: 'checkpoint',
+      catalogueBase: 'Stable Cascade',
+      folder: 'checkpoints',
+    });
+    expect(verdict.status).toBe('no-workflow');
+    // The model's own word for itself, not ours.
+    expect(verdict.detail).toBe('No Stable Cascade workflow yet — this studio cannot generate with one.');
+    expect(verdict.detail).not.toMatch(/could not work out/i);
+  });
+
+  it('lets a stated family overrule a filename that merely looks familiar', () => {
+    // "ltx-2-19b-dev" contains "ltx", so the filename rules place it in the
+    // LTX-Video family — a different generation with a different node set. The
+    // row says LTX-2, and we have no LTX-2 graph.
+    const verdict = runnabilityFor({
+      ...base,
+      filename: 'ltx-2-19b-dev-fp8.safetensors',
+      type: 'checkpoint',
+      catalogueBase: 'LTX-2',
+      folder: 'checkpoints',
+    });
+    expect(verdict.status).toBe('no-workflow');
+    expect(verdict.detail).toContain('LTX-2');
+  });
+
+  it('still guesses for an installed model with no stated family at all', () => {
+    // The veto above must not reach the installed list, where a null base is
+    // an ordinary community merge and the generic graph is the right answer.
+    const verdict = runnabilityFor({
+      ...base,
+      installed: true,
+      filename: 'someones_merge_v3.safetensors',
+      type: 'checkpoint',
+      catalogueBase: null,
+      folder: null,
+      info: objectInfo({ checkpoints: ['someones_merge_v3.safetensors'], clips: [] }),
+    });
+    expect(verdict.status).toBe('generic');
+  });
+
+  it('does not accuse the backend of hiding a file it lists under a subfolder', () => {
+    // A catalogue row names `sd_xl_base_1.0.safetensors`; ComfyUI, having put
+    // it in checkpoints/SDXL, lists `SDXL\\sd_xl_base_1.0.safetensors`. Matching
+    // those exactly reported the one working checkpoint on the box as invisible.
+    const verdict = runnabilityFor({
+      ...base,
+      installed: true,
+      filename: 'sd_xl_base_1.0.safetensors',
+      type: 'checkpoint',
+      catalogueBase: 'SDXL',
+      folder: 'checkpoints',
+    });
+    expect(verdict.status).toBe('ready');
+  });
+
+  it('keeps every caption short enough to read whole', () => {
+    // The card clamps nothing, so a caption that runs long simply makes one
+    // card taller than its neighbours. 160 characters is about three lines.
+    const captions = [
+      runnabilityFor({ ...base, filename: 'a.safetensors', type: 'lora', catalogueBase: 'SDXL', folder: 'loras' }),
+      runnabilityFor({ ...base, filename: 'svd_xt.safetensors', type: 'checkpoint', catalogueBase: 'SVD', folder: 'checkpoints' }),
+      runnabilityFor({ ...base, filename: 'ltx-video-2b-v0.9.1.safetensors', type: 'checkpoint', catalogueBase: 'LTXV', folder: 'checkpoints' }),
+      runnabilityFor({ ...base, filename: 'x.safetensors', type: 'checkpoint', catalogueBase: 'SD1.x', folder: 'diffusion_models' }),
+      runnabilityFor({ ...base, filename: 'SDXL\\sd_xl_base_1.0.safetensors', type: 'checkpoint', catalogueBase: 'SDXL', folder: null, installed: true }),
+    ];
+    for (const verdict of captions) {
+      expect(verdict.detail!.length).toBeLessThanOrEqual(160);
+      expect(verdict.detail).not.toMatch(/could not work out what family/i);
+    }
   });
 });
