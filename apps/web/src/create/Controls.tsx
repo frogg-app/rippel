@@ -7,11 +7,11 @@
  * native elements and keyboard and screen-reader behaviour is not achievable
  * without them.
  */
-import type { CSSProperties, ReactNode } from "react";
-import { useId, useState } from "react";
-import { createPortal } from "react-dom";
-import { ChevronDownIcon } from "../components/icons";
-import styles from "./controls.module.css";
+import type { CSSProperties, ReactNode } from 'react';
+import { useId, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { ChevronDownIcon } from '../components/icons';
+import styles from './controls.module.css';
 
 // ---------------------------------------------------------------- group
 
@@ -78,13 +78,13 @@ export function Segmented<T extends string>({
       // The sliding thumb is positioned from these two numbers in CSS, so it
       // glides between segments rather than switching.
       style={
-        { "--seg-i": activeIndex, "--seg-n": options.length } as CSSProperties
+        { '--seg-i': activeIndex, '--seg-n': options.length } as CSSProperties
       }
       onKeyDown={(event) => {
-        if (event.key === "ArrowRight" || event.key === "ArrowDown") {
+        if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
           event.preventDefault();
           move(1);
-        } else if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
+        } else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
           event.preventDefault();
           move(-1);
         }
@@ -158,6 +158,70 @@ export function Chips<T extends string>({
  * itself (`--fill`), so there is no second element to keep in sync with the
  * thumb.
  */
+// ---------------------------------------------------------------- reset
+
+/**
+ * "Use preset": the way back from a pinned value. The slot is always
+ * rendered so that pinning a value changes nothing about the layout — the
+ * button merely becomes visible. A control that grew a line when touched
+ * pushed everything under it down, which is exactly the wrong moment to move
+ * the thing the user is dragging.
+ */
+export interface ResetSlot {
+  active: boolean;
+  onReset: () => void;
+  /** What is being handed back, for the accessible name. */
+  label: string;
+}
+
+function Reset({
+  reset,
+  compact = false,
+}: {
+  reset: ResetSlot;
+  compact?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      className={[
+        styles.reset,
+        compact ? styles.resetCompact : '',
+        reset.active ? styles.resetOn : '',
+      ]
+        .filter(Boolean)
+        .join(' ')}
+      onClick={reset.onReset}
+      aria-label={`Use the quality preset's ${reset.label}`}
+      aria-hidden={!reset.active}
+      tabIndex={reset.active ? 0 : -1}
+      title="Use preset"
+    >
+      <ResetIcon />
+      {compact ? null : 'Use preset'}
+    </button>
+  );
+}
+
+function ResetIcon() {
+  return (
+    <svg
+      width="11"
+      height="11"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M3 12a9 9 0 1 0 3-6.7" />
+      <path d="M3 4v5h5" />
+    </svg>
+  );
+}
+
 // ---------------------------------------------------------------- hint
 
 /**
@@ -219,7 +283,7 @@ export function Hint({ text, id }: { text: ReactNode; id?: string }) {
       >
         ?
       </button>
-      {typeof document === "undefined"
+      {typeof document === 'undefined'
         ? null
         : createPortal(
             <span
@@ -252,6 +316,7 @@ export function Slider({
   ends,
   valueText,
   hint,
+  reset,
   onChange,
 }: {
   label: string;
@@ -274,6 +339,8 @@ export function Slider({
    */
   valueText?: string;
   hint?: string;
+  /** A way back to the preset, shown in the rail's centre once pinned. */
+  reset?: ResetSlot;
   onChange: (value: number) => void;
 }) {
   const id = useId();
@@ -304,7 +371,7 @@ export function Slider({
         className={
           accent ? `${styles.range} ${styles.rangeAccent}` : styles.range
         }
-        style={{ "--fill": `${fill}%` } as CSSProperties}
+        style={{ '--fill': `${fill}%` } as CSSProperties}
         min={min}
         max={max}
         step={step}
@@ -315,10 +382,11 @@ export function Slider({
       />
       {/* The rail's ends, named. A slider with no labelled extremes asks the
           user to discover which way is "more" by dragging it and regenerating. */}
-      {ends ? (
-        <div className={styles.ends} aria-hidden>
-          <span>{ends[0]}</span>
-          <span>{ends[1]}</span>
+      {ends || reset ? (
+        <div className={styles.ends}>
+          <span aria-hidden>{ends?.[0] ?? ''}</span>
+          {reset ? <Reset reset={reset} /> : null}
+          <span aria-hidden>{ends?.[1] ?? ''}</span>
         </div>
       ) : null}
     </div>
@@ -343,7 +411,7 @@ function selectOptions(
   options: readonly (string | SelectOption)[],
 ): SelectOption[] {
   return options.map((option) =>
-    typeof option === "string" ? { value: option, label: option } : option,
+    typeof option === 'string' ? { value: option, label: option } : option,
   );
 }
 
@@ -353,6 +421,7 @@ export function Select({
   options,
   description,
   wide = false,
+  reset,
   onChange,
 }: {
   label: string;
@@ -362,6 +431,7 @@ export function Select({
   description?: string;
   /** Stack the label above a full-width control, for long option text. */
   wide?: boolean;
+  reset?: ResetSlot;
   onChange: (value: string) => void;
 }) {
   const id = useId();
@@ -376,6 +446,7 @@ export function Select({
           {label}
         </label>
         {description ? <Hint id={descriptionId} text={description} /> : null}
+        {reset ? <Reset reset={reset} compact /> : null}
       </span>
       <div
         className={

@@ -31,11 +31,11 @@
  * by default, owned by the quality preset — which is exactly what they were
  * already, only now the screen says so.
  */
-import { useEffect, useId, useRef, useState } from "react";
-import type { LoraSelection, Model, QualityPreset } from "@comfy/shared";
-import { ChevronDownIcon, PlusIcon } from "../components/icons";
-import { Hint, IconButton, Row, Select, Slider } from "./Controls";
-import { CloseIcon, DiceIcon, LockIcon, RemixIcon, UnlockIcon } from "./icons";
+import { useEffect, useId, useRef, useState } from 'react';
+import type { LoraSelection, Model, QualityPreset } from '@comfy/shared';
+import { ChevronDownIcon, PlusIcon } from '../components/icons';
+import { Hint, IconButton, Row, Select, Slider } from './Controls';
+import { CloseIcon, DiceIcon, LockIcon, UnlockIcon } from './icons';
 import {
   type AdvancedState,
   PRESET_DEFAULTS,
@@ -49,8 +49,8 @@ import {
   samplerOptions,
   schedulerOptions,
   stepsReading,
-} from "./form";
-import styles from "./advanced.module.css";
+} from './form';
+import styles from './advanced.module.css';
 
 export function AdvancedDrawer({
   open,
@@ -101,9 +101,9 @@ export function AdvancedDrawer({
     clicked.current = false;
     const card = cardRef.current;
     // jsdom has no scrollIntoView; the tests open this drawer constantly.
-    if (!card || typeof card.scrollIntoView !== "function") return;
+    if (!card || typeof card.scrollIntoView !== 'function') return;
     const frame = requestAnimationFrame(() => {
-      card.scrollIntoView({ block: "start", behavior: "smooth" });
+      card.scrollIntoView({ block: 'start', behavior: 'smooth' });
     });
     return () => cancelAnimationFrame(frame);
   }, [open]);
@@ -151,67 +151,67 @@ export function AdvancedDrawer({
             <p className={styles.presetText}>
               {changed === 0 ? (
                 <>
-                  Everything here is following the{" "}
-                  <strong>{QUALITY_LABELS[quality]}</strong> preset. Change one
-                  and it stays where you put it.
+                  Following the <strong>{QUALITY_LABELS[quality]}</strong>{' '}
+                  preset.
                 </>
               ) : (
                 <>
-                  {changed === 1 ? "One setting is" : `${changed} settings are`}{" "}
-                  pinned to your own value. The rest follow the{" "}
-                  <strong>{QUALITY_LABELS[quality]}</strong> preset.
+                  {changed === 1 ? 'One setting' : `${changed} settings`} pinned;
+                  the rest follow <strong>{QUALITY_LABELS[quality]}</strong>.
                 </>
               )}
             </p>
-            {changed > 0 ? (
-              <button
-                type="button"
-                className={styles.resetAll}
-                onClick={() => onChange(resetAdvanced(value))}
-              >
-                Use the preset for everything
-              </button>
-            ) : null}
+            <button
+              type="button"
+              className={
+                changed > 0
+                  ? `${styles.resetAll} ${styles.resetAllOn}`
+                  : styles.resetAll
+              }
+              onClick={() => onChange(resetAdvanced(value))}
+              aria-hidden={changed === 0}
+              tabIndex={changed > 0 ? 0 : -1}
+            >
+              Reset all
+            </button>
           </div>
 
-          <Overridable
-            overridden={value.guidance !== null}
-            onReset={() => set("guidance", null)}
-            label="prompt faithfulness"
-          >
-            <Slider
-              label="Follow the prompt"
-              min={1}
-              max={20}
-              step={0.5}
-              value={guidance}
-              reading={guidanceWords.word}
-              display={guidance.toFixed(1)}
-              ends={["Freer", "More literal"]}
-              valueText={`${guidanceWords.word}, ${guidance.toFixed(1)} of 20`}
-              hint={guidanceWords.hint}
-              onChange={(next) => set("guidance", Number(next.toFixed(1)))}
-            />
-          </Overridable>
+          <Slider
+            reset={{
+              active: value.guidance !== null,
+              onReset: () => set('guidance', null),
+              label: 'prompt faithfulness',
+            }}
+            label="Follow the prompt"
+            min={1}
+            max={20}
+            step={0.5}
+            value={guidance}
+            reading={guidanceWords.word}
+            display={guidance.toFixed(1)}
+            ends={['Freer', 'More literal']}
+            valueText={`${guidanceWords.word}, ${guidance.toFixed(1)} of 20`}
+            hint={guidanceWords.hint}
+            onChange={(next) => set('guidance', Number(next.toFixed(1)))}
+          />
 
-          <Overridable
-            overridden={value.steps !== null}
-            onReset={() => set("steps", null)}
-            label="detail"
-          >
-            <Slider
-              label="Detail"
-              min={1}
-              max={80}
-              value={steps}
-              reading={stepsWords.word}
-              display={`${steps} steps`}
-              ends={["Faster", "More detail"]}
-              valueText={`${stepsWords.word}, ${steps} steps, ${stepsWords.hint}`}
-              hint={stepsWords.hint}
-              onChange={(next) => set("steps", next)}
-            />
-          </Overridable>
+          <Slider
+            reset={{
+              active: value.steps !== null,
+              onReset: () => set('steps', null),
+              label: 'detail',
+            }}
+            label="Detail"
+            min={1}
+            max={80}
+            value={steps}
+            reading={stepsWords.word}
+            display={`${steps} steps`}
+            ends={['Faster', 'More detail']}
+            valueText={`${stepsWords.word}, ${steps} steps, ${stepsWords.hint}`}
+            hint={stepsWords.hint}
+            onChange={(next) => set('steps', next)}
+          />
 
           <SeedControl value={value} onChange={onChange} />
 
@@ -230,42 +230,6 @@ export function AdvancedDrawer({
         </div>
       ) : null}
     </section>
-  );
-}
-
-/**
- * A control the user can pin, and the way back.
- *
- * The reset used to read "preset", which is a noun with no verb: it told you
- * where you would land, not that clicking would move you. "Use preset" is the
- * action, and the title says which control it applies to for a screen reader
- * hearing several of them in a row.
- */
-function Overridable({
-  overridden,
-  onReset,
-  label,
-  children,
-}: {
-  overridden: boolean;
-  onReset: () => void;
-  label: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className={styles.overridable}>
-      {children}
-      {overridden ? (
-        <button
-          type="button"
-          className={styles.reset}
-          onClick={onReset}
-          aria-label={`Use the quality preset's ${label}`}
-        >
-          <RemixIcon size={11} /> Use preset
-        </button>
-      ) : null}
-    </div>
   );
 }
 
@@ -302,18 +266,18 @@ function SeedControl({
         </span>
         <IconButton
           title="Roll a new starting number"
-          onClick={() => set("seed", randomSeed())}
+          onClick={() => set('seed', randomSeed())}
         >
           <DiceIcon size={14} />
         </IconButton>
         <IconButton
           title={
             value.seedLocked
-              ? "Seed locked — the next image reuses this number"
-              : "Lock the seed so the next image reuses this number"
+              ? 'Seed locked — the next image reuses this number'
+              : 'Lock the seed so the next image reuses this number'
           }
           on={value.seedLocked}
-          onClick={() => set("seedLocked", !value.seedLocked)}
+          onClick={() => set('seedLocked', !value.seedLocked)}
         >
           {value.seedLocked ? <LockIcon size={13} /> : <UnlockIcon size={13} />}
         </IconButton>
@@ -323,8 +287,8 @@ function SeedControl({
           and its title carry the state on screen. */}
       <p className={styles.srOnly} aria-live="polite">
         {value.seedLocked
-          ? "Locked: the next image reuses this number, so anything you change is the only difference."
-          : "Unlocked: a new number each time, so every Generate is a fresh image."}
+          ? 'Locked: the next image reuses this number, so anything you change is the only difference.'
+          : 'Unlocked: a new number each time, so every Generate is a fresh image.'}
       </p>
     </div>
   );
@@ -387,7 +351,7 @@ function ExpertSettings({
           text={
             <>
               The maths used to turn noise into an image. It changes texture,
-              not subject, and the <strong>{QUALITY_LABELS[quality]}</strong>{" "}
+              not subject, and the <strong>{QUALITY_LABELS[quality]}</strong>{' '}
               preset already picks a pair that works. Nothing here is a mistake
               to leave alone.
             </>
@@ -397,34 +361,32 @@ function ExpertSettings({
 
       {open ? (
         <div className={styles.expertBody} id={bodyId}>
-          <Overridable
-            overridden={value.sampler !== null}
-            onReset={() => set("sampler", null)}
-            label="sampler"
-          >
-            <Select
-              wide
-              label="Sampler"
-              value={sampler}
-              options={samplerOptions(sampler)}
-              onChange={(next) => set("sampler", next)}
-            />
-          </Overridable>
+          <Select
+            reset={{
+              active: value.sampler !== null,
+              onReset: () => set('sampler', null),
+              label: 'sampler',
+            }}
+            wide
+            label="Sampler"
+            value={sampler}
+            options={samplerOptions(sampler)}
+            onChange={(next) => set('sampler', next)}
+          />
 
-          <Overridable
-            overridden={value.scheduler !== null}
-            onReset={() => set("scheduler", null)}
-            label="noise schedule"
-          >
-            <Select
-              wide
-              label="Noise schedule"
-              value={scheduler}
-              options={schedulerOptions(scheduler)}
-              description="How quickly noise is removed across those steps."
-              onChange={(next) => set("scheduler", next)}
-            />
-          </Overridable>
+          <Select
+            reset={{
+              active: value.scheduler !== null,
+              onReset: () => set('scheduler', null),
+              label: 'noise schedule',
+            }}
+            wide
+            label="Noise schedule"
+            value={scheduler}
+            options={schedulerOptions(scheduler)}
+            description="How quickly noise is removed across those steps."
+            onChange={(next) => set('scheduler', next)}
+          />
         </div>
       ) : null}
     </div>
@@ -466,8 +428,8 @@ function LoraPicker({
           <Hint
             text={
               models.length === 0
-                ? "Add-on styles you install show up here, on top of whichever model you pick."
-                : "Trained looks you can mix on top of the model — a film stock, an illustrator, a subject."
+                ? 'Add-on styles you install show up here, on top of whichever model you pick.'
+                : 'Trained looks you can mix on top of the model — a film stock, an illustrator, a subject.'
             }
           />
         </span>
@@ -514,8 +476,8 @@ function LoraPicker({
               <button
                 type="button"
                 className={styles.loraRemove}
-                title={`Remove ${model?.displayName ?? "this style"}`}
-                aria-label={`Remove ${model?.displayName ?? "this style"}`}
+                title={`Remove ${model?.displayName ?? 'this style'}`}
+                aria-label={`Remove ${model?.displayName ?? 'this style'}`}
                 onClick={() => onChange(loras.filter((_, i) => i !== index))}
               >
                 <CloseIcon size={11} />
@@ -530,7 +492,7 @@ function LoraPicker({
               value={lora.weight}
               reading={words.word}
               display={lora.weight.toFixed(2)}
-              ends={["Off", "Overdone"]}
+              ends={['Off', 'Overdone']}
               valueText={`${words.word}, ${lora.weight.toFixed(2)}`}
               hint={words.hint}
               onChange={(weight) =>

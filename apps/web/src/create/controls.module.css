@@ -403,7 +403,48 @@
   font-size: var(--text-xs);
   color: var(--text-muted);
   margin-top: -2px;
+  min-height: 16px;
 }
+
+/* ------------------------------------------------------------ reset
+   Present whether or not a value is pinned, so nothing reflows. */
+.reset {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 16px;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: var(--text-xs);
+  color: var(--accent);
+  visibility: hidden;
+  opacity: 0;
+  transform: translateY(2px);
+  transition:
+    opacity var(--dur) var(--ease-out),
+    transform var(--dur) var(--ease-out),
+    background var(--transition),
+    visibility 0s linear var(--dur);
+}
+
+.resetOn {
+  visibility: visible;
+  opacity: 1;
+  transform: none;
+  transition-delay: 0s;
+}
+
+.reset:hover {
+  background: var(--accent-tint);
+  color: var(--accent-hover);
+}
+
+.resetCompact {
+  width: 16px;
+  padding: 0;
+  justify-content: center;
+}
+
 
 /* ------------------------------------------------------------ hint
    A label with an optional "?" after it; the sentence itself lives in a
