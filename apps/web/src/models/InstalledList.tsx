@@ -20,7 +20,9 @@
  * that can says nothing — the absence of bad news is the common case and does
  * not need a badge of its own.
  */
+import { useState } from 'react';
 import type { Model, ModelRunnability, Uuid } from '@comfy/shared';
+import { CloseIcon, WorkflowIcon } from './icons';
 import {
   RUNNABILITY_LABEL,
   RUNNABILITY_TONE,
@@ -39,6 +41,10 @@ export interface InstalledListProps {
   selectedBackendId: Uuid | null;
   /** Verdict per model id. Absent ids simply get no verdict shown. */
   runnability: Record<Uuid, ModelRunnability>;
+  /** Opens the Workflows sheet for a model. */
+  onWorkflows?: (model: Model) => void;
+  /** Present for an administrator: the row offers a two-step Remove. */
+  onRemove?: (model: Model) => void;
 }
 
 export function InstalledList({
@@ -46,6 +52,8 @@ export function InstalledList({
   backendOrder,
   selectedBackendId,
   runnability,
+  onWorkflows,
+  onRemove,
 }: InstalledListProps) {
   const groups = groupInstalled(models);
 
@@ -71,6 +79,22 @@ export function InstalledList({
                   </span>
                   <RowVerdict verdict={runnability[model.id] ?? null} />
                 </div>
+                {onWorkflows || onRemove ? (
+                  <div className={styles.rowActions}>
+                    {onWorkflows ? (
+                      <button
+                        type="button"
+                        className={styles.rowAction}
+                        onClick={() => onWorkflows(model)}
+                        aria-label={`Workflows for ${model.displayName}`}
+                      >
+                        <WorkflowIcon size={13} />
+                        Workflows
+                      </button>
+                    ) : null}
+                    {onRemove ? <RemoveButton model={model} onRemove={onRemove} /> : null}
+                  </div>
+                ) : null}
                 <ul className={styles.hosts} aria-label="Backends holding this model">
                   {backendOrder
                     .filter((backend) => model.backendIds.includes(backend.id))
@@ -97,6 +121,46 @@ export function InstalledList({
         </section>
       ))}
     </div>
+  );
+}
+
+/**
+ * Remove, in two steps and in place: the first press turns the button into
+ * "Remove from rippel?" with a confirm, so a slip of the pointer over a row
+ * cannot drop a model, and no browser dialog interrupts the page.
+ */
+function RemoveButton({ model, onRemove }: { model: Model; onRemove: (model: Model) => void }) {
+  const [armed, setArmed] = useState(false);
+  if (!armed) {
+    return (
+      <button
+        type="button"
+        className={`${styles.rowAction} ${styles.rowActionQuiet}`}
+        onClick={() => setArmed(true)}
+        aria-label={`Remove ${model.displayName}`}
+      >
+        <CloseIcon size={12} />
+        Remove
+      </button>
+    );
+  }
+  return (
+    <span className={`${styles.rowConfirm} pop`} role="group" aria-label={`Remove ${model.displayName}?`}>
+      <span className={styles.rowConfirmText}>Remove from rippel?</span>
+      <button
+        type="button"
+        className={`${styles.rowAction} ${styles.rowActionDanger}`}
+        onClick={() => {
+          setArmed(false);
+          onRemove(model);
+        }}
+      >
+        Confirm
+      </button>
+      <button type="button" className={styles.rowAction} onClick={() => setArmed(false)}>
+        Keep
+      </button>
+    </span>
   );
 }
 

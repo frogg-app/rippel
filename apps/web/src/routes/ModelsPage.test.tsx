@@ -43,10 +43,14 @@ import {
   installInState,
   makeBackend,
   makeModel,
+  makeOption,
   makeRunnability,
   makeStubApi,
+  makeTemplate,
   type StubOptions,
 } from '../models/testing';
+import type { StorageApi } from '../lib/api-storage';
+import type { BackendStorage } from '@comfy/shared';
 import { ModelsPage } from './ModelsPage';
 
 const admin: User = {
@@ -89,12 +93,12 @@ function LocationProbe() {
   );
 }
 
-function renderPage(api: ModelsApi, user: User = admin, url = '/models') {
+function renderPage(api: ModelsApi, user: User = admin, url = '/models', storageApi?: StorageApi) {
   return render(
     <MemoryRouter initialEntries={[url]}>
       {withAuth(user, (
         <>
-          <ModelsPage api={api} />
+          <ModelsPage api={api} storageApi={storageApi} />
           <LocationProbe />
         </>
       ))}
@@ -533,6 +537,239 @@ describe('ModelsPage', () => {
 
       expect(await screen.findByRole('heading', { name: 'Backend is offline' })).toBeInTheDocument();
       expect(api.calls).not.toContain('catalogue');
+    });
+  });
+
+  describe('storage', () => {
+    const JOB = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    const listing = (): BackendStorage => ({
+      helper: 'ok',
+      input: {
+        totalBytes: 3_000_000,
+        files: [
+          {
+            path: '0123456789abcdef0123456789abcdef.png',
+            size: 2_000_000,
+            modifiedAt: '2026-09-06T10:00:00Z',
+            owner: { id: 'u-steve', email: 'steve@st3v3.com', displayName: 'Steve' },
+            uploadId: 'up-1',
+          },
+          { path: 'probe.png', size: 1_000_000, modifiedAt: '2026-09-01T10:00:00Z', owner: null },
+        ],
+      },
+      output: {
+        totalBytes: 5_000_000,
+        files: [
+          {
+            path: `image/${JOB}/ComfyUI_00001_.png`,
+            size: 5_000_000,
+            modifiedAt: '2026-09-06T11:00:00Z',
+            owner: { id: 'u-bob', email: 'bob@example.com', displayName: null },
+            jobId: JOB,
+            assetId: 'asset-1',
+          },
+        ],
+      },
+    });
+
+    function stubStorage(data: BackendStorage, opts: { removeError?: Error } = {}) {
+      const removed: Array<{ folder: string; paths: string[] }> = [];
+      const api: StorageApi & { removed: typeof removed } = {
+        removed,
+        list: async () => data,
+        remove: async (_id, folder, paths) => {
+          removed.push({ folder, paths });
+          if (opts.removeError) throw opts.removeError;
+          return { deleted: paths, missing: [] };
+        },
+      };
+      return api;
+    }
+
+    it('is not offered to a non-admin at all', async () => {
+      renderPage(makeStubApi(), { ...admin, role: 'user' }, '/models', stubStorage(listing()));
+      await ready();
+      expect(screen.queryByRole('button', { name: /Storage/ })).not.toBeInTheDocument();
+    });
+
+    it('lists both folders by owner, with the untracked pile last', async () => {
+      renderPage(makeStubApi(), admin, '/models', stubStorage(listing()));
+      await ready();
+      await openTab(/Storage/);
+
+      const inputs = await screen.findByRole('region', { name: 'Inputs' });
+      expect(within(inputs).getByText('Steve')).toBeInTheDocument();
+      expect(within(inputs).getByText('Not tracked by rippel')).toBeInTheDocument();
+      expect(within(inputs).getByText('2 files · 3.0 MB')).toBeInTheDocument();
+
+      const outputs = screen.getByRole('region', { name: 'Outputs' });
+      expect(within(outputs).getByText('bob@example.com')).toBeInTheDocument();
+      expect(within(outputs).getByRole('link', { name: 'in library' })).toBeInTheDocument();
+    });
+
+    it('removes a selection only on the second press, and drops the rows', async () => {
+      const storage = stubStorage(listing());
+      renderPage(makeStubApi(), admin, '/models', storage);
+      await ready();
+      const user = await openTab(/Storage/);
+
+      const inputs = await screen.findByRole('region', { name: 'Inputs' });
+      await user.click(within(inputs).getByLabelText('Select probe.png'));
+
+      const remove = within(inputs).getByRole('button', { name: /^Remove 1 file from desktop-6900xt/ });
+      await user.click(remove);
+      // Armed, not done: nothing has been sent yet.
+      expect(storage.removed).toHaveLength(0);
+      await user.click(within(inputs).getByRole('button', { name: /^Confirm: remove 1 file/ }));
+
+      await waitFor(() => expect(storage.removed).toEqual([{ folder: 'input', paths: ['probe.png'] }]));
+      expect(within(inputs).queryByText('probe.png')).not.toBeInTheDocument();
+      expect(within(inputs).getByText('1 file · 2.0 MB')).toBeInTheDocument();
+    });
+
+    it('puts the rows back and says so when the helper refuses', async () => {
+      const storage = stubStorage(listing(), { removeError: new ApiRequestError(502, 'helper_offline', 'The backend did not answer.') });
+      renderPage(makeStubApi(), admin, '/models', storage);
+      await ready();
+      const user = await openTab(/Storage/);
+
+      const inputs = await screen.findByRole('region', { name: 'Inputs' });
+      await user.click(within(inputs).getByLabelText("Select all of Steve’s inputs"));
+      await user.click(within(inputs).getByRole('button', { name: /^Remove 1 file/ }));
+      await user.click(within(inputs).getByRole('button', { name: /^Confirm/ }));
+
+      expect(await screen.findByRole('status')).toHaveTextContent('The backend did not answer.');
+      expect(within(inputs).getByText('0123456789abcdef0123456789abcdef.png')).toBeInTheDocument();
+    });
+
+    it('explains the install when the helper is missing', async () => {
+      const empty = { totalBytes: 0, files: [] };
+      renderPage(makeStubApi(), admin, '/models', stubStorage({ helper: 'missing', input: empty, output: empty }));
+      await ready();
+      await openTab(/Storage/);
+
+      expect(
+        await screen.findByRole('heading', { name: /storage helper is not installed on desktop-6900xt/ }),
+      ).toBeInTheDocument();
+      expect(screen.getByText('tools/comfyui-rippel-storage')).toBeInTheDocument();
+      expect(screen.getByText('RIPPEL_STORAGE_TOKEN')).toBeInTheDocument();
+    });
+  });
+
+  describe('workflows per model', () => {
+    const ltx = makeModel({
+      id: 'ltx',
+      displayName: 'LTX-Video 2B',
+      filename: 'ltx-video-2b-v0.9.1.safetensors',
+      baseModel: 'ltx-video',
+    });
+    const dm = makeTemplate({
+      id: 'txt2vid-ltxv-dm',
+      label: 'Text to video (LTX-Video, diffusion_models)',
+      capability: 'txt2vid',
+      baseModels: ['ltx-video', 'ltxv'],
+      loaderFolder: 'diffusion_models',
+      loaderFolders: ['diffusion_models', 'text_encoders', 'vae'],
+      requires: [
+        { id: 'text-encoder', label: 'T5 text encoder', modelType: 'clip', why: 'x' },
+        { id: 'vae', label: 'LTX-Video VAE', modelType: 'vae', why: 'y' },
+      ],
+      description: 'Makes a clip from a prompt on a graph written for ltx-video, loading the model from diffusion_models/.',
+    });
+    const ckpt = makeTemplate({
+      id: 'txt2vid-ltxv',
+      label: 'Text to video (LTX-Video)',
+      capability: 'txt2vid',
+      baseModels: ['ltx-video', 'ltxv'],
+      description: 'Makes a clip from a prompt on a graph written for ltx-video, loading the model from checkpoints/.',
+    });
+    const workflows = () => ({
+      ltx: {
+        model: { id: 'ltx', displayName: 'LTX-Video 2B', filename: 'ltx-video-2b-v0.9.1.safetensors', family: 'ltx-video', folder: 'diffusion_models' },
+        backend: { id: BACKEND_ID, name: 'desktop-6900xt' },
+        assigned: {},
+        options: [
+          makeOption(ckpt, { status: 'wrong-folder', summary: 'On disk, but the workflow cannot see it', detail: 'It is in "diffusion_models", but the workflow loads it from "checkpoints" — it needs moving there, not downloading again.' }),
+          makeOption(dm, { status: 'needs-companion', summary: 'Needs another model first', detail: 'Also needs a T5 text encoder, t5xxl_fp16.safetensors and 1 other file, which desktop-6900xt does not have.' }, { automatic: true }),
+        ],
+      },
+    });
+    const installed = { models: [ltx], families: ['ltx-video'], runnability: {} };
+
+    it('opens the sheet from a row, and judges each template on its own', async () => {
+      const api = makeStubApi({ installed, workflows: workflows() });
+      renderPage(api);
+      await ready();
+      const user = await openTab(/Workflows for LTX-Video 2B/);
+
+      const sheet = await screen.findByRole('dialog', { name: 'Workflows for LTX-Video 2B' });
+      expect(within(sheet).getByText('Text to video (LTX-Video, diffusion_models)')).toBeInTheDocument();
+      // The two graphs disagree about the same file, and both verdicts show.
+      expect(within(sheet).getByText('Wrong folder')).toBeInTheDocument();
+      expect(within(sheet).getByText('Needs another model')).toBeInTheDocument();
+      expect(within(sheet).getByText('automatic')).toBeInTheDocument();
+      expect(
+        within(sheet).getByText(
+          (_, element) => element?.tagName === 'P' && /is in diffusion_models\/ on desktop-6900xt/.test(element.textContent ?? ''),
+        ),
+      ).toHaveTextContent('is in diffusion_models/');
+      expect(api.calls).toContain(`workflows:ltx:${BACKEND_ID}`);
+
+      await user.keyboard('{Escape}');
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    });
+
+    it('lets an administrator pin a template and go back to automatic', async () => {
+      const api = makeStubApi({ installed, workflows: workflows() });
+      renderPage(api);
+      await ready();
+      const user = await openTab(/Workflows for LTX-Video 2B/);
+      const sheet = await screen.findByRole('dialog', { name: 'Workflows for LTX-Video 2B' });
+
+      await user.click(within(sheet).getByRole('radio', { name: 'Pin Text to video (LTX-Video)' }));
+      await waitFor(() => expect(api.calls).toContain('assign:ltx:txt2vid:txt2vid-ltxv'));
+      expect(await within(sheet).findByText('pinned')).toBeInTheDocument();
+      expect(within(sheet).getByText('Pinned by an administrator')).toBeInTheDocument();
+
+      await user.click(within(sheet).getByRole('button', { name: 'Use automatic' }));
+      await waitFor(() => expect(api.calls).toContain('assign:ltx:txt2vid:auto'));
+      expect(await within(sheet).findByText('Chosen automatically')).toBeInTheDocument();
+    });
+
+    it('offers no pinning to a non-admin', async () => {
+      const api = makeStubApi({ installed, workflows: workflows() });
+      renderPage(api, { ...admin, role: 'user' });
+      await ready();
+      await openTab(/Workflows for LTX-Video 2B/);
+      const sheet = await screen.findByRole('dialog', { name: 'Workflows for LTX-Video 2B' });
+      expect(within(sheet).queryByRole('radio')).not.toBeInTheDocument();
+      expect(within(sheet).getByText(/Only an administrator can pin/)).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /^Remove LTX-Video 2B$/ })).not.toBeInTheDocument();
+    });
+
+    it('removes a model in two steps and repeats what the API said about the file', async () => {
+      const api = makeStubApi({ installed, workflows: workflows() });
+      renderPage(api);
+      await ready();
+      const user = await openTab(/^Remove LTX-Video 2B$/);
+      // Not yet: the first press only arms the confirm.
+      expect(api.calls.filter((call) => call.startsWith('remove:'))).toEqual([]);
+      await user.click(screen.getByRole('button', { name: 'Confirm' }));
+
+      await waitFor(() => expect(api.calls).toContain('remove:ltx'));
+      await waitFor(() => expect(screen.queryByText('LTX-Video 2B')).not.toBeInTheDocument());
+      expect(await screen.findByRole('status')).toHaveTextContent('the file is still on desktop-6900xt');
+    });
+
+    it('browses every template from the Installed panel', async () => {
+      const api = makeStubApi({ installed, workflows: workflows(), templates: [ckpt, dm] });
+      renderPage(api);
+      await ready();
+      await openTab(/Browse templates/);
+      const sheet = await screen.findByRole('dialog', { name: 'Workflow templates' });
+      expect(await within(sheet).findByText('Text to video (LTX-Video)')).toBeInTheDocument();
+      expect(within(sheet).getByText('diffusion_models/ text_encoders/ vae/')).toBeInTheDocument();
+      expect(within(sheet).getByText('T5 text encoder, LTX-Video VAE')).toBeInTheDocument();
     });
   });
 });

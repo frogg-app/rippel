@@ -847,7 +847,9 @@ describe('LTX-Video registry entries', () => {
     expect(findTemplate('txt2vid', 'sdxl')).toBeUndefined();
     expect(findTemplate('img2vid', 'sdxl')).toBeUndefined();
     expect(findTemplate('txt2img', 'ltx-video')).toBeUndefined();
-    expect(capabilitiesFor('hunyuan-video')).toEqual([]);
+    // Hunyuan Video has a txt2vid graph now, and still no image ones.
+    expect(capabilitiesFor('hunyuan-video')).toEqual(['txt2vid']);
+    expect(findTemplate('txt2img', 'hunyuan-video')).toBeUndefined();
   });
 
   it('lists no two family spellings that normalise to the same key', () => {
@@ -1095,7 +1097,7 @@ describe('generic SD fallback: what it must never touch', () => {
     }
     // LTX-Video keeps its own video templates and gains no image ones.
     expect([...capabilitiesFor('ltx-video')].sort()).toEqual(['img2vid', 'txt2vid']);
-    expect(capabilitiesFor('hunyuan-video')).toEqual([]);
+    expect(capabilitiesFor('hunyuan-video')).toEqual(['txt2vid']);
     expect(capabilitiesFor('svd')).toEqual([]);
     expect(capabilitiesFor('wan')).toEqual([]);
   });

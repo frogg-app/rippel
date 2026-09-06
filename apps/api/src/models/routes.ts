@@ -17,7 +17,8 @@ import type {
   ReadinessInstallResult,
 } from '@comfy/shared';
 import { query, queryOne } from '../db.js';
-import { findTemplate, findTemplateById } from '../workflows/registry.js';
+import { findTemplateById } from '../workflows/registry.js';
+import { chooseTemplate } from './workflow-choice.js';
 import type { WorkflowTemplate } from '../workflows/types.js';
 import { ComfyError, type ObjectInfo } from '../lib/comfy.js';
 import { objectInfoFor } from '../orchestrator/preflight.js';
@@ -499,8 +500,14 @@ async function resolveSubject(
   );
   if (!row) return { error: 'No such model', status: 404 };
 
-  const capability = (q.capability ?? 'txt2img') as Parameters<typeof findTemplate>[0];
-  const template = findTemplate(capability, row.base_model);
+  const capability = (q.capability ?? 'txt2img') as Parameters<typeof chooseTemplate>[0]['capability'];
+  const choice = await chooseTemplate({
+    modelId: row.id,
+    capability,
+    family: row.base_model,
+    filename: row.filename,
+  });
+  const template = choice?.template;
   if (!template) {
     return {
       error: `No ${capability} workflow exists for ${row.base_model ?? 'unknown'} models.`,

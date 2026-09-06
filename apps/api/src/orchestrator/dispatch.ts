@@ -14,7 +14,7 @@ import { sendStoredInitImageToBackend, withInitImage } from '../workflows/init-i
 import { withResolvedRequirements } from '../workflows/requirements.js';
 import { objectInfoFor } from './preflight.js';
 import type { ResolvedValues } from '../compiler/index.js';
-import { findTemplate } from '../workflows/registry.js';
+import { chooseTemplate } from '../models/workflow-choice.js';
 import { queryOne } from '../db.js';
 import { filenamesOn, pickBackend, type Candidate } from './select.js';
 import { preflight } from './preflight.js';
@@ -65,9 +65,9 @@ async function initImageKey(job: JobRow): Promise<string | null> {
 /** The model row a job's checkpoint comes from: its family, and what to call it. */
 async function modelOf(
   modelId: Uuid,
-): Promise<{ base_model: string | null; display_name: string } | null> {
-  return queryOne<{ base_model: string | null; display_name: string }>(
-    'SELECT base_model, display_name FROM models WHERE id = $1',
+): Promise<{ base_model: string | null; display_name: string; filename: string } | null> {
+  return queryOne<{ base_model: string | null; display_name: string; filename: string }>(
+    'SELECT base_model, display_name, filename FROM models WHERE id = $1',
     [modelId],
   );
 }
@@ -111,14 +111,22 @@ export async function dispatch(job: JobRow, clientId: string): Promise<Dispatche
     );
   }
 
-  const template = findTemplate(job.params.kind, family);
-  if (!template) {
+  // Claim a backend before choosing the graph or compiling: which template
+  // fits depends on where *this* backend has the file, and the filenames we
+  // compile in are only correct for the backend that reported them.
+  const backend = await pickBackend(job.params.modelId);
+  const choice = await chooseTemplate({
+    modelId: job.params.modelId,
+    capability: job.params.kind,
+    family,
+    filename: model?.filename ?? null,
+    info: await objectInfoFor(backend.base_url).catch(() => null),
+  });
+  if (!choice) {
     throw new DispatchError(`No ${job.params.kind} workflow exists for ${family} models.`, false);
   }
+  const { template } = choice;
 
-  // Claim a backend before compiling, because the filenames we compile into the
-  // graph are only correct for the backend that reported them.
-  const backend = await pickBackend(job.params.modelId);
   const modelIds = [job.params.modelId, ...(job.params.loras ?? []).map((l) => l.modelId)];
   const modelFilenames = await filenamesOn(backend.id, modelIds);
 

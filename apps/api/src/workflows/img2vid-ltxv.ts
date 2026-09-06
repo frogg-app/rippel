@@ -70,7 +70,7 @@ export const img2vidLtxvGraph = rawGraph as unknown as ComfyApiGraph;
  */
 export const IMG2VID_FIRST_FRAME_NODE_ID = '10';
 
-const INPUTS: readonly ManifestInput[] = [
+export const IMG2VID_LTXV_INPUTS: readonly ManifestInput[] = [
   {
     path: '4.inputs.ckpt_name',
     source: 'checkpointFilename',
@@ -211,7 +211,7 @@ export const img2vidLtxvManifest: WorkflowManifest = {
     'SaveWEBM',
   ],
   outputNodeId: '9',
-  inputs: INPUTS,
+  inputs: IMG2VID_LTXV_INPUTS,
   resolutions: LTXV_RESOLUTIONS,
   quality: LTXV_QUALITY_PRESETS,
   frameQuantum: LTXV_FRAME_QUANTUM,

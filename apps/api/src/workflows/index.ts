@@ -68,12 +68,15 @@ export {
   TEMPLATES,
   allManifests,
   buildTemplateIndex,
+  candidateTemplates,
   capabilitiesFor,
   capabilityOffersFor,
   findTemplate,
   findTemplateById,
+  knownCapabilities,
   normalizeBaseModel,
   resolveTemplate,
+  templatesFor,
 } from './registry.js';
 
 /**
@@ -115,6 +118,26 @@ export {
   img2vidLtxvManifest,
   img2vidLtxvTemplate,
 } from './img2vid-ltxv.js';
+
+export {
+  LTXV_VAE_REQUIREMENT,
+  txt2vidLtxvDmManifest,
+  txt2vidLtxvDmTemplate,
+} from './txt2vid-ltxv-dm.js';
+export { img2vidLtxvDmManifest, img2vidLtxvDmTemplate } from './img2vid-ltxv-dm.js';
+export {
+  HUNYUAN_BASE_MODELS,
+  HUNYUAN_REQUIREMENTS,
+  txt2vidHunyuanManifest,
+  txt2vidHunyuanTemplate,
+} from './txt2vid-hunyuan.js';
+export {
+  FOLDER_READ_BY,
+  checkpointSlotOf,
+  folderOfInstalled,
+  loaderFolderOf,
+  loaderFoldersOf,
+} from './folders.js';
 
 /**
  * The init-image transfer. Exported here because the orchestrator is its only

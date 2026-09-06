@@ -49,7 +49,7 @@ import {
   formatCount,
   isLive,
 } from './catalogue';
-import { CheckIcon, DownloadCountIcon, ExpandIcon, InstallIcon, LinkIcon } from './icons';
+import { CheckIcon, DownloadCountIcon, ExpandIcon, InstallIcon, LinkIcon, WorkflowIcon } from './icons';
 import { InstallProgress } from './InstallProgress';
 import { PreviewLightbox } from './PreviewLightbox';
 import { Mark } from '../components/Mark';
@@ -68,6 +68,8 @@ export interface CatalogueCardProps {
   now: number;
   /** Position in the grid, for the staggered entrance. */
   index?: number;
+  /** Opens the templates browser filtered to this entry's family. */
+  onWorkflows?: (entry: ModelCatalogEntry) => void;
 }
 
 export function CatalogueCard({
@@ -79,6 +81,7 @@ export function CatalogueCard({
   failure,
   now,
   index = 0,
+  onWorkflows,
 }: CatalogueCardProps) {
   const hue = familyHue(entry.base);
   const live = install !== null && isLive(install);
@@ -202,6 +205,17 @@ export function CatalogueCard({
           >
             <span className={styles.verdictChip}>{RUNNABILITY_LABEL[verdict.status]}</span>
             <span className={styles.verdictText}>{verdict.detail ?? verdict.summary}</span>
+            {onWorkflows && verdict.status !== 'support' ? (
+              <button
+                type="button"
+                className={styles.cardWorkflows}
+                onClick={() => onWorkflows(entry)}
+                aria-label={`Workflows for ${entry.base} models`}
+              >
+                <WorkflowIcon size={12} />
+                Workflows
+              </button>
+            ) : null}
           </p>
         ) : null}
 

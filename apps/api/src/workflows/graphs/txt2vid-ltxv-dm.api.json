@@ -1,0 +1,175 @@
+{
+  "4": {
+    "class_type": "UNETLoader",
+    "inputs": {
+      "unet_name": "ltx-video-2b-v0.9.1.safetensors",
+      "weight_dtype": "default"
+    },
+    "_meta": {
+      "title": "Load LTX-Video diffusion model"
+    }
+  },
+  "16": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "ltx-video-2b-v0.9.1-vae.safetensors"
+    },
+    "_meta": {
+      "title": "Load LTX-Video VAE"
+    }
+  },
+  "12": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "t5xxl_fp16.safetensors",
+      "type": "ltxv"
+    },
+    "_meta": {
+      "title": "Load T5 text encoder"
+    }
+  },
+  "6": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "",
+      "clip": [
+        "12",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "Positive prompt"
+    }
+  },
+  "7": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "",
+      "clip": [
+        "12",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "Negative prompt"
+    }
+  },
+  "5": {
+    "class_type": "EmptyLTXVLatentVideo",
+    "inputs": {
+      "width": 512,
+      "height": 512,
+      "length": 97,
+      "batch_size": 1
+    },
+    "_meta": {
+      "title": "Empty video latent"
+    }
+  },
+  "13": {
+    "class_type": "LTXVConditioning",
+    "inputs": {
+      "positive": [
+        "6",
+        0
+      ],
+      "negative": [
+        "7",
+        0
+      ],
+      "frame_rate": 25.0
+    },
+    "_meta": {
+      "title": "Frame-rate conditioning"
+    }
+  },
+  "14": {
+    "class_type": "KSamplerSelect",
+    "inputs": {
+      "sampler_name": "euler"
+    },
+    "_meta": {
+      "title": "Sampler"
+    }
+  },
+  "15": {
+    "class_type": "LTXVScheduler",
+    "inputs": {
+      "steps": 20,
+      "max_shift": 2.05,
+      "base_shift": 0.95,
+      "stretch": true,
+      "terminal": 0.1
+    },
+    "_meta": {
+      "title": "Sigmas"
+    }
+  },
+  "3": {
+    "class_type": "SamplerCustom",
+    "inputs": {
+      "add_noise": true,
+      "noise_seed": 0,
+      "cfg": 3.0,
+      "model": [
+        "4",
+        0
+      ],
+      "positive": [
+        "13",
+        0
+      ],
+      "negative": [
+        "13",
+        1
+      ],
+      "sampler": [
+        "14",
+        0
+      ],
+      "sigmas": [
+        "15",
+        0
+      ],
+      "latent_image": [
+        "5",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "Sample"
+    }
+  },
+  "8": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": [
+        "3",
+        0
+      ],
+      "vae": [
+        "16",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "Decode"
+    }
+  },
+  "9": {
+    "class_type": "SaveWEBM",
+    "inputs": {
+      "images": [
+        "8",
+        0
+      ],
+      "filename_prefix": "comfy-studio/txt2vid",
+      "codec": "vp9",
+      "fps": 25.0,
+      "crf": 24.0
+    },
+    "_meta": {
+      "title": "Save"
+    }
+  }
+}

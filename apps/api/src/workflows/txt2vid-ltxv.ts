@@ -161,7 +161,7 @@ export const LTXV_TEXT_ENCODER_REQUIREMENT: ModelRequirement = {
 /** Every companion model the LTX-Video graphs load. */
 export const LTXV_REQUIREMENTS: readonly ModelRequirement[] = [LTXV_TEXT_ENCODER_REQUIREMENT];
 
-const INPUTS: readonly ManifestInput[] = [
+export const TXT2VID_LTXV_INPUTS: readonly ManifestInput[] = [
   {
     path: '4.inputs.ckpt_name',
     source: 'checkpointFilename',
@@ -310,7 +310,7 @@ export const txt2vidLtxvManifest: WorkflowManifest = {
     'SaveWEBM',
   ],
   outputNodeId: '9',
-  inputs: INPUTS,
+  inputs: TXT2VID_LTXV_INPUTS,
   resolutions: LTXV_RESOLUTIONS,
   quality: LTXV_QUALITY_PRESETS,
   frameQuantum: LTXV_FRAME_QUANTUM,

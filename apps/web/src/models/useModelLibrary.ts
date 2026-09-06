@@ -30,6 +30,8 @@ export interface ModelLibraryState {
   refresh: () => void;
   /** Backend name for an id, for the "which machines have this" chips. */
   backendName: (id: Uuid) => string;
+  /** Drop a model from the list at once — the optimistic half of a removal. */
+  remove: (id: Uuid) => void;
 }
 
 export function useModelLibrary(api: ModelsApi): ModelLibraryState {
@@ -76,11 +78,14 @@ export function useModelLibrary(api: ModelsApi): ModelLibraryState {
   }, [api, nonce]);
 
   const refresh = useCallback(() => setNonce((n) => n + 1), []);
+  const remove = useCallback((id: Uuid) => {
+    setModels((current) => current.filter((model) => model.id !== id));
+  }, []);
 
   const backendName = useCallback(
     (id: Uuid) => names.current.get(id) ?? `${id.slice(0, 8)}…`,
     [],
   );
 
-  return { backends, models, families, runnability, loading, error, refresh, backendName };
+  return { backends, models, families, runnability, loading, error, refresh, backendName, remove };
 }

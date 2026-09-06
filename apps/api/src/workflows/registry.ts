@@ -20,18 +20,33 @@
 
 import type { JobKind } from '@comfy/shared';
 import type { WorkflowManifest, WorkflowTemplate } from './types.js';
+import { loaderFolderOf } from './folders.js';
 import { img2imgSdxlTemplate } from './img2img-sdxl.js';
 import { img2vidLtxvTemplate } from './img2vid-ltxv.js';
+import { img2vidLtxvDmTemplate } from './img2vid-ltxv-dm.js';
 import { txt2imgSdxlTemplate } from './txt2img-sdxl.js';
+import { txt2vidHunyuanTemplate } from './txt2vid-hunyuan.js';
 import { txt2vidLtxvTemplate } from './txt2vid-ltxv.js';
+import { txt2vidLtxvDmTemplate } from './txt2vid-ltxv-dm.js';
 import { NON_SD_NODE_SET_FAMILIES, SD_GENERIC_TEMPLATES } from './sd-generic.js';
 
-/** Every template we ship. Add new families here and nowhere else. */
+/**
+ * Every template we ship. Add new families here and nowhere else.
+ *
+ * Order matters in one place: when two specific templates serve the same
+ * (capability, family) from different folders, the one registered first is
+ * what a lookup with no folder knowledge gets. The `checkpoints/` LTX graphs
+ * come first because that is where ComfyUI-Manager's catalogue installs the
+ * file and where the family's own reference workflow expects it.
+ */
 export const TEMPLATES: readonly WorkflowTemplate[] = [
   txt2imgSdxlTemplate,
   img2imgSdxlTemplate,
   txt2vidLtxvTemplate,
   img2vidLtxvTemplate,
+  txt2vidLtxvDmTemplate,
+  img2vidLtxvDmTemplate,
+  txt2vidHunyuanTemplate,
   ...SD_GENERIC_TEMPLATES,
 ];
 
@@ -64,7 +79,12 @@ export function normalizeBaseModel(baseModel: string): string {
  * while `findTemplate` gets to pick between the layers at lookup time.
  */
 export interface TemplateIndex {
-  readonly specific: ReadonlyMap<string, WorkflowTemplate>;
+  /**
+   * More than one entry per key is allowed, and means one thing only: the
+   * same family served from *different model folders* (see folders.ts). Two
+   * specific templates reading the same folder are still a conflict.
+   */
+  readonly specific: ReadonlyMap<string, readonly WorkflowTemplate[]>;
   readonly fallback: ReadonlyMap<string, WorkflowTemplate>;
   /** Fallbacks for a model whose family we could not infer, by capability. */
   readonly unknownFamily: ReadonlyMap<JobKind, WorkflowTemplate>;
@@ -88,7 +108,7 @@ const excludedFromFallback = new Set(NON_SD_NODE_SET_FAMILIES.map(normalizeBaseM
  * reorders this loop.
  */
 export function buildTemplateIndex(templates: readonly WorkflowTemplate[]): TemplateIndex {
-  const specific = new Map<string, WorkflowTemplate>();
+  const specific = new Map<string, WorkflowTemplate[]>();
   const fallback = new Map<string, WorkflowTemplate>();
   const unknownFamily = new Map<JobKind, WorkflowTemplate>();
   const byId = new Map<string, WorkflowTemplate>();
@@ -122,7 +142,6 @@ export function buildTemplateIndex(templates: readonly WorkflowTemplate[]): Temp
     // two *specific* templates naming it still is, and so is two fallbacks.
     // Keeping them apart leaves the collision check as strict as it was inside
     // each layer while `findTemplate` picks between the layers at lookup time.
-    const index = isFallback ? fallback : specific;
     for (const baseModel of baseModels) {
       // The exclusion list in sd-generic.ts, enforced. A fallback that claimed a
       // video or FLUX family would dispatch a graph those models cannot run and
@@ -135,14 +154,30 @@ export function buildTemplateIndex(templates: readonly WorkflowTemplate[]): Temp
         );
       }
       const k = key(capability, baseModel);
-      const existing = index.get(k);
-      if (existing) {
+      if (isFallback) {
+        const existing = fallback.get(k);
+        if (existing) {
+          throw new Error(
+            `Two templates claim ${capability} for base model "${baseModel}": ` +
+              `${existing.manifest.id} and ${id}`,
+          );
+        }
+        fallback.set(k, template);
+        continue;
+      }
+      // Two specific graphs may share a family only when they load the model
+      // from different folders: that is a real difference in what will run,
+      // and the lookup picks between them by where the file actually is.
+      const held = specific.get(k) ?? [];
+      const folder = loaderFolderOf(template);
+      const clash = held.find((other) => loaderFolderOf(other) === folder);
+      if (clash) {
         throw new Error(
-          `Two templates claim ${capability} for base model "${baseModel}": ` +
-            `${existing.manifest.id} and ${id}`,
+          `Two templates claim ${capability} for base model "${baseModel}" from the same ` +
+            `folder (${folder ?? 'unknown'}): ${clash.manifest.id} and ${id}`,
         );
       }
-      index.set(k, template);
+      specific.set(k, [...held, template]);
     }
   }
 
@@ -157,10 +192,47 @@ export function resolveTemplate(
   index: TemplateIndex,
   capability: JobKind,
   baseModel: string | null,
+  /**
+   * The ComfyUI folder the model file is in, when known. Picks between
+   * specific templates that differ only by loader; ignored otherwise. Unknown
+   * (null) gets the first-registered specific template.
+   */
+  folder: string | null = null,
 ): WorkflowTemplate | undefined {
   if (!baseModel) return index.unknownFamily.get(capability);
   const k = key(capability, baseModel);
-  return index.specific.get(k) ?? index.fallback.get(k);
+  const specifics = index.specific.get(k);
+  if (specifics && specifics.length > 0) {
+    if (folder) {
+      const match = specifics.find((template) => loaderFolderOf(template) === folder);
+      if (match) return match;
+    }
+    return specifics[0];
+  }
+  return index.fallback.get(k);
+}
+
+/**
+ * Every template that could serve a capability for a family — each specific
+ * one (one per loader folder) and then the fallback — in the order a lookup
+ * would prefer them. What the runnability check measures against, so a file
+ * in `diffusion_models/` is judged by the graph that reads that folder rather
+ * than only by the one that does not.
+ */
+export function candidateTemplates(
+  index: TemplateIndex,
+  capability: JobKind,
+  baseModel: string | null,
+): WorkflowTemplate[] {
+  if (!baseModel) {
+    const unknown = index.unknownFamily.get(capability);
+    return unknown ? [unknown] : [];
+  }
+  const k = key(capability, baseModel);
+  const out = [...(index.specific.get(k) ?? [])];
+  const generic = index.fallback.get(k);
+  if (generic) out.push(generic);
+  return out;
 }
 
 /** The shipped registry. Built once at import; a bad manifest fails the build. */
@@ -189,8 +261,19 @@ const INDEX = buildTemplateIndex(TEMPLATES);
 export function findTemplate(
   capability: JobKind,
   baseModel: string | null,
+  folder: string | null = null,
 ): WorkflowTemplate | undefined {
-  return resolveTemplate(INDEX, capability, baseModel);
+  return resolveTemplate(INDEX, capability, baseModel, folder);
+}
+
+/** Every template that could serve this capability for this family. */
+export function templatesFor(capability: JobKind, baseModel: string | null): WorkflowTemplate[] {
+  return candidateTemplates(INDEX, capability, baseModel);
+}
+
+/** Every capability any template implements. */
+export function knownCapabilities(): JobKind[] {
+  return [...new Set<JobKind>(TEMPLATES.map((t) => t.manifest.capability))];
 }
 
 /** Look up by manifest id, for re-running a job against the template it used. */
@@ -219,11 +302,14 @@ export interface CapabilityOffer {
  * that would run and whether it is a guess. Resolved through `findTemplate`, so
  * this cannot drift from what a dispatch would actually pick.
  */
-export function capabilityOffersFor(baseModel: string | null): CapabilityOffer[] {
+export function capabilityOffersFor(
+  baseModel: string | null,
+  folder: string | null = null,
+): CapabilityOffer[] {
   const kinds = new Set<JobKind>(TEMPLATES.map((t) => t.manifest.capability));
   const offers: CapabilityOffer[] = [];
   for (const capability of kinds) {
-    const template = findTemplate(capability, baseModel);
+    const template = findTemplate(capability, baseModel, folder);
     if (!template) continue;
     offers.push({
       capability,

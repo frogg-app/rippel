@@ -179,6 +179,48 @@ export const LTXV_QUALITY_PRESETS: PresetTable = {
  */
 export const LTXV_FRAME_QUANTUM = 8;
 
+// ---------------------------------------------------------------- hunyuan
+
+/**
+ * Hunyuan Video resolution buckets.
+ *
+ * ComfyUI's own example samples 848x480 at 73 frames, and that is the budget
+ * these keep to: ~0.4 MP a frame, which on a 13B DiT is already the edge of a
+ * 16 GB card. Every value is a multiple of 16, which is what the latent node
+ * snaps to.
+ */
+export const HUNYUAN_RESOLUTIONS: ResolutionTable = {
+  '1:1': { width: 640, height: 640 },
+  '3:2': { width: 768, height: 512 },
+  '2:3': { width: 512, height: 768 },
+  '16:9': { width: 848, height: 480 },
+  '9:16': { width: 480, height: 848 },
+};
+
+/** The integrators that behave on a flow-matching video model. */
+export const HUNYUAN_SAMPLERS = ['euler', 'dpmpp_2m', 'ddim'] as const;
+
+/** BasicScheduler's schedules that suit it; "simple" is the reference one. */
+export const HUNYUAN_SCHEDULERS = ['simple', 'normal', 'sgm_uniform'] as const;
+
+/**
+ * Quality presets for Hunyuan Video. `cfg` is not classifier-free guidance
+ * here — the model is guidance-distilled and the graph has no negative
+ * conditioning — but the FluxGuidance scale, and 6.0 is the reference value.
+ */
+export const HUNYUAN_QUALITY_PRESETS: PresetTable = {
+  fast: { steps: 12, cfg: 6.0, sampler: 'euler', scheduler: 'simple' },
+  balanced: { steps: 20, cfg: 6.0, sampler: 'euler', scheduler: 'simple' },
+  high: { steps: 30, cfg: 6.0, sampler: 'euler', scheduler: 'simple' },
+};
+
+/** Hunyuan's latent video is `4n + 1` frames: 5, 9, …, 129. */
+export const HUNYUAN_FRAME_QUANTUM = 4;
+export const HUNYUAN_MIN_FRAMES = HUNYUAN_FRAME_QUANTUM + 1;
+export const HUNYUAN_MAX_FRAMES = HUNYUAN_FRAME_QUANTUM * 32 + 1;
+export const HUNYUAN_MIN_FPS = 8;
+export const HUNYUAN_MAX_FPS = 30;
+
 /**
  * The frame counts the templates will sample, at the extremes.
  *

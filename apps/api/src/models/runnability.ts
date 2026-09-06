@@ -61,34 +61,10 @@ import type {
 import type { ObjectInfo } from '../lib/comfy.js';
 import { checkGraph } from '../orchestrator/preflight.js';
 import type { ComfyApiGraph, WorkflowTemplate } from '../workflows/types.js';
-import { capabilityOffersFor, findTemplateById } from '../workflows/registry.js';
+import { knownCapabilities, templatesFor } from '../workflows/registry.js';
+import { checkpointSlotOf, type CheckpointSlot } from '../workflows/folders.js';
 import { claimFromCatalogueBase, inferFamily } from './family.js';
 import { folderForType } from './installs.js';
-
-/**
- * Which ComfyUI model folder each loader node reads.
- *
- * Straight out of ComfyUI's `folder_paths`: this is the mapping that decides
- * whether a file on disk is visible to a given node, and it is the whole basis
- * of the wrong-folder verdict. Anything not listed is left unchecked rather
- * than guessed at — an unknown loader produces no verdict, not a wrong one.
- */
-const FOLDER_READ_BY: Record<string, string> = {
-  CheckpointLoaderSimple: 'checkpoints',
-  CheckpointLoader: 'checkpoints',
-  ImageOnlyCheckpointLoader: 'checkpoints',
-  UNETLoader: 'diffusion_models',
-  LoraLoader: 'loras',
-  LoraLoaderModelOnly: 'loras',
-  VAELoader: 'vae',
-  CLIPLoader: 'text_encoders',
-  DualCLIPLoader: 'text_encoders',
-  TripleCLIPLoader: 'text_encoders',
-  ControlNetLoader: 'controlnet',
-  DiffControlNetLoader: 'controlnet',
-  UpscaleModelLoader: 'upscale_models',
-  CLIPVisionLoader: 'clip_vision',
-};
 
 /**
  * The catalogue's save paths onto ComfyUI folder names.
@@ -149,27 +125,12 @@ export interface RunnabilityInput {
    * prediction about an install.
    */
   installed: boolean;
-}
-
-/** Where a template expects the checkpoint, resolved from its manifest. */
-interface CheckpointSlot {
-  nodeId: string;
-  input: string;
-  nodeClass: string;
-  folder: string | null;
-}
-
-function checkpointSlotOf(template: WorkflowTemplate): CheckpointSlot | null {
-  const binding = template.manifest.inputs.find((input) => input.source === 'checkpointFilename');
-  if (!binding) return null;
-  // Manifest paths are always "<nodeId>.inputs.<inputName>"; the tests in
-  // workflows/ assert that, so this parse cannot drift.
-  const match = /^(.+)\.inputs\.(.+)$/.exec(binding.path);
-  if (!match) return null;
-  const [, nodeId, input] = match as unknown as [string, string, string];
-  const nodeClass = template.graph[nodeId]?.class_type;
-  if (!nodeClass) return null;
-  return { nodeId, input, nodeClass, folder: FOLDER_READ_BY[nodeClass] ?? null };
+  /**
+   * Measure against exactly these templates instead of every candidate for
+   * the family. How the per-template verdicts on the Workflows sheet are
+   * produced: the same judgement, one graph at a time.
+   */
+  templates?: readonly WorkflowTemplate[];
 }
 
 /** The template's graph with the checkpoint slot pointed at this file. */
@@ -187,6 +148,7 @@ function graphWithCheckpoint(
 
 interface Attempt {
   capability: JobKind;
+  templateId: string;
   isFallback: boolean;
   /** Set when this template's loader reads a different folder than the file's. */
   folderMismatch: { loader: string; wants: string } | null;
@@ -266,8 +228,14 @@ export function runnabilityFor(input: RunnabilityInput): ModelRunnability {
     };
   }
 
-  const offers = capabilityOffersFor(family);
-  if (offers.length === 0) {
+  // Every graph that could serve this family, not one per capability: the
+  // registry can hold two specific templates for one family that differ only
+  // by which folder they load the model from, and a file in
+  // `diffusion_models/` has to be judged by the graph that reads that folder.
+  const candidates =
+    input.templates ??
+    knownCapabilities().flatMap((capability) => templatesFor(capability, family));
+  if (candidates.length === 0) {
     return {
       ...base,
       status: 'no-workflow',
@@ -278,9 +246,12 @@ export function runnabilityFor(input: RunnabilityInput): ModelRunnability {
   }
 
   const attempts: Attempt[] = [];
-  for (const offer of offers) {
-    const template = findTemplateById(offer.templateId);
-    if (!template) continue;
+  for (const template of candidates) {
+    const offer = {
+      capability: template.manifest.capability,
+      templateId: template.manifest.id,
+      isFallback: template.manifest.isFallback === true,
+    };
     const slot = checkpointSlotOf(template);
 
     const folderMismatch =
@@ -326,6 +297,7 @@ export function runnabilityFor(input: RunnabilityInput): ModelRunnability {
 
     attempts.push({
       capability: offer.capability,
+      templateId: offer.templateId,
       isFallback: offer.isFallback,
       folderMismatch,
       notVisibleTo,
@@ -336,15 +308,18 @@ export function runnabilityFor(input: RunnabilityInput): ModelRunnability {
   }
 
   const clean = attempts.filter((attempt) => attempt.clean);
-  const capabilities = (clean.length > 0 ? clean : attempts).map((attempt) => attempt.capability);
-  const words = listWords([...new Set(capabilities)].map((kind) => CAPABILITY_WORDS[kind]));
+  const capabilities = [...new Set((clean.length > 0 ? clean : attempts).map((attempt) => attempt.capability))];
+  const words = listWords(capabilities.map((kind) => CAPABILITY_WORDS[kind]));
 
   if (clean.length > 0) {
+    // The template that would run: an authored one over a generic one.
+    const winner = clean.find((attempt) => !attempt.isFallback) ?? clean[0]!;
     // `/object_info` unread means the file checks did not run, so "clean" only
     // proves the static half. Say which one you are being told.
     if (!input.info) {
       return {
         ...base,
+        templateId: winner.templateId,
         status: 'unknown',
         capabilities,
         summary: 'Probably runs — could not check',
@@ -354,6 +329,7 @@ export function runnabilityFor(input: RunnabilityInput): ModelRunnability {
     const authored = clean.some((attempt) => !attempt.isFallback);
     return {
       ...base,
+      templateId: winner.templateId,
       status: authored ? 'ready' : 'generic',
       capabilities,
       summary: authored ? 'Will run' : 'Will run, on a generic workflow',
@@ -375,19 +351,28 @@ export function runnabilityFor(input: RunnabilityInput): ModelRunnability {
     const invisible = attempts.find((attempt) => attempt.notVisibleTo)?.notVisibleTo;
     return {
       ...base,
+      templateId: attempts[0]!.templateId,
       status: 'wrong-folder',
       capabilities,
       summary: input.installed ? 'On disk, but the workflow cannot see it' : 'Lands in the wrong folder',
       detail: mismatch
-        ? `Installs into "${input.folder}", but the workflow loads it from "${mismatch.wants}" — it would have to be moved there afterwards.`
+        ? input.installed
+          ? `It is in "${input.folder}", but the workflow loads it from "${mismatch.wants}" — it needs moving there, not downloading again.`
+          : `Installs into "${input.folder}", but the workflow loads it from "${mismatch.wants}" — it would have to be moved there afterwards.`
         : `On the machine, but in a folder ${invisible} does not read — it needs moving, not downloading again.`,
     };
   }
 
-  const blocked = attempts.find((attempt) => attempt.missing.length > 0 || attempt.missingNodeClass);
+  // Among the graphs that can at least see the file, the one missing the
+  // least is the nearest to running and the one worth naming.
+  const seeing = attempts.filter((attempt) => !attempt.folderMismatch && !attempt.notVisibleTo);
+  const blocked = [...seeing]
+    .sort((a, b) => a.missing.length - b.missing.length)
+    .find((attempt) => attempt.missing.length > 0 || attempt.missingNodeClass);
   if (blocked?.missingNodeClass) {
     return {
       ...base,
+      templateId: blocked.templateId,
       status: 'needs-companion',
       capabilities,
       summary: 'Needs a custom node',
@@ -399,6 +384,7 @@ export function runnabilityFor(input: RunnabilityInput): ModelRunnability {
     const more = rest.length > 0 ? ` and ${rest.length} other file${rest.length > 1 ? 's' : ''}` : '';
     return {
       ...base,
+      templateId: blocked.templateId,
       status: 'needs-companion',
       capabilities,
       missing: blocked.missing,
@@ -409,6 +395,7 @@ export function runnabilityFor(input: RunnabilityInput): ModelRunnability {
 
   return {
     ...base,
+    templateId: attempts[0]?.templateId,
     status: 'unknown',
     capabilities,
     summary: 'Cannot tell',

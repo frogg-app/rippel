@@ -29,6 +29,7 @@ export interface CatalogueGridProps {
   onInstall: (entry: ModelCatalogEntry) => void;
   failure: { ref: string; message: string } | null;
   now: number;
+  onWorkflows?: (entry: ModelCatalogEntry) => void;
 }
 
 export function CatalogueGrid({
@@ -39,6 +40,7 @@ export function CatalogueGrid({
   onInstall,
   failure,
   now,
+  onWorkflows,
 }: CatalogueGridProps) {
   const [limit, setLimit] = useState(PAGE_SIZE);
 
@@ -57,6 +59,7 @@ export function CatalogueGrid({
             key={entry.ref}
             index={Math.min(index, 14)}
             entry={entry}
+            onWorkflows={onWorkflows}
             install={installByFile.get(basename(entry.filename)) ?? null}
             starting={starting.has(entry.ref)}
             canInstall={canInstall}

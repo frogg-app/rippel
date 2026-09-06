@@ -16,7 +16,11 @@ import type {
   ModelCatalogEntry,
   ModelInstall,
   ModelInstallStatus,
+  ModelRemoval,
   ModelRunnability,
+  ModelWorkflowOption,
+  ModelWorkflows,
+  WorkflowTemplateSummary,
 } from '@comfy/shared';
 import { ApiRequestError } from '../lib/api';
 import type { InstalledModels, ModelsApi } from '../lib/api-models';
@@ -209,6 +213,16 @@ export interface StubOptions {
   statusScript?: Partial<ModelInstall>[];
   /** Thrown by `install`, for the 409 path. */
   installError?: ApiRequestError;
+  /** What `templates` returns. */
+  templates?: WorkflowTemplateSummary[];
+  /** What `modelWorkflows` returns, keyed by model id; a missing id throws 404. */
+  workflows?: Record<string, ModelWorkflows>;
+  /** Thrown by `assignWorkflow`. */
+  assignError?: ApiRequestError;
+  /** What `removeModel` returns. */
+  removal?: ModelRemoval;
+  /** Thrown by `removeModel`. */
+  removeError?: ApiRequestError;
 }
 
 export interface StubApi extends ModelsApi {
@@ -277,6 +291,79 @@ export function makeStubApi(options: StubOptions = {}): StubApi {
       calls.push('active');
       return active;
     },
+    templates: async () => {
+      calls.push('templates');
+      return options.templates ?? [makeTemplate()];
+    },
+    modelWorkflows: async (modelId, backendId) => {
+      calls.push(`workflows:${modelId}:${backendId ?? '-'}`);
+      const found = options.workflows?.[modelId];
+      if (!found) throw new ApiRequestError(404, 'not_found', 'No such model.');
+      return found;
+    },
+    assignWorkflow: async (modelId, capability, templateId) => {
+      calls.push(`assign:${modelId}:${capability}:${templateId ?? 'auto'}`);
+      if (options.assignError) throw options.assignError;
+      const found = options.workflows?.[modelId];
+      if (found) {
+        if (templateId) found.assigned = { ...found.assigned, [capability]: templateId };
+        else {
+          const next = { ...found.assigned };
+          delete next[capability];
+          found.assigned = next;
+        }
+        found.options = found.options.map((o) => ({
+          ...o,
+          assigned: found.assigned[o.template.capability] === o.template.id,
+        }));
+        return found.assigned;
+      }
+      return templateId ? { [capability]: templateId } : {};
+    },
+    removeModel: async (modelId) => {
+      calls.push(`remove:${modelId}`);
+      if (options.removeError) throw options.removeError;
+      return (
+        options.removal ?? {
+          removed: true,
+          removedFromDisk: false,
+          note: 'The record is gone, but the file is still on desktop-6900xt.',
+        }
+      );
+    },
+  };
+}
+
+/** A hand-authored template summary, the SDXL txt2img one unless overridden. */
+export function makeTemplate(overrides: Partial<WorkflowTemplateSummary> = {}): WorkflowTemplateSummary {
+  return {
+    id: 'txt2img-sdxl',
+    version: 1,
+    label: 'Text to image (SDXL)',
+    capability: 'txt2img',
+    baseModels: ['sdxl', 'pony', 'illustrious'],
+    isFallback: false,
+    loaderFolder: 'checkpoints',
+    loaderFolders: ['checkpoints'],
+    requires: [],
+    requiredNodeClasses: ['CheckpointLoaderSimple', 'KSampler'],
+    description: 'Makes an image from a prompt on a graph written for sdxl, loading the model from checkpoints/.',
+    ...overrides,
+  };
+}
+
+/** One template option for a model's Workflows sheet. */
+export function makeOption(
+  template: Partial<WorkflowTemplateSummary>,
+  verdict: Partial<ModelRunnability> = {},
+  flags: { automatic?: boolean; assigned?: boolean } = {},
+): ModelWorkflowOption {
+  const t = makeTemplate(template);
+  return {
+    template: t,
+    verdict: makeRunnability({ templateId: t.id, capabilities: [t.capability], ...verdict }),
+    automatic: flags.automatic ?? false,
+    assigned: flags.assigned ?? false,
   };
 }
 

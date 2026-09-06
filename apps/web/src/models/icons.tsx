@@ -91,6 +91,16 @@ export const ExpandIcon = (props: IconProps) => (
   </Icon>
 );
 
+/** Three linked nodes: a graph, which is what a workflow is. */
+export const WorkflowIcon = (props: IconProps) => (
+  <Icon {...props}>
+    <circle cx="5" cy="6" r="2.2" />
+    <circle cx="19" cy="6" r="2.2" />
+    <circle cx="12" cy="18" r="2.2" />
+    <path d="M7 7l3.6 9M17 7l-3.6 9M7.2 6h9.6" />
+  </Icon>
+);
+
 export const ChevronIcon = (props: IconProps) => (
   <Icon {...props} strokeWidth={1.8}>
     <path d="M6 9l6 6 6-6" />

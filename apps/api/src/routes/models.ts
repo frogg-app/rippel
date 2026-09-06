@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { query } from '../db.js';
+import { folderOfInstalled } from '../workflows/folders.js';
 import { runnabilityFor } from '../models/runnability.js';
 import { objectInfoFor } from '../orchestrator/preflight.js';
 import { normalizeBaseModel } from '../workflows/registry.js';
@@ -167,12 +168,11 @@ async function verdicts(models: Model[]): Promise<Record<Uuid, ModelRunnability>
         // catalogue-base table also understands; where it does not, inference
         // falls through to the filename exactly as it would for a new file.
         catalogueBase: model.baseModel,
-        // Deliberately unknown. A row's `type` comes from *which loader
+        // Not derived from the row's `type`: that comes from *which loader
         // reported it*, and UNETLoader reports a diffusion_models file as a
-        // checkpoint — so deriving a folder from the type would invent the one
-        // fact the wrong-folder check exists to establish. /object_info answers
-        // it properly instead.
-        folder: null,
+        // checkpoint. /object_info says which loader actually lists the file,
+        // and that is the folder — or null when the backend was not readable.
+        folder: folderOfInstalled(info.get(backend.id) ?? null, model.filename),
         info: info.get(backend.id) ?? null,
         backendId: backend.id,
         backendName: backend.name,

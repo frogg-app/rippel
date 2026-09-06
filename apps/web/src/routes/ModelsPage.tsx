@@ -32,13 +32,18 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import type { ModelCatalogEntry, ModelType, Uuid } from '@comfy/shared';
+import type { Model, ModelCatalogEntry, ModelType, Uuid } from '@comfy/shared';
 import { useAuth } from '../auth/context';
 import { modelsApi, type ModelsApi } from '../lib/api-models';
+import { storageApi, type StorageApi } from '../lib/api-storage';
+import { StoragePanel } from '../models/StoragePanel';
 import { CatalogueGrid } from '../models/CatalogueGrid';
 import { FilterBar } from '../models/FilterBar';
 import { InstalledList } from '../models/InstalledList';
 import { InstallsList } from '../models/InstallsList';
+import { WorkflowSheet, type WorkflowSheetSubject } from '../models/WorkflowSheet';
+import { ApiRequestError } from '../lib/api';
+import { WorkflowIcon } from '../models/icons';
 import { Notice } from '../models/Notice';
 import { CubeIcon } from '../models/icons';
 import {
@@ -60,9 +65,9 @@ import panels from '../models/ModelsPanels.module.css';
 import { Mark } from '../components/Mark';
 import styles from './ModelsPage.module.css';
 
-type Tab = 'installed' | 'discover' | 'downloads';
+type Tab = 'installed' | 'discover' | 'downloads' | 'storage';
 
-const TABS: readonly Tab[] = ['installed', 'discover', 'downloads'];
+const TABS: readonly Tab[] = ['installed', 'discover', 'downloads', 'storage'];
 
 /** The default, and the one spelling that is left out of the URL entirely. */
 const DEFAULT_TAB: Tab = 'installed';
@@ -75,9 +80,11 @@ function tabFromParams(params: URLSearchParams): Tab {
 export interface ModelsPageProps {
   /** Injected in tests. Production always uses the live client. */
   api?: ModelsApi;
+  /** The Storage tab's client, likewise. */
+  storageApi?: StorageApi;
 }
 
-export function ModelsPage({ api = modelsApi }: ModelsPageProps = {}) {
+export function ModelsPage({ api = modelsApi, storageApi: storage = storageApi }: ModelsPageProps = {}) {
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
 
@@ -129,6 +136,45 @@ export function ModelsPage({ api = modelsApi }: ModelsPageProps = {}) {
 
   const installs = useInstalls({ api, backendId, enabled: isAdmin });
   const now = useNow(installs.live.length > 0);
+
+  // ------------------------------------------------------------- workflows
+
+  // The Workflows sheet: one model's options, or the templates browser.
+  const [sheet, setSheet] = useState<WorkflowSheetSubject | null>(null);
+  const closeSheet = useCallback(() => setSheet(null), []);
+  const openModelWorkflows = useCallback((model: Model) => setSheet({ mode: 'model', model }), []);
+  const openTemplates = useCallback(
+    (entry?: ModelCatalogEntry) => setSheet({ mode: 'browse', family: entry?.base ?? null }),
+    [],
+  );
+
+  // What removing a model left behind — the API's own sentence about the file
+  // that is still on the machine. Shown until dismissed, not as a toast.
+  const [removalNote, setRemovalNote] = useState<string | null>(null);
+  const removeModel = useCallback(
+    async (model: Model) => {
+      // Optimistic: the row goes now, and comes back on a refresh if the
+      // request fails.
+      library.remove(model.id);
+      try {
+        const removal = await api.removeModel(model.id);
+        setRemovalNote(
+          removal.note ??
+            (removal.removedFromDisk
+              ? `${model.displayName} was removed, file included.`
+              : `${model.displayName} was removed.`),
+        );
+      } catch (cause) {
+        setRemovalNote(
+          cause instanceof ApiRequestError
+            ? `Could not remove ${model.displayName}: ${cause.message}`
+            : `Could not remove ${model.displayName}.`,
+        );
+        library.refresh();
+      }
+    },
+    [api, library],
+  );
 
   // A finished install has put a file on a machine, so the installed list and
   // the catalogue's `installed` flags are both stale. Refresh once per
@@ -264,6 +310,9 @@ export function ModelsPage({ api = modelsApi }: ModelsPageProps = {}) {
             count={liveCount || undefined}
             accentCount
           />
+          {/* Reading a machine's disk is an operator's view; the tab is not
+              offered to anyone else rather than shown and refused. */}
+          {isAdmin ? <TabButton id="storage" active={tab} onSelect={setTab} label="Storage" /> : null}
         </nav>
 
         <div className={styles.spacer} />
@@ -275,7 +324,7 @@ export function ModelsPage({ api = modelsApi }: ModelsPageProps = {}) {
               aria-hidden
             />
             <label className={styles.backendLabel} htmlFor="models-backend">
-              {tab === 'installed' ? 'Highlighting' : 'Installing to'}
+              {tab === 'installed' ? 'Highlighting' : tab === 'storage' ? 'Files on' : 'Installing to'}
             </label>
             <select
               id="models-backend"
@@ -312,6 +361,16 @@ export function ModelsPage({ api = modelsApi }: ModelsPageProps = {}) {
             title="No backends yet"
             message="Models live on a ComfyUI machine, and there are none registered. Add a backend and its models are discovered automatically."
           />
+        ) : tab === 'storage' ? (
+          <div className={styles.scroller}>
+            {!isAdmin ? (
+              <AdminOnly />
+            ) : backend ? (
+              <StoragePanel key={backend.id} api={storage} backend={backend} />
+            ) : (
+              <Notice title="No backend" message="Register a ComfyUI backend first; its disk shows up here." />
+            )}
+          </div>
         ) : tab === 'installed' ? (
           <>
             <FilterBar
@@ -333,6 +392,29 @@ export function ModelsPage({ api = modelsApi }: ModelsPageProps = {}) {
               total={library.models.length}
             />
             <div className={styles.scroller}>
+              <div className={panels.panelTools}>
+                <button
+                  type="button"
+                  className={panels.rowAction}
+                  onClick={() => openTemplates()}
+                >
+                  <WorkflowIcon size={13} />
+                  Browse templates
+                </button>
+              </div>
+              {removalNote ? (
+                <p className={`${panels.removalNote} rise`} role="status">
+                  <span>{removalNote}</span>
+                  <button
+                    type="button"
+                    className={panels.removalNoteDismiss}
+                    onClick={() => setRemovalNote(null)}
+                    aria-label="Dismiss"
+                  >
+                    ×
+                  </button>
+                </p>
+              ) : null}
               {library.models.length === 0 ? (
                 <Notice
                   title="Nothing installed yet"
@@ -358,6 +440,8 @@ export function ModelsPage({ api = modelsApi }: ModelsPageProps = {}) {
                   backendOrder={backendOrder}
                   selectedBackendId={backendId}
                   runnability={library.runnability}
+                  onWorkflows={openModelWorkflows}
+                  onRemove={isAdmin ? (model) => void removeModel(model) : undefined}
                 />
               )}
             </div>
@@ -399,6 +483,7 @@ export function ModelsPage({ api = modelsApi }: ModelsPageProps = {}) {
                 failure={installs.startFailure}
                 now={now}
                 onReload={catalogue.reload}
+                onWorkflows={openTemplates}
                 onClearFilters={() => {
                   setCatQ('');
                   setCatType(null);
@@ -438,6 +523,17 @@ export function ModelsPage({ api = modelsApi }: ModelsPageProps = {}) {
           </div>
         )}
       </div>
+
+      {sheet ? (
+        <WorkflowSheet
+          api={api}
+          subject={sheet}
+          backendId={backendId}
+          isAdmin={isAdmin}
+          onClose={closeSheet}
+          onAssigned={library.refresh}
+        />
+      ) : null}
     </div>
   );
 }
@@ -496,6 +592,7 @@ function CatalogueBody({
   failure,
   now,
   onReload,
+  onWorkflows,
   onClearFilters,
 }: {
   state: ReturnType<typeof useCatalogue>['state'];
@@ -507,6 +604,7 @@ function CatalogueBody({
   failure: { ref: string; message: string } | null;
   now: number;
   onReload: () => void;
+  onWorkflows: (entry: ModelCatalogEntry) => void;
   onClearFilters: () => void;
 }) {
   switch (state.kind) {
@@ -592,6 +690,7 @@ function CatalogueBody({
             onInstall={onInstall}
             failure={failure}
             now={now}
+            onWorkflows={onWorkflows}
           />
         </>
       );

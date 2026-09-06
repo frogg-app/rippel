@@ -1090,3 +1090,406 @@
   color: var(--accent);
   background: var(--accent-tint);
 }
+
+/* ------------------------------------------------------------ row actions
+   Workflows and Remove on an installed row. Quiet until the row is hovered,
+   present always for the keyboard. */
+.rowActions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  opacity: 0.7;
+  transition: opacity var(--transition);
+}
+
+.row:hover .rowActions,
+.row:focus-within .rowActions {
+  opacity: 1;
+}
+
+.rowAction {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line-input);
+  background: var(--surface-1);
+  font-size: var(--text-xs);
+  color: var(--text-2);
+  white-space: nowrap;
+  transition:
+    background var(--transition),
+    border-color var(--transition),
+    color var(--transition);
+}
+
+.rowAction:hover:not(:disabled) {
+  background: var(--accent-tint);
+  border-color: var(--accent-line);
+  color: var(--accent);
+}
+
+.rowActionQuiet {
+  color: var(--text-4);
+}
+
+.rowActionDanger {
+  background: var(--danger-tint);
+  border-color: var(--danger-line);
+  color: var(--danger-text);
+}
+
+.rowActionDanger:hover:not(:disabled) {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: var(--accent-ink);
+}
+
+.rowConfirm {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 4px 3px 10px;
+  border-radius: 999px;
+  background: var(--surface-3);
+  border: 1px solid var(--line-strong);
+}
+
+.rowConfirmText {
+  font-size: var(--text-xs);
+  color: var(--text-2);
+  white-space: nowrap;
+}
+
+/* The catalogue card's way into the templates browser. */
+.cardWorkflows {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--text-4);
+  transition: color var(--transition);
+}
+
+.cardWorkflows:hover {
+  color: var(--accent);
+}
+
+/* ------------------------------------------------------------ the sheet
+   Over the same blurred backdrop as the lightbox (.lightbox). */
+.sheet {
+  width: min(720px, 100%);
+  max-height: min(86vh, 900px);
+  display: flex;
+  flex-direction: column;
+  border-radius: 20px;
+  border: 1px solid var(--glass-line);
+  background: var(--library-drawer-bg);
+  box-shadow: var(--shadow-3), var(--edge-highlight);
+  overflow: hidden;
+  transform-origin: center;
+}
+
+.sheetHead {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  height: 54px;
+  padding: 0 12px 0 20px;
+  border-bottom: 1px solid var(--line);
+}
+
+.sheetTitle {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  font-size: var(--text-md);
+  font-weight: 500;
+  color: var(--text);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sheetClose {
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-soft);
+  transition: background var(--transition), color var(--transition);
+}
+
+.sheetClose:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.sheetBody {
+  flex-grow: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px 20px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.sheetLede {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text-4);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.sheetLoading {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sheetSkeleton {
+  height: 84px;
+  border-radius: var(--radius-md);
+}
+
+.sheetProblem {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  font-size: var(--text-sm);
+  color: var(--text-2);
+  line-height: 1.5;
+}
+
+.sheetSection {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sheetSectionHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.sheetSectionTitle {
+  margin: 0;
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  font-weight: 500;
+  color: var(--text-4);
+}
+
+.sheetSectionNote {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.sheetOptions {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sheetOption {
+  display: flex;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--line);
+  background: var(--surface-1);
+  transition: border-color var(--transition), background var(--transition), transform var(--dur-slow) var(--ease-out);
+}
+
+.sheetOption:hover {
+  border-color: var(--line-input);
+  background: var(--surface-2);
+}
+
+.sheetOptionOn {
+  border-color: var(--accent-line);
+  background: var(--accent-tint);
+}
+
+.sheetRadio {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+  border-radius: 50%;
+  border: 1px solid var(--line-input);
+  background: var(--surface-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color var(--transition), background var(--transition);
+}
+
+.sheetRadio:hover:not(:disabled):not(.sheetRadioStatic) {
+  border-color: var(--accent-line);
+}
+
+.sheetRadioStatic {
+  cursor: default;
+}
+
+.sheetRadioDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  transform: scale(0);
+  transition: transform var(--dur-slow) var(--ease-spring);
+}
+
+.sheetRadio[aria-checked='true'] .sheetRadioDot,
+.sheetOptionOn .sheetRadioStatic .sheetRadioDot {
+  transform: scale(1);
+}
+
+.sheetRadio[aria-checked='true'] {
+  border-color: var(--accent-line);
+}
+
+.sheetOptionBody {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  flex-grow: 1;
+}
+
+.sheetOptionHead {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.sheetOptionLabel {
+  font-size: var(--text-base);
+  color: var(--text);
+}
+
+.sheetBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  background: var(--surface-2);
+  font-size: 10px;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--text-4);
+}
+
+.sheetBadgeAuto {
+  color: var(--info);
+  border-color: var(--info-line);
+  background: var(--info-tint);
+}
+
+.sheetBadgeOn {
+  color: var(--accent);
+  border-color: var(--accent-line);
+  background: var(--accent-tint);
+}
+
+.sheetOptionDesc {
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--text-3);
+}
+
+.sheetMeta {
+  margin: 2px 0 0;
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 3px 12px;
+  font-size: var(--text-xs);
+}
+
+.sheetMeta dt {
+  color: var(--text-muted);
+}
+
+.sheetMeta dd {
+  margin: 0;
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+
+.sheetAuto {
+  align-self: flex-start;
+  font-size: var(--text-xs);
+  color: var(--text-4);
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: color var(--transition), background var(--transition);
+}
+
+.sheetAuto:hover:not(:disabled) {
+  color: var(--accent);
+  background: var(--accent-tint);
+}
+
+.sheetFoot {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+/* The Installed panel's "Browse templates" and the removal notice. */
+.panelTools {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 0 0 10px;
+}
+
+.removalNote {
+  margin: 0 0 12px;
+  padding: 10px 14px;
+  border-radius: var(--radius-md);
+  background: var(--models-warn-tint);
+  border: 1px solid var(--warn-line);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--text-2);
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.removalNoteDismiss {
+  margin-left: auto;
+  flex-shrink: 0;
+  color: var(--text-4);
+}
+
+.removalNoteDismiss:hover {
+  color: var(--text);
+}

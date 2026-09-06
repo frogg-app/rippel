@@ -1,0 +1,196 @@
+{
+  "4": {
+    "class_type": "UNETLoader",
+    "inputs": {
+      "unet_name": "hunyuan_video_t2v_720p_bf16.safetensors",
+      "weight_dtype": "default"
+    },
+    "_meta": {
+      "title": "Load Hunyuan Video diffusion model"
+    }
+  },
+  "12": {
+    "class_type": "DualCLIPLoader",
+    "inputs": {
+      "clip_name1": "clip_l.safetensors",
+      "clip_name2": "llava_llama3_fp8_scaled.safetensors",
+      "type": "hunyuan_video"
+    },
+    "_meta": {
+      "title": "Load text encoders"
+    }
+  },
+  "16": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "hunyuan_video_vae_bf16.safetensors"
+    },
+    "_meta": {
+      "title": "Load Hunyuan Video VAE"
+    }
+  },
+  "6": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "",
+      "clip": [
+        "12",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "Prompt"
+    }
+  },
+  "20": {
+    "class_type": "FluxGuidance",
+    "inputs": {
+      "conditioning": [
+        "6",
+        0
+      ],
+      "guidance": 6.0
+    },
+    "_meta": {
+      "title": "Guidance"
+    }
+  },
+  "21": {
+    "class_type": "ModelSamplingSD3",
+    "inputs": {
+      "model": [
+        "4",
+        0
+      ],
+      "shift": 7.0
+    },
+    "_meta": {
+      "title": "Sampling shift"
+    }
+  },
+  "5": {
+    "class_type": "EmptyHunyuanLatentVideo",
+    "inputs": {
+      "width": 848,
+      "height": 480,
+      "length": 73,
+      "batch_size": 1
+    },
+    "_meta": {
+      "title": "Empty video latent"
+    }
+  },
+  "22": {
+    "class_type": "BasicGuider",
+    "inputs": {
+      "model": [
+        "21",
+        0
+      ],
+      "conditioning": [
+        "20",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "Guider"
+    }
+  },
+  "14": {
+    "class_type": "KSamplerSelect",
+    "inputs": {
+      "sampler_name": "euler"
+    },
+    "_meta": {
+      "title": "Sampler"
+    }
+  },
+  "15": {
+    "class_type": "BasicScheduler",
+    "inputs": {
+      "model": [
+        "21",
+        0
+      ],
+      "scheduler": "simple",
+      "steps": 20,
+      "denoise": 1.0
+    },
+    "_meta": {
+      "title": "Sigmas"
+    }
+  },
+  "23": {
+    "class_type": "RandomNoise",
+    "inputs": {
+      "noise_seed": 0
+    },
+    "_meta": {
+      "title": "Noise"
+    }
+  },
+  "3": {
+    "class_type": "SamplerCustomAdvanced",
+    "inputs": {
+      "noise": [
+        "23",
+        0
+      ],
+      "guider": [
+        "22",
+        0
+      ],
+      "sampler": [
+        "14",
+        0
+      ],
+      "sigmas": [
+        "15",
+        0
+      ],
+      "latent_image": [
+        "5",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "Sample"
+    }
+  },
+  "8": {
+    "class_type": "VAEDecodeTiled",
+    "inputs": {
+      "samples": [
+        "3",
+        0
+      ],
+      "vae": [
+        "16",
+        0
+      ],
+      "tile_size": 256,
+      "overlap": 64,
+      "temporal_size": 64,
+      "temporal_overlap": 8
+    },
+    "_meta": {
+      "title": "Decode"
+    }
+  },
+  "9": {
+    "class_type": "SaveWEBM",
+    "inputs": {
+      "images": [
+        "8",
+        0
+      ],
+      "filename_prefix": "comfy-studio/txt2vid",
+      "codec": "vp9",
+      "fps": 24.0,
+      "crf": 24.0
+    },
+    "_meta": {
+      "title": "Save"
+    }
+  }
+}

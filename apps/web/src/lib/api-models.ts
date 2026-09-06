@@ -76,18 +76,22 @@
  */
 import type {
   Backend,
+  JobKind,
   Model,
   ModelCatalogEntry,
   ModelInstall,
+  ModelRemoval,
   ModelRunnability,
+  ModelWorkflows,
   Uuid,
+  WorkflowTemplateSummary,
 } from '@comfy/shared';
 import { ApiRequestError } from './api';
 
 const BASE = '/api';
 
 interface RequestOptions {
-  method?: 'GET' | 'POST';
+  method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
   body?: unknown;
   signal?: AbortSignal;
 }
@@ -159,6 +163,26 @@ export interface ModelsApi {
   installStatus(backendId: Uuid, installId: Uuid, signal?: AbortSignal): Promise<ModelInstall>;
   /** Everything in flight, across every backend. The adoption call on mount. */
   activeInstalls(signal?: AbortSignal): Promise<ModelInstall[]>;
+
+  // ------------------------------------------------------------ workflows
+  //
+  //   GET /api/workflows/templates              -> { templates }      requireAuth
+  //   GET /api/models/:id/workflows?backendId=  -> ModelWorkflows     requireAuth
+  //   PUT /api/models/:id/workflows             -> { assigned }       admin
+  //     body { capability, templateId | null }; 400 for a template of the
+  //     wrong capability or family, 404 for an unknown template.
+  //   DELETE /api/models/:id                    -> { removal }        admin
+  //     The record goes; the file does not (no backend can delete one yet),
+  //     and `removal.note` says so in words meant to be shown.
+
+  templates(signal?: AbortSignal): Promise<WorkflowTemplateSummary[]>;
+  modelWorkflows(modelId: Uuid, backendId: Uuid | null, signal?: AbortSignal): Promise<ModelWorkflows>;
+  assignWorkflow(
+    modelId: Uuid,
+    capability: JobKind,
+    templateId: string | null,
+  ): Promise<Partial<Record<JobKind, string>>>;
+  removeModel(modelId: Uuid): Promise<ModelRemoval>;
 }
 
 export const modelsApi: ModelsApi = {
@@ -211,4 +235,25 @@ export const modelsApi: ModelsApi = {
 
   activeInstalls: async (signal) =>
     (await request<{ installs: ModelInstall[] }>('/model-installs', { signal })).installs ?? [],
+
+  templates: async (signal) =>
+    (await request<{ templates: WorkflowTemplateSummary[] }>('/workflows/templates', { signal }))
+      .templates ?? [],
+
+  modelWorkflows: async (modelId, backendId, signal) =>
+    request<ModelWorkflows>(
+      `/models/${modelId}/workflows${backendId ? `?backendId=${encodeURIComponent(backendId)}` : ''}`,
+      { signal },
+    ),
+
+  assignWorkflow: async (modelId, capability, templateId) =>
+    (
+      await request<{ assigned: Partial<Record<JobKind, string>> }>(`/models/${modelId}/workflows`, {
+        method: 'PUT',
+        body: { capability, templateId },
+      })
+    ).assigned ?? {},
+
+  removeModel: async (modelId) =>
+    (await request<{ removal: ModelRemoval }>(`/models/${modelId}`, { method: 'DELETE' })).removal,
 };

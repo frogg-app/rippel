@@ -12,7 +12,7 @@ import { z } from 'zod';
 import type { GenerationParams, Job, JobEvent } from '@comfy/shared';
 import { query, queryOne } from '../db.js';
 import { compile, TemplateError, ValidationError } from '../compiler/index.js';
-import { findTemplate } from '../workflows/registry.js';
+import { chooseTemplate } from '../models/workflow-choice.js';
 import { candidatesFor, filenamesOn } from './select.js';
 import { preflight } from './preflight.js';
 import { createJob, getJob, queuePosition, type JobRow } from './jobs.js';
@@ -98,8 +98,8 @@ export default async function jobRoutes(app: FastifyInstance) {
         });
       }
 
-      const model = await queryOne<{ base_model: string | null; display_name: string }>(
-        'SELECT base_model, display_name FROM models WHERE id = $1',
+      const model = await queryOne<{ base_model: string | null; display_name: string; filename: string }>(
+        'SELECT base_model, display_name, filename FROM models WHERE id = $1',
         [params.modelId],
       );
       if (!model) {
@@ -108,8 +108,16 @@ export default async function jobRoutes(app: FastifyInstance) {
 
       // Not guarded on base_model being set: a null family is exactly what the
       // generic fallback template exists to serve, and short-circuiting here
-      // would make it unreachable from job creation.
-      const template = findTemplate(params.kind, model.base_model);
+      // would make it unreachable from job creation. The dispatcher chooses
+      // again with the backend's own file list in hand; this is the early
+      // "there is nothing for this family at all" refusal.
+      const choice = await chooseTemplate({
+        modelId: params.modelId,
+        capability: params.kind,
+        family: model.base_model,
+        filename: model.filename,
+      });
+      const template = choice?.template;
       if (!template) {
         return reply.code(501).send({
           error: 'no_template',

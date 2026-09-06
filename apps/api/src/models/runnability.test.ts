@@ -11,6 +11,7 @@
 
 import { describe, expect, it } from 'vitest';
 import type { ObjectInfo } from '../lib/comfy.js';
+import { findTemplateById } from '../workflows/registry.js';
 import { folderForSavePath, isUsable, runnabilityFor } from './runnability.js';
 
 /**
@@ -18,11 +19,23 @@ import { folderForSavePath, isUsable, runnabilityFor } from './runnability.js';
  * are declared with empty inputs, which is what a real backend does too — the
  * check only ever looks at combo-valued file inputs.
  */
-function objectInfo(options: { checkpoints: string[]; clips: string[]; omit?: string[] }): ObjectInfo {
+function objectInfo(options: {
+  checkpoints: string[];
+  clips: string[];
+  /** What UNETLoader lists — the diffusion_models folder. */
+  unets?: string[];
+  /** What VAELoader lists. A stock install offers only "pixel_space". */
+  vaes?: string[];
+  omit?: string[];
+}): ObjectInfo {
   const classes = [
+    'BasicGuider',
+    'BasicScheduler',
     'CLIPTextEncode',
+    'EmptyHunyuanLatentVideo',
     'EmptyLTXVLatentVideo',
     'EmptyLatentImage',
+    'FluxGuidance',
     'KSampler',
     'KSamplerSelect',
     'LTXVConditioning',
@@ -30,15 +43,24 @@ function objectInfo(options: { checkpoints: string[]; clips: string[]; omit?: st
     'LTXVPreprocess',
     'LTXVScheduler',
     'LoadImage',
+    'ModelSamplingSD3',
+    'RandomNoise',
     'SamplerCustom',
+    'SamplerCustomAdvanced',
     'SaveImage',
     'SaveWEBM',
     'VAEDecode',
+    'VAEDecodeTiled',
     'VAEEncode',
   ];
   const info: ObjectInfo = {
     CheckpointLoaderSimple: { input: { required: { ckpt_name: [options.checkpoints, {}] } } },
     CLIPLoader: { input: { required: { clip_name: [options.clips, {}] } } },
+    DualCLIPLoader: {
+      input: { required: { clip_name1: [options.clips, {}], clip_name2: [options.clips, {}] } },
+    },
+    UNETLoader: { input: { required: { unet_name: [options.unets ?? [], {}] } } },
+    VAELoader: { input: { required: { vae_name: [options.vaes ?? ['pixel_space'], {}] } } },
   };
   for (const nodeClass of classes) {
     if (options.omit?.includes(nodeClass)) continue;
@@ -49,8 +71,10 @@ function objectInfo(options: { checkpoints: string[]; clips: string[]; omit?: st
 
 const LIVE = objectInfo({
   checkpoints: ['SDXL\\sd_xl_base_1.0.safetensors', 'hunyuan_video_720p_fp8_e4m3fn.safetensors'],
-  // Verbatim from the real backend: nothing installed for CLIPLoader at all.
+  // Verbatim from the real backend: nothing installed for CLIPLoader at all,
+  // and the LTX file is in diffusion_models, where only UNETLoader sees it.
   clips: [],
+  unets: ['ltx-video-2b-v0.9.1.safetensors'],
 });
 
 const base = {
@@ -140,20 +164,60 @@ describe('runnabilityFor', () => {
     expect(verdict.detail).toContain('checkpoints');
   });
 
-  it('reports an installed file its own loader cannot see as needing a move, not a download', () => {
+  it('judges a file in diffusion_models by the graph that reads that folder', () => {
     const verdict = runnabilityFor({
       ...base,
       installed: true,
-      // On the box, but filed under diffusion_models where CheckpointLoader
-      // cannot reach it — so /object_info does not offer it.
+      // On the box, filed under diffusion_models where CheckpointLoaderSimple
+      // cannot reach it. That used to be the end of the story — "wrong
+      // folder" — but there is now a UNETLoader graph for the family, and it
+      // *can* see the file. What it lacks is the T5 and a standalone VAE, so
+      // the honest verdict is a download list, not a move.
       filename: 'ltx-video-2b-v0.9.1.safetensors',
       type: 'checkpoint',
       catalogueBase: 'LTXV',
       folder: null,
     });
+    expect(verdict.status).toBe('needs-companion');
+    expect(verdict.templateId).toBe('txt2vid-ltxv-dm');
+    expect(verdict.missing.map((m) => m.loader).sort()).toEqual(['CLIPLoader', 'VAELoader']);
+    expect(verdict.detail).toContain('T5 text encoder');
+  });
+
+  it('reports an installed file no template can see as needing a move, not a download', () => {
+    const verdict = runnabilityFor({
+      ...base,
+      installed: true,
+      // The Hunyuan diffusion model, filed under checkpoints/ by Manager. The
+      // family's only graph loads from diffusion_models via UNETLoader, which
+      // does not list it — so nothing here can run it until it is moved.
+      filename: 'hunyuan_video_720p_fp8_e4m3fn.safetensors',
+      type: 'checkpoint',
+      catalogueBase: 'Hunyuan Video',
+      folder: null,
+    });
     expect(verdict.status).toBe('wrong-folder');
     expect(verdict.summary).toBe('On disk, but the workflow cannot see it');
     expect(verdict.detail).toContain('needs moving, not downloading again');
+    expect(verdict.templateId).toBe('txt2vid-hunyuan');
+  });
+
+  it('measures against exactly the templates it is handed, one at a time', () => {
+    const file = {
+      ...base,
+      installed: true,
+      filename: 'ltx-video-2b-v0.9.1.safetensors',
+      type: 'checkpoint' as const,
+      catalogueBase: 'LTXV',
+      folder: null,
+    };
+    // The checkpoints graph alone: cannot see the file at all.
+    const viaCheckpoints = runnabilityFor({ ...file, templates: [findTemplateById('txt2vid-ltxv')!] });
+    expect(viaCheckpoints.status).toBe('wrong-folder');
+    // The diffusion_models graph alone: sees it, wants two companions.
+    const viaUnet = runnabilityFor({ ...file, templates: [findTemplateById('txt2vid-ltxv-dm')!] });
+    expect(viaUnet.status).toBe('needs-companion');
+    expect(viaUnet.capabilities).toEqual(['txt2vid']);
   });
 
   it('is happy about an SDXL checkpoint the backend already offers', () => {
