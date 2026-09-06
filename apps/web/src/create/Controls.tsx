@@ -64,11 +64,19 @@ export function Segmented<T extends string>({
     if (next) onChange(next.value);
   };
 
+  const activeIndex = Math.max(
+    0,
+    options.findIndex((option) => option.value === value),
+  );
+
   return (
     <div
       className={styles.segmented}
       role="radiogroup"
       aria-label={label}
+      // The sliding thumb is positioned from these two numbers in CSS, so it
+      // glides between segments rather than switching.
+      style={{ '--seg-i': activeIndex, '--seg-n': options.length } as CSSProperties}
       onKeyDown={(event) => {
         if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
           event.preventDefault();

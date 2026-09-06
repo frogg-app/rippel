@@ -5,7 +5,7 @@ import { SignOutIcon } from '../components/icons';
 import styles from './UserMenu.module.css';
 
 /** The avatar chip at the far right, and the one thing behind it: sign out. */
-export function UserMenu() {
+export function UserMenu({ placement = 'bar' }: { placement?: 'bar' | 'rail' }) {
   const { user, signOut } = useAuth();
   const [open, setOpen] = useState(false);
   const container = useRef<HTMLDivElement>(null);
@@ -29,7 +29,7 @@ export function UserMenu() {
   if (!user) return null;
 
   return (
-    <div className={styles.wrap} ref={container}>
+    <div className={placement === 'rail' ? `${styles.wrap} ${styles.rail}` : styles.wrap} ref={container}>
       <button
         type="button"
         className={styles.avatar}
@@ -42,7 +42,7 @@ export function UserMenu() {
       </button>
 
       {open ? (
-        <div className={styles.menu} role="menu">
+        <div className={`${styles.menu} pop`} role="menu">
           <div className={styles.identity}>
             <div className={styles.name}>{user.displayName ?? user.email}</div>
             {user.displayName ? <div className={styles.email}>{user.email}</div> : null}

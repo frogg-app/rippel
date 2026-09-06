@@ -110,7 +110,7 @@ export function JobStage({
           )}
         </div>
 
-        <div className={styles.tray}>
+        <div className={job ? styles.tray : `${styles.tray} ${styles.trayEmpty}`}>
           <div className={styles.strip}>
             {assets.map((asset) => (
               <button

@@ -1,34 +1,36 @@
 .group {
   display: flex;
   flex-direction: column;
-  gap: var(--gap-sm);
+  gap: 10px;
 }
 
-/* 96px minimum, 12px radius, 14px type on a 1.5 leading — straight off the
-   artboard. It grows with the text rather than scrolling inside itself: a
-   prompt you cannot see all of is a prompt you cannot edit. */
+/* The prompt is the one field on the screen that matters, and the field says
+   so: a little larger, a little brighter, and the only thing with a halo. It
+   grows with the text rather than scrolling inside itself. */
 .prompt {
-  min-height: 96px;
-  border-radius: var(--radius-lg);
-  border: 1px solid rgba(220, 238, 242, 0.1);
+  min-height: 108px;
+  border-radius: 14px;
+  border: 1px solid var(--line-input);
   background: var(--surface-2);
-  padding: 13px 14px;
+  padding: 14px 15px;
   font-size: var(--text-lg);
-  line-height: 1.5;
+  line-height: 1.55;
   color: var(--text);
   resize: vertical;
   font-family: inherit;
-  transition: border-color var(--transition), background var(--transition);
+  box-shadow: var(--edge-highlight);
 }
 
 .prompt:hover {
-  border-color: var(--line-input);
+  border-color: var(--line-dashed);
+  background: var(--surface-3);
 }
 
 .prompt:focus-visible {
   outline: none;
-  border-color: var(--accent-line);
+  border-color: var(--focus-line);
   background: var(--surface-3);
+  box-shadow: var(--focus-ring), var(--edge-highlight);
 }
 
 .prompt::placeholder,
@@ -39,21 +41,33 @@
 .addNegative {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 7px;
   font-size: var(--text-sm);
   color: var(--text-4);
   align-self: flex-start;
-  transition: color var(--transition);
+  padding: 4px 8px 4px 6px;
+  margin-left: -6px;
+  border-radius: 8px;
 }
 
 .addNegative:hover {
   color: var(--text-2);
+  background: var(--surface-2);
+}
+
+.addNegative svg {
+  transition: transform var(--dur-slow) var(--ease-spring);
+}
+
+.addNegative:hover svg {
+  transform: rotate(90deg);
 }
 
 .negativeBlock {
   display: flex;
   flex-direction: column;
-  gap: var(--gap-xs);
+  gap: 7px;
+  animation: rise var(--dur-slow) var(--ease-out) both;
 }
 
 .negativeHead {
@@ -70,8 +84,8 @@
 }
 
 .negativeClose {
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -80,14 +94,14 @@
 }
 
 .negativeClose:hover {
-  background: var(--surface-3);
+  background: var(--surface-hover);
   color: var(--text-2);
 }
 
 /* Secondary by construction: shorter, dimmer, on a quieter fill. */
 .negative {
-  min-height: 54px;
-  border-radius: var(--radius);
+  min-height: 56px;
+  border-radius: 11px;
   border: 1px solid var(--line);
   background: var(--surface-1);
   padding: 10px 12px;
@@ -98,7 +112,12 @@
   font-family: inherit;
 }
 
+.negative:hover {
+  border-color: var(--line-input);
+}
+
 .negative:focus-visible {
   outline: none;
-  border-color: var(--line-input);
+  border-color: var(--focus-line);
+  box-shadow: var(--focus-ring);
 }

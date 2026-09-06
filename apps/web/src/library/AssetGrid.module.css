@@ -1,41 +1,45 @@
 .group {
-  margin-bottom: var(--gap-lg);
+  margin-bottom: var(--gap-xl);
 }
 
 .heading {
-  margin: 0 0 var(--gap) 0;
+  margin: 0 0 var(--gap) 2px;
   font-weight: 400;
 }
 
-/* The artboard is a fixed four-column grid in a 1440px frame. `auto-fill` on
-   the same tile width keeps the tile *size* rather than the column count as
-   the window changes, so tiles never stretch into letterboxes on a wide
-   monitor. */
 .grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(var(--library-tile-min), 1fr));
   gap: var(--library-gap);
 }
 
+/* Each tile rises in on its own beat (`--i` set per tile) and lifts under the
+   pointer. The ring is always drawn so selection never resizes the row. */
 .tile {
   position: relative;
   aspect-ratio: var(--library-tile-ratio);
   border-radius: var(--library-tile-radius);
   overflow: hidden;
   background: var(--surface-2);
-  /* The ring is always drawn so selecting one does not resize it by 1.5px and
-     nudge the whole row. */
-  box-shadow: inset 0 0 0 1.5px transparent;
-  transition: box-shadow var(--transition), transform var(--transition);
+  box-shadow: inset 0 0 0 1.5px transparent, var(--shadow-1);
+  transition:
+    box-shadow var(--transition),
+    transform var(--dur-slow) var(--ease-out);
+  animation: rise var(--dur-slow) var(--ease-out) both;
+  animation-delay: calc(min(var(--i, 0), 16) * 28ms);
 }
 
 .tile:hover {
-  box-shadow: inset 0 0 0 1.5px var(--line-input);
+  transform: translateY(-3px);
+  box-shadow: inset 0 0 0 1.5px var(--line-input), var(--shadow-2);
 }
 
 .tileSelected,
 .tileSelected:hover {
-  box-shadow: inset 0 0 0 1.5px var(--accent);
+  box-shadow:
+    inset 0 0 0 1.5px var(--accent),
+    0 0 0 4px var(--accent-tint),
+    var(--shadow-2);
 }
 
 .tileButton {
@@ -50,8 +54,47 @@
   height: 100%;
   object-fit: cover;
   display: block;
-  /* Until the bytes land the tile is a flat panel, not a white flash. */
   background: var(--surface-2);
+  transition: transform var(--dur-page) var(--ease-out);
+}
+
+.tile:hover .thumb {
+  transform: scale(1.04);
+}
+
+/* A gradient scrim carrying the prompt, fading up from the bottom on hover. */
+.scrim {
+  position: absolute;
+  inset: 0;
+  padding: 34px 11px 10px;
+  display: flex;
+  align-items: flex-end;
+  background: linear-gradient(180deg, transparent 45%, rgba(6, 9, 12, 0.78));
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--dur-slow) var(--ease-out);
+}
+
+.tile:hover .scrim,
+.tile:focus-within .scrim {
+  opacity: 1;
+}
+
+.caption {
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--text-bright);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  transform: translateY(6px);
+  transition: transform var(--dur-slow) var(--ease-out);
+}
+
+.tile:hover .caption,
+.tile:focus-within .caption {
+  transform: none;
 }
 
 .duration {
@@ -62,8 +105,9 @@
   align-items: center;
   gap: 5px;
   padding: 3px 8px;
-  border-radius: var(--gap-xs);
+  border-radius: 999px;
   background: var(--badge);
+  backdrop-filter: blur(8px);
   font-size: 10.5px;
   color: var(--text-bright);
   pointer-events: none;
@@ -71,34 +115,44 @@
 
 .star {
   position: absolute;
-  top: 7px;
-  right: 7px;
-  width: 26px;
-  height: 26px;
-  border-radius: 8px;
+  top: 8px;
+  right: 8px;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
   display: flex;
   align-items: center;
   justify-content: center;
   background: var(--badge);
+  backdrop-filter: blur(8px);
   color: var(--text-3);
   opacity: 0;
-  transition: opacity var(--transition), color var(--transition);
+  transform: translateY(-4px) scale(0.9);
+  transition:
+    opacity var(--transition),
+    color var(--transition),
+    transform var(--dur-slow) var(--ease-spring),
+    background var(--transition);
 }
 
-/* Shown on hover, on keyboard focus, and always once it is on — an invisible
-   star would make "which of these did I keep?" unanswerable at a glance. */
 .tile:hover .star,
 .star:focus-visible,
 .starOn {
   opacity: 1;
+  transform: none;
 }
 
 .star:hover {
   color: var(--text);
+  background: var(--badge-strong);
 }
 
 .starOn {
   color: var(--accent);
+}
+
+.starOn:hover {
+  color: var(--accent-hover);
 }
 
 .sentinel {
@@ -111,4 +165,5 @@
   text-align: center;
   font-size: var(--text-sm);
   color: var(--text-muted);
+  animation: pulse 1.6s var(--ease-in-out) infinite;
 }

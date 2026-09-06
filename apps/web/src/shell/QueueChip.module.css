@@ -2,10 +2,14 @@
   display: flex;
   align-items: center;
   gap: 7px;
-  padding: 7px 13px;
-  border-radius: var(--radius-pill);
+  height: 32px;
+  padding: 0 13px;
+  border-radius: 999px;
   background: rgba(156, 207, 216, 0.1);
   border: 1px solid rgba(156, 207, 216, 0.22);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  animation: pop var(--dur-slow) var(--ease-spring) both;
   font-size: var(--text-sm);
   color: var(--accent);
   white-space: nowrap;
@@ -39,9 +43,11 @@ button.chip:hover,
   flex-direction: column;
   gap: var(--gap-sm);
   border-radius: var(--radius-lg);
-  border: 1px solid var(--line-strong);
-  background: var(--panel);
-  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.55);
+  border: 1px solid var(--glass-line);
+  background: var(--glass-panel-strong);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  box-shadow: var(--shadow-pop);
 }
 
 .panelHead {

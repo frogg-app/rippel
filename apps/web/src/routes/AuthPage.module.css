@@ -7,28 +7,115 @@
   justify-content: center;
   padding: 40px 24px;
   background: var(--ground);
+  background-image: var(--ambient);
+  overflow: hidden;
 }
 
+/* Two slow pools of the brand ramp drifting behind the card. Very faint: the
+   card should feel lit, not spotlit. */
 .glow {
   position: absolute;
   inset: 0;
-  background: radial-gradient(60% 50% at 50% 0%, rgba(156, 207, 216, 0.07), rgba(0, 0, 0, 0) 70%);
   pointer-events: none;
+  overflow: hidden;
+}
+
+.glow::before,
+.glow::after {
+  content: '';
+  position: absolute;
+  width: 60vmax;
+  height: 60vmax;
+  border-radius: 50%;
+  filter: blur(80px);
+  opacity: 0.55;
+  animation: drift 26s var(--ease-in-out) infinite alternate;
+}
+
+.glow::before {
+  left: -20vmax;
+  top: -30vmax;
+  background: radial-gradient(circle, rgba(49, 116, 143, 0.32), transparent 62%);
+}
+
+.glow::after {
+  right: -25vmax;
+  bottom: -35vmax;
+  background: radial-gradient(circle, rgba(156, 207, 216, 0.16), transparent 62%);
+  animation-delay: -13s;
+}
+
+@keyframes drift {
+  from {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  to {
+    transform: translate3d(8vmax, 6vmax, 0) scale(1.12);
+  }
+}
+
+/* Rings expanding from behind the card: a ripple, very quiet. */
+.glow span {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 360px;
+  height: 360px;
+  margin: -180px 0 0 -180px;
+  border-radius: 50%;
+  border: 1px solid rgba(156, 207, 216, 0.22);
+  opacity: 0;
+  animation: ripple 9s var(--ease-out) infinite;
+}
+
+.glow span:nth-child(2) {
+  animation-delay: 3s;
+}
+
+.glow span:nth-child(3) {
+  animation-delay: 6s;
+}
+
+@keyframes ripple {
+  0% {
+    transform: scale(0.6);
+    opacity: 0;
+  }
+  10% {
+    opacity: 0.35;
+  }
+  100% {
+    transform: scale(3.2);
+    opacity: 0;
+  }
 }
 
 .card {
   position: relative;
   width: 100%;
-  max-width: 392px;
+  max-width: 400px;
   display: flex;
   flex-direction: column;
   gap: var(--gap-lg);
-  padding: 32px 30px 28px;
-  border-radius: var(--radius-xl);
-  border: 1px solid var(--line-strong);
-  background: rgba(220, 238, 242, 0.02);
+  padding: 34px 32px 28px;
+  border-radius: 22px;
+  border: 1px solid var(--glass-line);
+  background: var(--glass-panel);
   backdrop-filter: var(--glass-blur);
-  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.45);
+  -webkit-backdrop-filter: var(--glass-blur);
+  box-shadow: var(--shadow-3), var(--edge-highlight);
+  animation: cardIn 640ms var(--ease-out) both;
+}
+
+@keyframes cardIn {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 .head {
@@ -45,10 +132,10 @@
   line-height: 1;
 }
 
-
 .subtitle {
   margin: 0;
   font-size: var(--text-base);
+  line-height: 1.55;
   color: var(--text-4);
 }
 
@@ -77,36 +164,43 @@
 }
 
 .input {
-  height: 42px;
-  padding: 0 13px;
+  height: 44px;
+  padding: 0 14px;
   border-radius: var(--radius-lg);
   border: 1px solid var(--line-input);
   background: var(--surface-2);
   color: var(--text);
   font-size: var(--text-lg);
-  transition: border-color var(--transition), background var(--transition);
+  box-shadow: var(--edge-highlight);
 }
 
 .input::placeholder {
   color: var(--text-muted);
 }
 
+.input:hover {
+  border-color: var(--line-dashed);
+}
+
 .input:focus {
   outline: none;
-  border-color: var(--accent-line);
+  border-color: var(--focus-line);
   background: var(--surface-3);
+  box-shadow: var(--focus-ring), var(--edge-highlight);
 }
 
 .error {
-  padding: 10px 13px;
+  padding: 11px 14px;
   border-radius: var(--radius-lg);
   border: 1px solid var(--danger-line);
   background: var(--danger-tint);
   color: var(--danger-text);
   font-size: var(--text-sm);
+  animation: pop var(--dur-slow) var(--ease-spring) both;
 }
 
 .submit {
+  position: relative;
   height: var(--cta-height);
   border-radius: var(--radius-lg);
   background: var(--accent-gradient);
@@ -114,11 +208,32 @@
   font-size: var(--text-xl);
   font-weight: 600;
   box-shadow: var(--accent-glow);
-  transition: filter var(--transition);
+  overflow: hidden;
+  isolation: isolate;
+}
+
+/* The sheen: a soft diagonal band that crosses on hover. */
+.submit::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    115deg,
+    transparent 30%,
+    rgba(255, 255, 255, 0.35) 50%,
+    transparent 70%
+  );
+  transform: translateX(-120%);
+  transition: transform 700ms var(--ease-out);
 }
 
 .submit:hover:not(:disabled) {
-  filter: brightness(1.06);
+  box-shadow: 0 10px 32px rgba(156, 207, 216, 0.3);
+  filter: brightness(1.04);
+}
+
+.submit:hover:not(:disabled)::after {
+  transform: translateX(120%);
 }
 
 .submit:disabled {

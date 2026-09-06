@@ -24,7 +24,7 @@ export interface NoticeProps {
 export function Notice({ title, message, tone = 'plain', action, footnote }: NoticeProps) {
   return (
     <div
-      className={`${styles.notice} ${tone === 'warning' ? styles.noticeWarning : ''} ${
+      className={`${styles.notice} rise ${tone === 'warning' ? styles.noticeWarning : ''} ${
         tone === 'danger' ? styles.noticeDanger : ''
       }`}
       role={tone === 'plain' ? undefined : 'alert'}

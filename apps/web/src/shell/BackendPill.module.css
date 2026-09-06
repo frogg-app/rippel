@@ -2,11 +2,20 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 12px 6px 10px;
-  border-radius: var(--radius-pill);
-  background: var(--surface-3);
-  border: 1px solid var(--line-strong);
+  height: 32px;
+  padding: 0 13px 0 11px;
+  border-radius: 999px;
+  background: var(--glass-panel);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-line);
+  box-shadow: var(--edge-highlight);
   white-space: nowrap;
+  transition: border-color var(--transition), background var(--transition);
+}
+
+.pill:hover {
+  border-color: var(--line-input);
 }
 
 .quiet {
@@ -19,6 +28,7 @@
 }
 
 .dot {
+  position: relative;
   width: 7px;
   height: 7px;
   border-radius: 50%;
@@ -31,22 +41,41 @@
   box-shadow: var(--ok-glow);
 }
 
+/* A slow ring breathing out of the live dot: the server is there, right now. */
+.dot[data-status='online']::after {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  border: 1px solid var(--ok);
+  animation: ping 2.4s var(--ease-out) infinite;
+}
+
+@keyframes ping {
+  0% {
+    transform: scale(0.6);
+    opacity: 0.8;
+  }
+  100% {
+    transform: scale(1.8);
+    opacity: 0;
+  }
+}
+
 .dot[data-status='offline'] {
   background: var(--danger);
 }
 
 .name {
   font-size: var(--text-sm);
-  color: var(--text-3);
+  color: var(--text-2);
 }
 
 .memory {
   font-size: var(--text-xs);
-  color: var(--text-muted);
+  color: var(--text-4);
 }
 
-/* "reported" / "budget": the word that stops the figure being read as the
-   size of the card. Quieter than the number, but present. */
 .qualifier {
   font-family: var(--font-ui);
   color: var(--text-muted);

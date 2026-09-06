@@ -6,12 +6,12 @@
   flex-direction: column;
 }
 
-/* The one warm wash the artboard puts behind the job area — the only colour on
-   the screen that does not come from an image. */
+/* The one wash the stage puts behind the job area: a pool of foam at the top
+   that the canvas sits under. */
 .glow {
   position: absolute;
   inset: 0;
-  background: radial-gradient(80% 60% at 50% 0%, rgba(156, 207, 216, 0.05), rgba(0, 0, 0, 0) 70%);
+  background: radial-gradient(70% 55% at 50% 0%, rgba(156, 207, 216, 0.07), rgba(0, 0, 0, 0) 70%);
   pointer-events: none;
 }
 
@@ -22,47 +22,66 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: var(--gap-xl) 32px;
-  gap: 18px;
+  padding: 22px 32px 24px;
+  gap: 16px;
 }
 
 /* ------------------------------------------------------------ status row */
 
 .statusRow {
   width: 100%;
-  max-width: 820px;
+  max-width: 860px;
   display: flex;
   align-items: center;
   gap: var(--gap-md);
-  min-height: 30px;
+  min-height: 32px;
+  animation: fade var(--dur-slow) var(--ease-out) both;
 }
 
 .dot,
 .dotIdle,
 .dotDone {
+  position: relative;
   width: 8px;
   height: 8px;
   border-radius: 50%;
   flex-shrink: 0;
+  transition: background var(--dur-slow) var(--ease-out);
 }
 
 .dot {
   background: var(--accent);
-  animation: breathe 1.6s ease-in-out infinite;
+  box-shadow: 0 0 10px rgba(156, 207, 216, 0.6);
+}
+
+/* A ring breathing out of the live dot while the job runs. */
+.dot::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  border: 1px solid var(--accent);
+  animation: ping 1.8s var(--ease-out) infinite;
+}
+
+@keyframes ping {
+  0% {
+    transform: scale(0.5);
+    opacity: 0.9;
+  }
+  100% {
+    transform: scale(1.9);
+    opacity: 0;
+  }
 }
 
 .dotDone {
   background: var(--ok);
+  box-shadow: var(--ok-glow);
 }
 
 .dotIdle {
   background: var(--offline);
-}
-
-@keyframes breathe {
-  50% {
-    opacity: 0.35;
-  }
 }
 
 .statusLabel {
@@ -83,51 +102,73 @@
 
 .bar {
   flex-grow: 1;
-  height: 3px;
+  height: 4px;
   border-radius: 2px;
-  background: rgba(220, 238, 242, 0.1);
+  background: rgba(220, 238, 242, 0.08);
   overflow: hidden;
+  box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.3);
 }
 
 .barFill {
+  position: relative;
   height: 100%;
+  border-radius: 2px;
   background: var(--accent-bar);
-  transition: width 200ms linear;
+  box-shadow: 0 0 12px rgba(156, 207, 216, 0.5);
+  transition: width 260ms var(--ease-out);
+}
+
+/* A slow highlight travelling the filled part, so a bar stalled at 40% still
+   visibly breathes. */
+.barFill::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.35), transparent);
+  background-size: 200% 100%;
+  animation: shimmer 1.8s linear infinite;
 }
 
 .offline {
   font-size: var(--text-xs);
-  color: var(--text-4);
+  color: var(--warn);
   white-space: nowrap;
+  animation: pulse 1.6s var(--ease-in-out) infinite;
 }
 
 .ghostButton {
   font-size: 12.5px;
   color: var(--text-4);
-  border: 1px solid rgba(220, 238, 242, 0.14);
-  border-radius: 8px;
-  padding: 5px 12px;
+  border: 1px solid var(--line-strong);
+  background: var(--surface-1);
+  border-radius: 9px;
+  padding: 6px 13px;
   white-space: nowrap;
-  transition: color var(--transition), border-color var(--transition);
 }
 
 .ghostButton:hover {
-  color: var(--text-2);
+  color: var(--text);
   border-color: var(--line-input);
+  background: var(--surface-hover);
 }
 
 /* ------------------------------------------------------------ canvas */
 
 .canvas {
   width: 100%;
-  max-width: 820px;
+  max-width: 860px;
   flex-grow: 1;
-  /* 820x462 in the artboard — hold the shape as the window changes. */
-  aspect-ratio: 820 / 462;
+  aspect-ratio: 860 / 484;
   max-height: 100%;
-  border-radius: var(--radius-xl);
+  border-radius: 20px;
   border: 1px solid var(--line);
-  background: var(--surface-1);
+  background:
+    radial-gradient(90% 90% at 50% 40%, rgba(220, 238, 242, 0.028), rgba(0, 0, 0, 0) 100%),
+    var(--ground-sunken);
+  box-shadow:
+    inset 0 2px 24px rgba(0, 0, 0, 0.45),
+    inset 0 0 0 1px rgba(0, 0, 0, 0.2),
+    var(--edge-highlight);
   position: relative;
   overflow: hidden;
   display: flex;
@@ -135,29 +176,58 @@
   justify-content: center;
 }
 
-/* A finished image is shown whole — `contain`, not `cover`. A 9:16 portrait
-   cropped to a 16:9 frame is not the image the user generated. */
+/* A faint dot grid under everything: it is a canvas, not a void. */
+.canvas::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(rgba(220, 238, 242, 0.06) 1px, transparent 1px);
+  background-size: 22px 22px;
+  mask-image: radial-gradient(70% 70% at 50% 50%, #000 30%, transparent 100%);
+  -webkit-mask-image: radial-gradient(70% 70% at 50% 50%, #000 30%, transparent 100%);
+  pointer-events: none;
+}
+
+/* A finished image is shown whole — `contain`, not `cover`. */
 .result {
+  position: relative;
   max-width: 100%;
   max-height: 100%;
   object-fit: contain;
+  border-radius: 6px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.55);
+  animation: resultIn var(--dur-page) var(--ease-out) both;
 }
 
-/* The live preview fills the frame and sits under the artboard's glass scrim,
-   because an in-progress latent is a smear and looks better softened than
-   presented as a result. */
+@keyframes resultIn {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+    filter: blur(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+    filter: blur(0);
+  }
+}
+
+/* The live preview fills the frame under a glass scrim: an in-progress latent
+   is a smear and looks better softened than presented as a result. */
 .preview {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
+  animation: fade var(--dur-slow) var(--ease-out) both;
 }
 
 .previewScrim {
   position: absolute;
   inset: 0;
-  backdrop-filter: var(--glass-blur);
+  backdrop-filter: blur(18px) saturate(1.2);
+  -webkit-backdrop-filter: blur(18px) saturate(1.2);
   background: var(--glass);
 }
 
@@ -165,19 +235,34 @@
   position: absolute;
   top: 14px;
   left: 16px;
-  padding: 5px 11px;
-  border-radius: var(--radius-sm);
-  background: var(--scrim);
-  border: 1px solid rgba(220, 238, 242, 0.1);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 11px 5px 9px;
+  border-radius: 999px;
+  background: var(--glass-panel-strong);
+  border: 1px solid var(--glass-line);
   font-size: var(--text-xs);
-  letter-spacing: 0.03em;
+  letter-spacing: 0.05em;
   color: var(--text-2);
+  animation: pop var(--dur-slow) var(--ease-spring) both;
+}
+
+.previewBadge::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--danger);
+  box-shadow: 0 0 8px var(--danger);
+  animation: pulse 1.2s var(--ease-in-out) infinite;
 }
 
 /* ------------------------------------------------------------ messages */
 
 .message {
-  max-width: 360px;
+  position: relative;
+  max-width: 380px;
   text-align: center;
   display: flex;
   flex-direction: column;
@@ -185,67 +270,123 @@
   gap: var(--gap-sm);
   color: var(--text-muted);
   padding: 24px;
+  animation: rise var(--dur-page) var(--ease-out) both;
+}
+
+/* The idle spark: breathes slowly, sits in a soft pool of light. */
+.message > svg {
+  color: var(--accent);
+  margin-bottom: 6px;
+  filter: drop-shadow(0 0 12px rgba(156, 207, 216, 0.45));
+  animation: breathe 3.2s var(--ease-in-out) infinite;
+}
+
+@keyframes breathe {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: scale(0.92);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.06);
+  }
 }
 
 .messageTitle {
   margin: 0;
   font-family: var(--font-display);
-  font-size: var(--display-sm);
-  color: var(--text-3);
+  font-weight: var(--weight-display);
+  font-size: var(--display);
+  color: var(--text-2);
+  letter-spacing: var(--tracking-brand);
 }
 
 .danger {
-  color: var(--danger);
+  color: var(--danger-text);
 }
 
 .messageBody {
   margin: 0;
   font-size: var(--text-sm);
-  line-height: 1.55;
+  line-height: 1.6;
   color: var(--text-muted);
 }
 
 .spinner {
-  width: 20px;
-  height: 20px;
+  width: 22px;
+  height: 22px;
   border-radius: 50%;
-  border: 2px solid var(--line-input);
+  border: 2px solid rgba(156, 207, 216, 0.16);
   border-top-color: var(--accent);
-  animation: spin 900ms linear infinite;
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
+  margin-bottom: 6px;
+  animation: spin 800ms linear infinite;
 }
 
 /* ------------------------------------------------------------ tray */
 
 .tray {
   width: 100%;
-  max-width: 820px;
+  max-width: 860px;
   display: flex;
   align-items: center;
   gap: var(--gap);
   flex-shrink: 0;
+  padding: 10px 12px;
+  border-radius: 16px;
+  background: var(--glass-panel);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-line);
+  box-shadow: var(--shadow-1), var(--edge-highlight);
+  animation: rise var(--dur-page) var(--ease-out) both;
+  animation-delay: 80ms;
+}
+
+/* No job yet: the tray drops its glass and its height, so the actions read as
+   a quiet footer rather than an empty shelf. */
+.trayEmpty {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  padding: 0;
+}
+
+.trayEmpty .strip {
+  min-height: 0;
 }
 
 .strip {
   display: flex;
-  gap: 10px;
+  gap: 8px;
   flex-grow: 1;
   min-width: 0;
+  min-height: 62px;
   overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.strip::-webkit-scrollbar {
+  display: none;
 }
 
 .thumb {
-  width: 76px;
-  height: 76px;
+  width: 62px;
+  height: 62px;
   flex-shrink: 0;
-  border-radius: var(--radius-md);
+  border-radius: 10px;
   overflow: hidden;
   border: 1px solid var(--line-strong);
+  transition: border-color var(--transition), transform var(--dur-slow) var(--ease-spring), box-shadow var(--transition);
+  animation: pop var(--dur-slow) var(--ease-spring) both;
+}
+
+.thumb:hover {
+  transform: translateY(-2px);
+  border-color: var(--line-input);
+  box-shadow: var(--shadow-2);
 }
 
 .thumb img {
@@ -255,22 +396,26 @@
   display: block;
 }
 
-.thumbOn {
-  border: 1.5px solid var(--accent);
+.thumbOn,
+.thumbOn:hover {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-tint-strong);
 }
 
 .thumbPending {
-  width: 76px;
-  height: 76px;
+  width: 62px;
+  height: 62px;
   flex-shrink: 0;
-  border-radius: var(--radius-md);
-  border: 1px dashed rgba(220, 238, 242, 0.13);
+  border-radius: 10px;
+  border: 1px dashed var(--line-dashed);
+  background: var(--surface-1);
+  animation: pulse 1.6s var(--ease-in-out) infinite;
 }
 
 .actions {
   display: flex;
   align-items: center;
-  gap: var(--gap-sm);
+  gap: 8px;
   flex-shrink: 0;
 }
 
@@ -278,43 +423,64 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  height: var(--action-height);
-  padding: 0 15px;
-  border-radius: var(--radius-md);
-  border: 1px solid var(--line-input);
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 10px;
+  border: 1px solid var(--line-strong);
+  background: var(--surface-2);
   font-size: var(--text-base);
   color: var(--text-2);
   white-space: nowrap;
-  transition: background var(--transition), color var(--transition), border-color var(--transition);
+  box-shadow: var(--edge-highlight);
 }
 
 .action:hover {
-  background: var(--surface-2);
+  background: var(--surface-hover);
+  border-color: var(--line-input);
   color: var(--text);
 }
 
+.action svg {
+  transition: transform var(--dur-slow) var(--ease-spring);
+}
+
+.action:hover svg {
+  transform: translateY(-1px);
+}
+
 .actionPrimary {
-  padding: 0 16px;
-  background: rgba(156, 207, 216, 0.14);
-  border-color: rgba(156, 207, 216, 0.32);
+  padding: 0 15px;
+  background: var(--accent-tint-strong);
+  border-color: var(--accent-line);
   color: var(--accent);
   font-weight: 600;
 }
 
+.actionPrimary:hover {
+  background: var(--accent-tint-hover);
+  border-color: var(--accent-line-strong);
+  color: var(--accent-hover);
+}
+
 .actionOff,
 .actionOff:hover {
-  opacity: 0.42;
+  opacity: 0.4;
   cursor: not-allowed;
-  background: none;
+  background: var(--surface-1);
+  border-color: var(--line);
   color: var(--text-3);
+  box-shadow: none;
+}
+
+.actionOff:hover svg {
+  transform: none;
 }
 
 .actionPrimary.actionOff {
   color: var(--accent);
 }
 
-/* The "soon" tag on Animate: the button is styled as the artboard's primary
-   action, so it needs to say out loud that it is not wired up. */
+/* The "soon" tag on Animate. */
 .soon {
   font-family: var(--font-mono);
   font-size: 9.5px;
@@ -328,25 +494,21 @@
 
 /* ------------------------------------------------------------ phase */
 
-/* The label for a phase with no number — "Loading SDXL", "Decoding image".
-   Sits where the step counter would be, in the same quiet weight, so the row
-   does not jump as a run moves between measurable and unmeasurable work. */
 .phase {
   font-size: 12.5px;
   color: var(--text-3);
   white-space: nowrap;
+  animation: fade var(--dur) var(--ease-out) both;
 }
 
-/* An indeterminate bar: a sliver that sweeps rather than a fill that grows.
-   Nothing here can be read as a percentage, which is the point — the VAE
-   decode has no fraction, and a bar sitting at 100% through it reads as a
-   hang. */
+/* An indeterminate bar: a sliver that sweeps rather than a fill that grows. */
 .barSweep {
   width: 32%;
   height: 100%;
   border-radius: 2px;
   background: var(--accent-bar);
-  animation: sweep 1.5s ease-in-out infinite;
+  box-shadow: 0 0 12px rgba(156, 207, 216, 0.5);
+  animation: sweep 1.5s var(--ease-in-out) infinite;
 }
 
 @keyframes sweep {
@@ -358,8 +520,6 @@
   }
 }
 
-/* Respect a reduced-motion preference: hold the sliver still and let the
-   breathing dot and the label carry "still working". */
 @media (prefers-reduced-motion: reduce) {
   .barSweep {
     animation: none;
@@ -367,15 +527,16 @@
     opacity: 0.35;
   }
 
-  .dot,
-  .spinner {
+  .dot::after,
+  .spinner,
+  .barFill::after,
+  .message > svg {
     animation: none;
   }
 }
 
-/* A backend error is a machine string — "VAEDecode failed: CUDA error:
-   invalid kernel file". It is shown verbatim, so it needs to wrap anywhere
-   and be selectable for a bug report. */
+/* A backend error is a machine string, shown verbatim: wraps anywhere, and is
+   selectable for a bug report. */
 .errorBody {
   font-family: var(--font-mono);
   font-size: 12.5px;
@@ -387,7 +548,7 @@
   max-height: 180px;
   overflow-y: auto;
   padding: 10px 12px;
-  border-radius: var(--radius-md);
-  border: 1px solid var(--line);
-  background: var(--surface-2);
+  border-radius: 11px;
+  border: 1px solid var(--danger-line);
+  background: var(--danger-tint);
 }

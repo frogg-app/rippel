@@ -1,12 +1,14 @@
 /*
- * The split workspace from PLAN.md §6 and design/parts/Main.body.html: a fixed
- * 396px input panel, the rest given to the job. Only the frame lives here —
- * the controls carry their own styles under src/create/.
+ * The split workspace from PLAN.md §6: a fixed 396px input column on the left,
+ * the rest given to the job. The column sits inside the shell's rounded plate,
+ * so it has no chrome of its own beyond a hairline on its right edge and a
+ * faintly sunken ground that tells it apart from the stage.
  */
 
 .workspace {
   flex-grow: 1;
   min-height: 0;
+  min-width: 0;
   display: flex;
 }
 
@@ -16,7 +18,7 @@
   width: var(--panel-width);
   flex-shrink: 0;
   border-right: 1px solid var(--line);
-  background: var(--panel);
+  background: linear-gradient(180deg, rgba(220, 238, 242, 0.012), rgba(0, 0, 0, 0.08));
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -26,44 +28,121 @@
   flex-grow: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: var(--gap-lg) var(--panel-pad-x);
+  overscroll-behavior: contain;
+  padding: 22px var(--panel-pad-x) 24px;
   display: flex;
   flex-direction: column;
-  gap: var(--gap-lg);
+  gap: 24px;
 }
+
+/* Each input group rises in on its own beat, top to bottom, the first time
+   the screen mounts. */
+.inputs > * {
+  animation: rise var(--dur-page) var(--ease-out) both;
+}
+
+.inputs > :nth-child(1) { animation-delay: 0ms; }
+.inputs > :nth-child(2) { animation-delay: 40ms; }
+.inputs > :nth-child(3) { animation-delay: 80ms; }
+.inputs > :nth-child(4) { animation-delay: 120ms; }
+.inputs > :nth-child(5) { animation-delay: 160ms; }
+.inputs > :nth-child(6) { animation-delay: 200ms; }
+.inputs > :nth-child(7) { animation-delay: 240ms; }
 
 .footer {
   flex-shrink: 0;
-  padding: 16px var(--panel-pad-x) var(--gap-lg);
+  padding: 14px var(--panel-pad-x) 18px;
   border-top: 1px solid var(--line);
+  background: linear-gradient(180deg, rgba(13, 16, 20, 0), rgba(13, 16, 20, 0.5));
   display: flex;
   flex-direction: column;
-  gap: var(--gap-sm);
+  gap: 8px;
 }
 
+/* ------------------------------------------------------------ generate */
+
 .generate {
+  position: relative;
   height: var(--cta-height);
-  border-radius: var(--radius-lg);
+  border-radius: 14px;
   background: var(--accent-gradient);
   color: var(--accent-ink);
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: var(--gap-sm);
+  gap: 9px;
   font-size: var(--text-xl);
   font-weight: 600;
-  box-shadow: var(--accent-glow);
-  transition: filter var(--transition), box-shadow var(--transition);
+  letter-spacing: 0.01em;
+  overflow: hidden;
+  isolation: isolate;
+  box-shadow:
+    var(--accent-glow),
+    inset 0 1px 0 rgba(255, 255, 255, 0.28),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.12);
+  transition:
+    transform var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-slow) var(--ease-out),
+    filter var(--transition),
+    opacity var(--transition);
+}
+
+/* The sheen: a soft diagonal highlight that crosses the button on hover. */
+.generate::after {
+  content: '';
+  position: absolute;
+  inset: -40% -60%;
+  z-index: -1;
+  background: linear-gradient(
+    115deg,
+    rgba(255, 255, 255, 0) 30%,
+    rgba(255, 255, 255, 0.35) 50%,
+    rgba(255, 255, 255, 0) 70%
+  );
+  transform: translateX(-70%);
+  opacity: 0;
+  transition: opacity var(--dur) var(--ease-out);
 }
 
 .generate:hover:not(:disabled) {
-  filter: brightness(1.06);
+  transform: translateY(-1px);
+  box-shadow:
+    0 10px 30px rgba(156, 207, 216, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.32),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.12);
+}
+
+.generate:hover:not(:disabled)::after {
+  opacity: 1;
+  animation: sheen 1.1s var(--ease-in-out) both;
+}
+
+@keyframes sheen {
+  from {
+    transform: translateX(-70%);
+  }
+  to {
+    transform: translateX(70%);
+  }
+}
+
+.generate:active:not(:disabled) {
+  transform: translateY(0) scale(0.985);
 }
 
 .generate:disabled {
   cursor: not-allowed;
-  opacity: 0.45;
-  box-shadow: none;
+  background: var(--surface-3);
+  color: var(--text-4);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.generate svg {
+  transition: transform var(--dur-slow) var(--ease-spring);
+}
+
+.generate:hover:not(:disabled) svg {
+  transform: rotate(18deg) scale(1.12);
 }
 
 /* Doubles as the reason line: when Generate is disabled this says why, in the
@@ -73,4 +152,5 @@
   font-size: 11.5px;
   color: var(--text-muted);
   min-height: 16px;
+  transition: color var(--transition);
 }

@@ -15,16 +15,22 @@ import styles from './AssetGrid.module.css';
 export function AssetTile({
   asset,
   selected,
+  index = 0,
   onOpen,
   onToggleStar,
 }: {
   asset: LibraryAsset;
   selected: boolean;
+  /** Position within its group, for the staggered entrance. */
+  index?: number;
   onOpen: (asset: LibraryAsset) => void;
   onToggleStar: (asset: LibraryAsset) => void;
 }) {
   return (
-    <div className={`${styles.tile} ${selected ? styles.tileSelected : ''}`}>
+    <div
+      className={`${styles.tile} ${selected ? styles.tileSelected : ''}`}
+      style={{ '--i': index } as React.CSSProperties}
+    >
       <button
         type="button"
         className={styles.tileButton}
@@ -45,6 +51,13 @@ export function AssetTile({
           width={asset.width}
           height={asset.height}
         />
+        {/* The prompt, on hover only: the grid stays pictures, and the words
+            arrive when you ask for them. */}
+        {asset.prompt ? (
+          <span className={styles.scrim} aria-hidden>
+            <span className={styles.caption}>{asset.prompt}</span>
+          </span>
+        ) : null}
       </button>
 
       {asset.kind === 'video' && asset.duration !== null ? (

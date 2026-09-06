@@ -39,7 +39,7 @@
  *   failed      the error, and the button back, labelled as a retry
  *   installed   no button at all: a re-install is answered with a 409
  */
-import { useState } from 'react';
+import { useState, type CSSProperties } from 'react';
 import type { ModelCatalogEntry, ModelInstall } from '@comfy/shared';
 import {
   RUNNABILITY_LABEL,
@@ -65,6 +65,8 @@ export interface CatalogueCardProps {
   /** A refusal from the last attempt on this entry: a 400, a 409, a 502. */
   failure: string | null;
   now: number;
+  /** Position in the grid, for the staggered entrance. */
+  index?: number;
 }
 
 export function CatalogueCard({
@@ -75,6 +77,7 @@ export function CatalogueCard({
   onInstall,
   failure,
   now,
+  index = 0,
 }: CatalogueCardProps) {
   const hue = familyHue(entry.base);
   const live = install !== null && isLive(install);
@@ -133,7 +136,11 @@ export function CatalogueCard({
       };
 
   return (
-    <article className={`${styles.card} ${live ? styles.cardBusy : ''}`} aria-label={entry.name}>
+    <article
+      className={`${styles.card} ${live ? styles.cardBusy : ''}`}
+      style={{ '--i': index } as CSSProperties}
+      aria-label={entry.name}
+    >
       {full ? (
         <button
           type="button"

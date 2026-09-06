@@ -11,15 +11,15 @@
 }
 
 .label {
-  font-size: 11px;
-  letter-spacing: 0.08em;
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
-  color: var(--text-dim);
+  color: var(--text-4);
 }
 
 .optional {
-  font-size: 11px;
-  color: var(--text-faint);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
 }
 
 .clear {
@@ -27,8 +27,8 @@
   border: 0;
   padding: 0;
   font: inherit;
-  font-size: 12px;
-  color: var(--text-dim);
+  font-size: var(--text-sm);
+  color: var(--text-4);
   cursor: pointer;
 }
 
@@ -36,27 +36,40 @@
   color: var(--accent);
 }
 
+/* The drop zone: a dashed field that brightens under a dragged file. */
 .drop {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 10px;
   padding: 18px 14px;
-  border: 1px dashed var(--hairline-strong);
-  border-radius: var(--radius-md);
-  background: var(--panel-raised);
-  transition: border-color 120ms ease, background 120ms ease;
+  border: 1px dashed var(--line-dashed);
+  border-radius: 13px;
+  background: var(--surface-1);
+  transition:
+    border-color var(--transition),
+    background var(--transition),
+    box-shadow var(--dur-slow) var(--ease-out),
+    transform var(--dur-slow) var(--ease-spring);
+}
+
+.drop:hover {
+  border-color: var(--line-input);
+  background: var(--surface-2);
 }
 
 .dropActive {
   border-color: var(--accent);
-  background: var(--accent-wash, rgba(156, 207, 216, 0.06));
+  border-style: solid;
+  background: var(--accent-tint);
+  box-shadow: var(--focus-ring);
+  transform: scale(1.01);
 }
 
 .dropText {
   margin: 0;
   font-size: 12.5px;
-  color: var(--text-dim);
+  color: var(--text-4);
 }
 
 .dropActions {
@@ -65,18 +78,20 @@
 }
 
 .dropButton {
-  padding: 6px 12px;
+  padding: 6px 13px;
   font: inherit;
-  font-size: 12px;
-  color: var(--text);
-  background: var(--panel);
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  color: var(--text-2);
+  background: var(--surface-3);
+  border: 1px solid var(--line-strong);
+  border-radius: 9px;
   cursor: pointer;
+  box-shadow: var(--edge-highlight);
 }
 
 .dropButton:hover:not(:disabled) {
-  border-color: var(--accent);
+  border-color: var(--accent-line);
+  background: var(--accent-tint);
   color: var(--accent);
 }
 
@@ -91,17 +106,19 @@
 
 .chosen {
   display: grid;
-  grid-template-columns: 72px 1fr;
+  grid-template-columns: 76px 1fr;
   gap: 12px;
   align-items: start;
+  animation: rise var(--dur-slow) var(--ease-out) both;
 }
 
 .thumb {
-  width: 72px;
-  height: 72px;
+  width: 76px;
+  height: 76px;
   object-fit: cover;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--hairline);
+  border-radius: 11px;
+  border: 1px solid var(--line-strong);
+  box-shadow: var(--shadow-1);
 }
 
 .influence {
@@ -113,13 +130,14 @@
 .influenceLabel {
   display: flex;
   justify-content: space-between;
-  font-size: 12px;
-  color: var(--text-dim);
+  font-size: var(--text-sm);
+  color: var(--text-3);
 }
 
 .influenceValue {
+  font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
-  color: var(--text);
+  color: var(--accent);
 }
 
 .influence input[type='range'] {
@@ -129,12 +147,13 @@
 
 .influenceHint {
   margin: 0;
-  font-size: 11px;
-  color: var(--text-faint);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
 }
 
 .error {
   margin: 0;
-  font-size: 12px;
-  color: var(--danger);
+  font-size: var(--text-sm);
+  color: var(--danger-text);
+  animation: rise var(--dur) var(--ease-out) both;
 }

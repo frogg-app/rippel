@@ -1,28 +1,40 @@
-/* Tiles: 70px tall, 11px radius, name over a bottom-up scrim. The grid wraps at
-   three across the 396px panel, which is what the artboard draws. */
+/* Tiles: 72px tall, three across the panel, name over a bottom-up scrim. The
+   art is painted by an inline gradient or a preview image; selection changes
+   the ring, never the art, so nothing shifts. */
 .grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: var(--gap-sm);
+  gap: 9px;
 }
 
 .tile {
   position: relative;
-  height: 70px;
-  border-radius: var(--radius-md);
+  height: 72px;
+  border-radius: 12px;
   overflow: hidden;
   border: 1px solid var(--line-strong);
-  /* The inline gradient from tileArt() paints the background; the border is the
-     only thing selection changes, so the art never shifts. */
-  transition: border-color var(--transition), transform var(--transition);
+  box-shadow: var(--edge-highlight);
+  transition:
+    border-color var(--transition),
+    transform var(--dur-slow) var(--ease-spring),
+    box-shadow var(--dur-slow) var(--ease-out),
+    filter var(--transition);
 }
 
-.tile:hover:not([aria-disabled="true"]) {
-  transform: translateY(-1px);
+.tile:hover:not([aria-disabled='true']) {
+  transform: translateY(-2px);
+  border-color: var(--line-input);
+  box-shadow: var(--shadow-2);
 }
 
-.tileOn {
-  border: 1.5px solid var(--accent);
+.tile:active:not([aria-disabled='true']) {
+  transform: translateY(0) scale(0.98);
+}
+
+.tileOn,
+.tileOn:hover:not([aria-disabled='true']) {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-tint-strong), 0 6px 18px rgba(156, 207, 216, 0.16);
 }
 
 /* Not-runnable: drained of colour, and it says why on the tile. */
@@ -39,24 +51,28 @@
   width: 100%;
   height: 100%;
   object-fit: cover;
+  transition: transform var(--dur-page) var(--ease-out);
+}
+
+.tile:hover:not([aria-disabled='true']) .art {
+  transform: scale(1.06);
 }
 
 .name {
   position: absolute;
   inset: auto 0 0 0;
-  padding: 6px 8px;
-  background: linear-gradient(180deg, rgba(0, 0, 0, 0), rgba(4, 6, 8, 0.9));
+  padding: 7px 8px 6px;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0), rgba(4, 6, 8, 0.92));
   font-size: 10.5px;
   font-weight: 600;
   color: var(--text-2);
   text-align: left;
   line-height: 1.25;
-  /* Model names run long ("Hunyuan Video 720p Fp8 E4m3fn"); two lines, then
-     an ellipsis, rather than a tile that grows out of the grid. */
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  transition: color var(--transition);
 }
 
 .tileOn .name {
@@ -68,8 +84,8 @@
   top: 5px;
   left: 5px;
   padding: 2px 6px;
-  border-radius: 5px;
-  background: var(--scrim);
+  border-radius: 6px;
+  background: var(--badge-strong);
   border: 1px solid var(--line-strong);
   font-size: 9.5px;
   letter-spacing: 0.03em;
@@ -77,16 +93,11 @@
 }
 
 .skeleton {
-  background: var(--surface-2);
-  border-style: dashed;
+  background: linear-gradient(90deg, var(--surface-2) 0%, var(--surface-hover) 50%, var(--surface-2) 100%);
+  background-size: 200% 100%;
+  animation: shimmer 1.6s linear infinite;
+  border-style: solid;
   border-color: var(--line);
-  animation: pulse 1.4s ease-in-out infinite;
-}
-
-@keyframes pulse {
-  50% {
-    opacity: 0.45;
-  }
 }
 
 .note {
@@ -97,6 +108,7 @@
   font-size: var(--text-xs);
   line-height: 1.5;
   color: var(--text-muted);
+  animation: rise var(--dur-slow) var(--ease-out) both;
 }
 
 .noteIcon {
@@ -104,23 +116,19 @@
   margin-top: 2px;
 }
 
-/* The tile whose reason is currently spelled out under the grid: outlined, so
-   the sentence and the tile it belongs to are visibly connected. */
+/* The tile whose reason is currently spelled out under the grid. */
 .tileExplained {
   border-style: solid;
   border-color: var(--line-input);
 }
 
-/* "generic" — a family running on a best-guess workflow rather than a
-   hand-authored one. Quieter than the blocked badge: it is a caveat, not a
-   refusal. */
 .badgeSoft {
   position: absolute;
   top: 5px;
   right: 5px;
   padding: 2px 6px;
-  border-radius: 5px;
-  background: var(--scrim);
+  border-radius: 6px;
+  background: var(--badge-strong);
   border: 1px solid var(--line);
   font-size: 9.5px;
   letter-spacing: 0.03em;
@@ -132,8 +140,6 @@
   font-weight: 600;
 }
 
-/* The fix, offered inline in the note. A button, because it acts on the app
-   rather than navigating. */
 .link {
   color: var(--accent);
   font-size: var(--text-xs);

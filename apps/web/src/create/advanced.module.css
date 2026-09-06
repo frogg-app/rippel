@@ -1,10 +1,16 @@
 /* The bordered card from the artboard: 12px radius, a hairline-split header,
    and 14px of padding with 14px between rows. */
 .drawer {
-  border-radius: var(--radius-lg);
+  border-radius: 14px;
   border: 1px solid var(--line-strong);
   background: var(--surface-1);
+  box-shadow: var(--edge-highlight);
   overflow: hidden;
+  transition: border-color var(--transition), background var(--transition);
+}
+
+.drawer:hover {
+  border-color: var(--line-input);
 }
 
 .head {
@@ -12,8 +18,17 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 11px 14px;
+  padding: 12px 14px;
   text-align: left;
+  transition: background var(--transition);
+}
+
+.head:hover {
+  background: var(--surface-2);
+}
+
+.head:active {
+  transform: none;
 }
 
 .headOpen {
@@ -45,6 +60,7 @@
 }
 
 .overrides {
+  animation: pop var(--dur-slow) var(--ease-spring) both;
   font-size: var(--text-xs);
   color: var(--accent);
   padding: 3px 8px;
@@ -56,7 +72,11 @@
 
 .chevron {
   color: var(--text-4);
-  transition: transform var(--transition);
+  transition: transform var(--dur-slow) var(--ease-spring), color var(--transition);
+}
+
+.head:hover .chevron {
+  color: var(--text-2);
 }
 
 .chevronOpen {
@@ -68,6 +88,19 @@
   display: flex;
   flex-direction: column;
   gap: var(--gap-md);
+  animation: drawerOpen var(--dur-slow) var(--ease-out) both;
+  transform-origin: top;
+}
+
+@keyframes drawerOpen {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 .overridable {
@@ -174,6 +207,7 @@
   flex-direction: column;
   gap: var(--gap);
   padding-left: 19px;
+  animation: drawerOpen var(--dur-slow) var(--ease-out) both;
 }
 
 /* A pinned control gets a way back to the preset, rather than the user having
@@ -195,6 +229,7 @@
   padding: 5px 10px;
   border-radius: 8px;
   border: 1px solid var(--line-input);
+  background: var(--surface-1);
   font-size: 11.5px;
   color: var(--text-bright);
   white-space: nowrap;
@@ -272,9 +307,10 @@
   flex-direction: column;
   gap: 6px;
   padding: 10px;
-  border-radius: var(--radius);
+  border-radius: 10px;
   background: var(--surface-2);
   border: 1px solid var(--line);
+  animation: rise var(--dur-slow) var(--ease-out) both;
 }
 
 .loraHead {

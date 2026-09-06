@@ -58,7 +58,11 @@ export function AuthPage({ mode }: { mode: Mode }) {
 
   return (
     <div className={styles.page}>
-      <div className={styles.glow} aria-hidden />
+      <div className={styles.glow} aria-hidden>
+        <span />
+        <span />
+        <span />
+      </div>
       <form className={styles.card} onSubmit={(event) => void onSubmit(event)}>
         <header className={styles.head}>
           {/* The lockup is the heading here — the name is the only title this

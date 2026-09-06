@@ -18,6 +18,7 @@
  * came from, because a borrowed sample must stay labelled even at full size.
  */
 import { useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { CloseIcon } from './icons';
 import styles from './ModelsPanels.module.css';
 
@@ -61,7 +62,7 @@ export function PreviewLightbox({ name, src, from, borrowedFrom, onClose }: Prev
     };
   }, [onClose]);
 
-  return (
+  return createPortal(
     <div
       className={styles.lightbox}
       role="dialog"
@@ -73,7 +74,7 @@ export function PreviewLightbox({ name, src, from, borrowedFrom, onClose }: Prev
         if (event.target === event.currentTarget) onClose();
       }}
     >
-      <div className={styles.lightboxInner}>
+      <div className={`${styles.lightboxInner} pop`}>
         <div className={styles.lightboxBar}>
           <p className={styles.lightboxName}>{name}</p>
           <button
@@ -97,6 +98,7 @@ export function PreviewLightbox({ name, src, from, borrowedFrom, onClose }: Prev
           </p>
         ) : null}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

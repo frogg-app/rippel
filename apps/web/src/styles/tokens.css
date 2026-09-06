@@ -231,3 +231,52 @@
   --models-warn: #f6c177;
   --models-warn-tint: rgba(246, 193, 119, 0.08);
 }
+
+/* -------------------------------------------------- redesign layer
+   The 2026-09 overhaul. Everything above is the brand and the geometry; this
+   block is the *feel*: motion curves, elevation, glass, and the shell's new
+   rail. Components reach for these before inventing a value. */
+:root {
+  /* Motion. Three curves: `--ease-out` for anything entering or settling,
+     `--ease-spring` for things that should feel physical (toggles, chips,
+     the active-tab pill), `--ease-in-out` for cross-fades. */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --dur-fast: 120ms;
+  --dur: 200ms;
+  --dur-slow: 320ms;
+  --dur-page: 420ms;
+  --transition: var(--dur) var(--ease-out);
+  --transition-fast: var(--dur-fast) var(--ease-out);
+
+  /* Elevation. Panels float on the ground with a hairline plus a top
+     highlight, so they read as lit from above rather than outlined. */
+  --edge-highlight: inset 0 1px 0 rgba(220, 238, 242, 0.05);
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.3), 0 2px 8px rgba(0, 0, 0, 0.22);
+  --shadow-2: 0 4px 14px rgba(0, 0, 0, 0.32), 0 12px 32px rgba(0, 0, 0, 0.28);
+  --shadow-3: 0 10px 30px rgba(0, 0, 0, 0.45), 0 30px 80px rgba(0, 0, 0, 0.45);
+  --shadow-pop: var(--shadow-3), var(--edge-highlight);
+  --shadow-float: var(--shadow-2), var(--edge-highlight);
+
+  /* Glass. Anything that floats over content — menus, toolbars, the status
+     cluster — is translucent panel colour over a blur. */
+  --glass-panel: rgba(18, 24, 28, 0.72);
+  --glass-panel-strong: rgba(14, 19, 23, 0.88);
+  --glass-line: rgba(220, 238, 242, 0.09);
+  --glass-blur: blur(28px) saturate(1.3);
+
+  /* Focus: a soft foam halo instead of a hard outline on inputs. */
+  --focus-ring: 0 0 0 3px rgba(156, 207, 216, 0.22);
+  --focus-line: rgba(156, 207, 216, 0.55);
+
+  /* The shell: a 64px icon rail replaces the split top bar. */
+  --rail-width: 64px;
+  --rail-bg: #0b0f12;
+  --content-radius: 18px;
+
+  /* Ambient light behind every screen: two very faint pools of the brand ramp,
+     so the ground is never a flat black. */
+  --ambient: radial-gradient(60% 50% at 18% 0%, rgba(49, 116, 143, 0.16), transparent 70%),
+    radial-gradient(45% 45% at 100% 100%, rgba(156, 207, 216, 0.07), transparent 70%);
+}

@@ -22,6 +22,7 @@ body {
   line-height: 1.45;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+  overflow: hidden;
 }
 
 /* Numerics are mono everywhere — steps, seeds, VRAM, timings (PLAN.md §6). */
@@ -30,9 +31,7 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-/* Display type — headings and the wordmark. Epilogue 300, the brand weight.
-   Only used at 19px and up: below that the Light cut loses too much ink on a
-   near-black ground, so UI text stays at 400. */
+/* Display type — headings and the wordmark. Epilogue 300, the brand weight. */
 .display {
   font-family: var(--font-display);
   font-weight: var(--weight-display);
@@ -50,6 +49,7 @@ body {
 a {
   color: var(--accent);
   text-decoration: none;
+  transition: color var(--transition-fast);
 }
 
 a:hover {
@@ -69,18 +69,161 @@ button {
   background: none;
   border: none;
   padding: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Every pressable thing gives a little under the pointer. Opt out with
+   `data-still` on elements where a squash would look wrong (sliders). */
+button:not(:disabled):not([data-still]):active {
+  transform: scale(0.97);
+}
+
+button {
+  transition:
+    transform var(--dur-fast) var(--ease-out),
+    background-color var(--transition),
+    color var(--transition),
+    border-color var(--transition),
+    box-shadow var(--transition),
+    opacity var(--transition);
+}
+
+input,
+textarea,
+select {
+  transition:
+    border-color var(--transition),
+    box-shadow var(--transition),
+    background-color var(--transition);
 }
 
 :focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--focus-line);
   outline-offset: 2px;
   border-radius: 4px;
+}
+
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: none;
+  border-color: var(--focus-line);
+  box-shadow: var(--focus-ring);
+}
+
+::selection {
+  background: rgba(156, 207, 216, 0.3);
+}
+
+::placeholder {
+  color: var(--text-muted);
+  opacity: 1;
 }
 
 /* Scrollbars: present but nearly invisible, so panels stay calm. */
 * {
   scrollbar-width: thin;
   scrollbar-color: rgba(220, 238, 242, 0.12) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: rgba(220, 238, 242, 0.12);
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+/* -------------------------------------------------- motion primitives
+   Shared keyframes. Components animate with these rather than declaring their
+   own, so every entrance across the app has the same weight. */
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes pop {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Utility classes for the three common entrances. Staggered lists set
+   `--i` per child. */
+.rise {
+  animation: rise var(--dur-slow) var(--ease-out) both;
+  animation-delay: calc(var(--i, 0) * 40ms);
+}
+
+.fade {
+  animation: fade var(--dur) var(--ease-out) both;
+}
+
+.pop {
+  animation: pop var(--dur) var(--ease-out) both;
+  transform-origin: top;
+}
+
+/* A loading placeholder: a slow sheen crossing a dim block. */
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--surface-2) 0%,
+    var(--surface-hover) 50%,
+    var(--surface-2) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.6s linear infinite;
+  border-radius: var(--radius-sm);
 }
 
 @media (prefers-reduced-motion: reduce) {

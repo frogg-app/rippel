@@ -52,9 +52,10 @@ export function CatalogueGrid({
   return (
     <>
       <div className={styles.grid}>
-        {shown.map((entry) => (
+        {shown.map((entry, index) => (
           <CatalogueCard
             key={entry.ref}
+            index={Math.min(index, 14)}
             entry={entry}
             install={installByFile.get(basename(entry.filename)) ?? null}
             starting={starting.has(entry.ref)}

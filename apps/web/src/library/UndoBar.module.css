@@ -4,37 +4,37 @@
   position: absolute;
   bottom: var(--gap-lg);
   left: 50%;
-  transform: translateX(-50%);
   z-index: 3;
   display: flex;
   align-items: center;
   gap: var(--gap);
-  height: 42px;
-  padding: 0 8px 0 16px;
-  border-radius: var(--radius-md);
-  border: 1px solid var(--line-strong);
-  background: var(--badge-strong);
+  height: 44px;
+  padding: 0 8px 0 18px;
+  border-radius: 999px;
+  border: 1px solid var(--glass-line);
+  background: var(--glass-panel-strong);
   backdrop-filter: var(--glass-blur);
-  box-shadow: var(--shadow-float);
+  -webkit-backdrop-filter: var(--glass-blur);
+  box-shadow: var(--shadow-pop);
   font-size: var(--text-base);
   color: var(--text-2);
-  animation: rise 180ms var(--ease);
+  animation: undo-in var(--dur-slow) var(--ease-spring) both;
 }
 
-@keyframes rise {
+@keyframes undo-in {
   from {
     opacity: 0;
-    transform: translate(-50%, 8px);
+    transform: translate(-50%, 14px) scale(0.96);
   }
   to {
     opacity: 1;
-    transform: translate(-50%, 0);
+    transform: translate(-50%, 0) scale(1);
   }
 }
 
 .danger {
   border-color: var(--danger-line);
-  color: var(--danger);
+  color: var(--danger-text);
 }
 
 .message {
@@ -45,23 +45,24 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  height: 28px;
-  padding: 0 12px;
-  border-radius: var(--radius-sm);
-  background: var(--surface-4);
-  color: var(--text);
+  height: 30px;
+  padding: 0 13px;
+  border-radius: 999px;
+  background: var(--accent-tint-strong);
+  color: var(--accent);
   font-weight: 500;
-  transition: background var(--transition);
+  transition: background var(--transition), color var(--transition);
 }
 
 .action:hover {
-  background: var(--surface-hover);
+  background: var(--accent-tint-hover);
+  color: var(--accent-hover);
 }
 
 .close {
-  width: 26px;
-  height: 26px;
-  border-radius: var(--radius-sm);
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -69,5 +70,6 @@
 }
 
 .close:hover {
-  color: var(--text-2);
+  color: var(--text);
+  background: var(--surface-hover);
 }

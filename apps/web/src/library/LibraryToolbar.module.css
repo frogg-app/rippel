@@ -1,39 +1,60 @@
 .bar {
-  height: var(--topbar-height);
+  height: 64px;
   flex-shrink: 0;
   display: flex;
   align-items: center;
   gap: var(--gap);
   padding: 0 var(--gap-xl);
   border-bottom: 1px solid var(--line);
+  background: linear-gradient(180deg, rgba(220, 238, 242, 0.015), transparent);
 }
 
 .title {
-  margin: 0 8px 0 0;
+  margin: 0 10px 0 0;
   font-size: var(--display);
   font-weight: 400;
+  letter-spacing: -0.01em;
 }
 
 .search {
   display: flex;
   align-items: center;
   gap: var(--gap-sm);
-  height: var(--control-height);
+  height: 36px;
   padding: 0 13px;
-  border-radius: var(--radius);
-  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  border: 1px solid var(--glass-line);
   background: var(--surface-2);
+  box-shadow: var(--edge-highlight);
   width: 280px;
-  transition: border-color var(--transition);
+  min-width: 150px;
+  flex-shrink: 1;
+  transition:
+    border-color var(--transition),
+    box-shadow var(--transition),
+    width var(--dur-slow) var(--ease-out),
+    background var(--transition);
+}
+
+.search:hover {
+  border-color: var(--line-input);
 }
 
 .search:focus-within {
-  border-color: var(--accent-line);
+  width: 340px;
+  border-color: var(--focus-line);
+  box-shadow: var(--focus-ring), var(--edge-highlight);
+  background: var(--surface-3);
 }
 
 .searchIcon {
   flex-shrink: 0;
   color: var(--text-4);
+  transition: color var(--transition);
+}
+
+.search:focus-within .searchIcon {
+  color: var(--accent);
 }
 
 .input {
@@ -45,12 +66,10 @@
   font-size: var(--text-base);
 }
 
-.input::placeholder {
-  color: var(--text-muted);
+.input:focus-visible {
+  box-shadow: none;
 }
 
-/* The browser's own clear affordance on type=search is a light grey X that
-   reads as a rendering error on this ground. */
 .input::-webkit-search-cancel-button {
   appearance: none;
 }
@@ -62,24 +81,30 @@
 .count {
   font-size: var(--text-xs);
   color: var(--text-muted);
+  white-space: nowrap;
+  animation: fade var(--dur) var(--ease-out) both;
 }
 
 .segments {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 2px;
   background: var(--surface-3);
-  border: 1px solid var(--line-faint);
-  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  border-radius: 999px;
   padding: 3px;
+  box-shadow: var(--edge-highlight);
 }
 
 .segment {
-  padding: 5px 13px;
-  border-radius: var(--radius-sm);
+  position: relative;
+  z-index: 1;
+  padding: 5px 14px;
+  border-radius: 999px;
   font-size: var(--text-sm);
   color: var(--text-dim);
-  transition: background var(--transition), color var(--transition);
+  transition: color var(--transition);
 }
 
 .segment:hover {
@@ -88,7 +113,19 @@
 
 .segmentOn,
 .segmentOn:hover {
-  background: var(--surface-hover);
   color: var(--text);
   font-weight: 500;
+}
+
+/* The thumb lives behind the active label and pops in under it, so the
+   selection reads as one surface moving rather than four lights switching. */
+.segmentOn::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: 999px;
+  background: var(--surface-hover);
+  box-shadow: var(--shadow-1), var(--edge-highlight);
+  animation: pop var(--dur-slow) var(--ease-spring) both;
 }

@@ -7,6 +7,18 @@
   display: flex;
   flex-direction: column;
   min-height: 0;
+  animation: drawer-in var(--dur-page) var(--ease-out) both;
+}
+
+@keyframes drawer-in {
+  from {
+    opacity: 0;
+    transform: translateX(28px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 .head {
@@ -17,6 +29,12 @@
   justify-content: space-between;
   padding: 0 var(--gap-lg);
   border-bottom: 1px solid var(--line);
+  background: var(--glass-panel);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  position: sticky;
+  top: 0;
+  z-index: 1;
 }
 
 .headTitle {
@@ -32,19 +50,23 @@
 }
 
 .iconButton {
-  width: 28px;
-  height: 28px;
-  border-radius: var(--radius-sm);
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
   display: flex;
   align-items: center;
   justify-content: center;
   color: inherit;
-  transition: background var(--transition), color var(--transition);
+  transition: background var(--transition), color var(--transition), transform var(--dur-slow) var(--ease-spring);
 }
 
 .iconButton:hover {
-  background: var(--surface-2);
+  background: var(--surface-hover);
   color: var(--text);
+}
+
+.iconButton:hover svg {
+  transform: scale(1.08);
 }
 
 .iconOn,
@@ -62,13 +84,17 @@
   gap: 17px;
 }
 
+/* Each block of the body arrives a beat after the drawer itself. */
+.body > * {
+  animation: rise var(--dur-slow) var(--ease-out) both;
+  animation-delay: 80ms;
+}
+
 .preview {
   border-radius: var(--library-tile-radius);
   overflow: hidden;
   background: var(--surface-2);
-  /* The artboard's 206px block is a *maximum*: a tall 9:16 render must be
-     allowed to be tall rather than cropped in the one place the whole image is
-     supposed to be visible. */
+  box-shadow: var(--shadow-2), var(--edge-highlight);
   max-height: 340px;
   display: flex;
   align-items: center;
@@ -94,17 +120,24 @@
   height: var(--action-height);
   border-radius: var(--radius-md);
   border: 1px solid var(--line-input);
+  background: var(--surface-1);
+  box-shadow: var(--edge-highlight);
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 7px;
   font-size: 12.5px;
   color: var(--text-2);
-  transition: background var(--transition), border-color var(--transition), color var(--transition);
+  transition:
+    background var(--transition),
+    border-color var(--transition),
+    color var(--transition),
+    transform var(--dur-fast) var(--ease-out);
 }
 
 .action:hover:not(:disabled) {
-  background: var(--surface-2);
+  background: var(--surface-3);
+  border-color: var(--line-strong);
   color: var(--text);
 }
 
@@ -122,6 +155,7 @@
 
 .actionAccent:hover:not(:disabled) {
   background: var(--accent-tint-hover);
+  border-color: var(--accent-line-strong);
   color: var(--accent-hover);
 }
 
@@ -141,12 +175,16 @@
   z-index: 2;
   padding: 5px;
   border-radius: var(--radius-md);
-  border: 1px solid var(--line-strong);
-  background: var(--panel);
+  border: 1px solid var(--glass-line);
+  background: var(--glass-panel-strong);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
   box-shadow: var(--shadow-pop);
   display: flex;
   flex-direction: column;
   gap: 1px;
+  animation: pop var(--dur) var(--ease-out) both;
+  transform-origin: top right;
 }
 
 .menuItem {
@@ -162,7 +200,7 @@
 }
 
 .menuItem:hover {
-  background: var(--surface-3);
+  background: var(--surface-hover);
   color: var(--text);
 }
 
@@ -188,6 +226,10 @@
 
 .prompt {
   margin: 0;
+  padding: 11px 13px;
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
   font-size: var(--text-md);
   line-height: 1.55;
   color: var(--text-bright);
@@ -205,24 +247,22 @@
   background: var(--line);
 }
 
+/* A tidy two-column grid: labels left, values right, numerics in mono. */
 .meta {
   margin: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 10px 16px;
   font-size: 12.5px;
 }
 
 .metaRow {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--gap);
+  display: contents;
 }
 
 .metaLabel {
   color: var(--text-4);
-  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .metaValue {
@@ -240,6 +280,7 @@
 .seed {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 7px;
 }
 
@@ -247,12 +288,15 @@
   display: inline-flex;
   align-items: center;
   gap: 5px;
+  padding: 2px 6px;
+  border-radius: 6px;
   color: var(--text-4);
-  transition: color var(--transition);
+  transition: color var(--transition), background var(--transition);
 }
 
 .copy:hover {
-  color: var(--text-2);
+  color: var(--text);
+  background: var(--surface-3);
 }
 
 .copyOk {

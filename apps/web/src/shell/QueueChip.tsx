@@ -98,7 +98,7 @@ export function QueueChip({ depth }: { depth: number }) {
       </button>
 
       {open ? (
-        <div className={styles.panel} id={panelId} role="group" aria-label="Queue">
+        <div className={`${styles.panel} pop`} id={panelId} role="group" aria-label="Queue">
           <div className={styles.panelHead}>
             <span className={styles.panelTitle}>Queue</span>
             <span className={styles.panelCount}>

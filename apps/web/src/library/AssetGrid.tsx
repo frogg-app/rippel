@@ -60,10 +60,11 @@ export function AssetGrid({
         <section key={group.key} className={styles.group}>
           <h2 className={`label ${styles.heading}`}>{group.label}</h2>
           <div className={styles.grid}>
-            {group.items.map((asset) => (
+            {group.items.map((asset, index) => (
               <AssetTile
                 key={asset.id}
                 asset={asset}
+                index={index}
                 selected={asset.id === selectedId}
                 onOpen={onOpen}
                 onToggleStar={onToggleStar}

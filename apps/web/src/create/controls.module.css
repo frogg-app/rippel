@@ -1,16 +1,12 @@
 /*
- * The input-panel primitives, measured off design/parts/Main.body.html.
- *
- * Every colour and radius is a token from styles/tokens.css. Where the artboard
- * uses a value that had no token — the 10px segmented-control radius, the 4px
- * slider rail, the 28px icon button — the token is added in tokens.css rather
- * than inlined here.
+ * The input-panel primitives. Every colour and radius is a token from
+ * styles/tokens.css; motion comes from the curves and keyframes in global.css.
  */
 
 .group {
   display: flex;
   flex-direction: column;
-  gap: var(--gap-sm);
+  gap: 10px;
 }
 
 .groupHead {
@@ -21,26 +17,50 @@
   min-height: 16px;
 }
 
-/* ------------------------------------------------------------ segmented */
+/* ------------------------------------------------------------ segmented
+   A track with one thumb that slides to the active segment. The thumb is a
+   pseudo-element positioned from `--seg-i` / `--seg-n`, which the component
+   sets inline; the buttons themselves only change colour. */
 
 .segmented {
+  --seg-pad: 3px;
+  position: relative;
   display: flex;
-  gap: var(--gap-sm);
   background: var(--surface-3);
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-seg);
-  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: var(--seg-pad);
+  box-shadow: var(--edge-highlight);
+  isolation: isolate;
+}
+
+.segmented::before {
+  content: '';
+  position: absolute;
+  z-index: 0;
+  top: var(--seg-pad);
+  bottom: var(--seg-pad);
+  left: var(--seg-pad);
+  width: calc((100% - 2 * var(--seg-pad)) / var(--seg-n, 1));
+  transform: translateX(calc(100% * var(--seg-i, 0)));
+  border-radius: 9px;
+  background: var(--accent-tint-strong);
+  box-shadow:
+    inset 0 0 0 1px var(--accent-line),
+    0 2px 8px rgba(0, 0, 0, 0.25);
+  transition: transform var(--dur-slow) var(--ease-spring);
 }
 
 .segment {
-  flex-grow: 1;
+  position: relative;
+  z-index: 1;
+  flex: 1 1 0;
   text-align: center;
   padding: 8px 0;
-  border-radius: var(--radius-sm);
+  border-radius: 9px;
   font-size: 12.5px;
   color: var(--text-4);
-  border: 1px solid transparent;
-  transition: color var(--transition), background var(--transition);
+  transition: color var(--transition);
 }
 
 .segment:hover {
@@ -50,8 +70,6 @@
 .segmentOn,
 .segmentOn:hover {
   font-weight: 600;
-  background: var(--accent-tint-strong);
-  border-color: var(--accent-line);
   color: var(--accent);
 }
 
@@ -60,22 +78,28 @@
 .chips {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--gap-xs);
+  gap: 6px;
 }
 
 .chip {
   padding: 6px 12px;
-  border-radius: var(--radius-sm);
+  border-radius: 9px;
   border: 1px solid var(--line-strong);
   background: var(--surface-2);
   font-size: var(--text-sm);
   color: var(--text-3);
-  transition: color var(--transition), background var(--transition), border-color var(--transition);
+  transition:
+    color var(--transition),
+    background var(--transition),
+    border-color var(--transition),
+    transform var(--dur-slow) var(--ease-spring),
+    box-shadow var(--transition);
 }
 
 .chip:hover {
   background: var(--surface-hover);
   color: var(--text-2);
+  transform: translateY(-1px);
 }
 
 .chipOn,
@@ -84,6 +108,7 @@
   border-color: var(--accent-line);
   color: var(--accent);
   font-weight: 600;
+  box-shadow: 0 0 0 3px var(--accent-tint);
 }
 
 /* ------------------------------------------------------------ slider */
@@ -119,18 +144,20 @@
 }
 
 /*
- * A range input styled to the artboard: 4px rail, filled to `--fill`, with a
- * 12px thumb. `appearance: none` is required on both the track and the thumb in
- * WebKit, and the two vendor thumb rules cannot be merged into one selector
- * list — a browser that does not know one of them drops the whole rule.
+ * A range input: 4px rail, filled to `--fill`, with a thumb that grows under
+ * the pointer. `appearance: none` is required on both the track and the thumb
+ * in WebKit, and the vendor thumb rules cannot share a selector list.
  */
 .range {
   appearance: none;
   -webkit-appearance: none;
   width: 100%;
-  height: 13px;
+  height: 16px;
   background: transparent;
   cursor: pointer;
+  --slider-fill: var(--text-4);
+  --slider-thumb: var(--text-bright);
+  --slider-halo: rgba(220, 238, 242, 0.14);
 }
 
 .range::-webkit-slider-runnable-track {
@@ -139,7 +166,7 @@
   background: linear-gradient(
     90deg,
     var(--slider-fill) 0 var(--fill, 0%),
-    rgba(220, 238, 242, 0.1) var(--fill, 0%) 100%
+    rgba(220, 238, 242, 0.16) var(--fill, 0%) 100%
   );
 }
 
@@ -149,53 +176,63 @@
   background: linear-gradient(
     90deg,
     var(--slider-fill) 0 var(--fill, 0%),
-    rgba(220, 238, 242, 0.1) var(--fill, 0%) 100%
+    rgba(220, 238, 242, 0.16) var(--fill, 0%) 100%
   );
 }
 
 .range::-webkit-slider-thumb {
   appearance: none;
   -webkit-appearance: none;
-  width: 12px;
-  height: 12px;
-  margin-top: -4px;
+  width: 14px;
+  height: 14px;
+  margin-top: -5px;
   border-radius: 50%;
   background: var(--slider-thumb);
   border: none;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+  transition: box-shadow var(--transition), transform var(--dur-slow) var(--ease-spring);
 }
 
 .range::-moz-range-thumb {
-  width: 12px;
-  height: 12px;
+  width: 14px;
+  height: 14px;
   border-radius: 50%;
   background: var(--slider-thumb);
   border: none;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+  transition: box-shadow var(--transition), transform var(--dur-slow) var(--ease-spring);
 }
 
-.range {
-  --slider-fill: var(--text-4);
-  --slider-thumb: var(--text-bright);
+.range:hover::-webkit-slider-thumb,
+.range:focus-visible::-webkit-slider-thumb {
+  transform: scale(1.15);
+  box-shadow: 0 0 0 5px var(--slider-halo), 0 1px 4px rgba(0, 0, 0, 0.4);
 }
 
-/* The accent slider — influence, LoRA weight — gets the foam ramp and a halo,
-   which the artboard uses to mark the sliders that change the *image* rather
-   than the sampler. */
+.range:hover::-moz-range-thumb,
+.range:focus-visible::-moz-range-thumb {
+  transform: scale(1.15);
+  box-shadow: 0 0 0 5px var(--slider-halo), 0 1px 4px rgba(0, 0, 0, 0.4);
+}
+
+.range:focus-visible {
+  outline: none;
+}
+
+/* The accent slider — image count, influence, LoRA weight — gets the foam
+   ramp: it changes the *image*, not the sampler. */
 .rangeAccent {
   --slider-fill: linear-gradient(90deg, var(--accent-deep), var(--accent));
   --slider-thumb: var(--accent-hover);
+  --slider-halo: rgba(156, 207, 216, 0.22);
 }
 
 .rangeAccent::-webkit-slider-thumb {
-  width: 13px;
-  height: 13px;
-  margin-top: -4.5px;
-  box-shadow: 0 0 0 3px rgba(156, 207, 216, 0.2);
+  box-shadow: 0 0 0 3px rgba(156, 207, 216, 0.18), 0 1px 4px rgba(0, 0, 0, 0.4);
 }
 
 .rangeAccent::-moz-range-thumb {
-  width: 13px;
-  height: 13px;
-  box-shadow: 0 0 0 3px rgba(156, 207, 216, 0.2);
+  box-shadow: 0 0 0 3px rgba(156, 207, 216, 0.18), 0 1px 4px rgba(0, 0, 0, 0.4);
 }
 
 /* ------------------------------------------------------------ rows */
@@ -224,14 +261,22 @@
   position: relative;
   display: flex;
   align-items: center;
-  border-radius: 8px;
+  border-radius: 9px;
   border: 1px solid var(--line-input);
+  background: var(--surface-1);
   padding: 0 26px 0 10px;
-  height: 28px;
+  height: 30px;
+  transition: border-color var(--transition), background var(--transition), box-shadow var(--transition);
 }
 
 .selectWrap:hover {
-  background: var(--surface-2);
+  background: var(--surface-3);
+  border-color: var(--line-dashed);
+}
+
+.selectWrap:focus-within {
+  border-color: var(--focus-line);
+  box-shadow: var(--focus-ring);
 }
 
 .select {
@@ -239,16 +284,19 @@
   -webkit-appearance: none;
   background: transparent;
   border: none;
-  outline-offset: 4px;
+  outline: none;
   font-size: 11.5px;
   color: var(--text-bright);
   padding: 0;
   max-width: 150px;
+  cursor: pointer;
 }
 
-/* The popup itself is OS-drawn and cannot take our dark ground on every
-   platform; setting it here at least fixes Chrome on Linux, where an unstyled
-   option list renders white text on white. */
+.select:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
 .select option {
   background: var(--panel);
   color: var(--text);
@@ -259,26 +307,40 @@
   right: 8px;
   color: var(--text-4);
   pointer-events: none;
+  transition: transform var(--transition);
+}
+
+.selectWrap:hover .selectChevron {
+  transform: translateY(1px);
 }
 
 /* ------------------------------------------------------------ icon button */
 
 .iconButton {
-  width: 28px;
-  height: 28px;
+  width: 30px;
+  height: 30px;
   flex-shrink: 0;
-  border-radius: 8px;
+  border-radius: 9px;
   border: 1px solid var(--line-input);
+  background: var(--surface-1);
   display: flex;
   align-items: center;
   justify-content: center;
   color: var(--text-3);
-  transition: color var(--transition), background var(--transition), border-color var(--transition);
 }
 
 .iconButton:hover {
-  background: var(--surface-2);
+  background: var(--surface-hover);
   color: var(--text-2);
+  border-color: var(--line-dashed);
+}
+
+.iconButton svg {
+  transition: transform var(--dur-slow) var(--ease-spring);
+}
+
+.iconButton:hover svg {
+  transform: rotate(-12deg) scale(1.1);
 }
 
 .iconButtonOn,
@@ -288,9 +350,7 @@
   color: var(--accent);
 }
 
-/* ------------------------------------------------------------ field
-   A label stacked above a full-width control, for options whose text is a
-   sentence rather than a token — the expert selects in Advanced. */
+/* ------------------------------------------------------------ field */
 
 .field {
   display: flex;
@@ -310,10 +370,7 @@
   color: var(--text-2);
 }
 
-/* ------------------------------------------------------------ readings
-   The value in words beside the value in figures. The word is what most people
-   read; the number is kept because it is what an experienced user recognises
-   and what the seed/params record. */
+/* ------------------------------------------------------------ readings */
 
 .sliderValue {
   display: flex;
@@ -326,7 +383,6 @@
   color: var(--text-2);
 }
 
-/* The two ends of a rail, named, so "more" has a direction before you drag. */
 .ends {
   display: flex;
   align-items: center;

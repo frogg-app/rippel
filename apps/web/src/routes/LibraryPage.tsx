@@ -109,7 +109,7 @@ export function LibraryPage() {
           {feed.loading ? (
             <div className={styles.skeletonGrid} aria-hidden>
               {Array.from({ length: 8 }, (_, index) => (
-                <div key={index} className={styles.skeleton} />
+                <div key={index} className={`skeleton ${styles.skeleton}`} style={{ '--i': index } as React.CSSProperties} />
               ))}
             </div>
           ) : feed.error ? (

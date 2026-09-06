@@ -1,23 +1,20 @@
 import { Link } from 'react-router-dom';
+import { Mark } from '../components/Mark';
+import styles from './NotFoundPage.module.css';
 
 /** Inside the shell, so the status pill stays answerable even when lost. */
 export function NotFoundPage() {
   return (
-    <div
-      style={{
-        flexGrow: 1,
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: 'var(--gap-sm)',
-        color: 'var(--text-muted)',
-      }}
-    >
-      <p className="display" style={{ fontSize: 'var(--display)', color: 'var(--text-3)', margin: 0 }}>
-        Nothing here
-      </p>
-      <Link to="/create">Back to Create</Link>
+    <div className={styles.page}>
+      <div className={styles.glow} aria-hidden />
+      <div className={`${styles.card} rise`}>
+        <Mark size={30} />
+        <p className={`display ${styles.title}`}>Nothing here</p>
+        <p className={styles.text}>That address does not lead anywhere in rippel.</p>
+        <Link to="/create" className={styles.back}>
+          Back to Create
+        </Link>
+      </div>
     </div>
   );
 }

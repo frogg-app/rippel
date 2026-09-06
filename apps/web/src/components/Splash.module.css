@@ -6,14 +6,22 @@
   justify-content: center;
   gap: var(--gap);
   background: var(--ground);
-  animation: fade-in 400ms var(--ease) both;
+  background-image: var(--ambient);
+  animation: fade var(--dur-page) var(--ease-out) both;
 }
 
-@keyframes fade-in {
-  from {
-    opacity: 0;
+.splash > * {
+  animation: breathe 2.2s var(--ease-in-out) infinite;
+}
+
+@keyframes breathe {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: scale(0.985);
   }
-  to {
+  50% {
     opacity: 1;
+    transform: none;
   }
 }
