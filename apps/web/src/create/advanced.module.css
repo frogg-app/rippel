@@ -1,0 +1,189 @@
+/* The bordered card from the artboard: 12px radius, a hairline-split header,
+   and 14px of padding with 14px between rows. */
+.drawer {
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--line-strong);
+  background: var(--surface-1);
+  overflow: hidden;
+}
+
+.head {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 11px 14px;
+  text-align: left;
+}
+
+.headOpen {
+  border-bottom: 1px solid var(--line);
+}
+
+.title {
+  font-size: var(--text-base);
+  color: var(--text-2);
+}
+
+.headRight {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-sm);
+}
+
+.overrides {
+  font-size: var(--text-xs);
+  color: var(--accent);
+}
+
+.chevron {
+  color: var(--text-4);
+  transition: transform var(--transition);
+}
+
+.chevronOpen {
+  transform: rotate(180deg);
+}
+
+.body {
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-md);
+}
+
+.overridable {
+  position: relative;
+}
+
+/* A pinned control gets a way back to the preset, rather than the user having
+   to remember what 28 steps was. */
+.reset {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 5px;
+  font-size: var(--text-xs);
+  color: var(--text-4);
+}
+
+.reset:hover {
+  color: var(--accent);
+}
+
+.seed {
+  padding: 5px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--line-input);
+  font-size: 11.5px;
+  color: var(--text-bright);
+  white-space: nowrap;
+}
+
+/* ------------------------------------------------------------ LoRAs */
+
+.loras {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  padding-top: 2px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gap-sm);
+}
+
+.rowLabel {
+  font-size: var(--text-sm);
+  color: var(--text-3);
+}
+
+.none {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.addWrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 26px;
+  border-radius: 8px;
+  border: 1px dashed var(--line-dashed);
+  padding: 0 8px 0 22px;
+}
+
+.addWrap:hover {
+  border-color: var(--accent-line);
+}
+
+.add {
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
+  border: none;
+  font-size: 11.5px;
+  color: var(--text-3);
+  max-width: 130px;
+}
+
+.add option {
+  background: var(--panel);
+  color: var(--text);
+}
+
+.add:disabled {
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+
+.addIcon {
+  position: absolute;
+  left: 7px;
+  color: var(--text-4);
+  pointer-events: none;
+}
+
+.lora {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+}
+
+.loraHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gap-xs);
+}
+
+.loraName {
+  font-size: 11.5px;
+  color: var(--text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.loraRemove {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-4);
+}
+
+.loraRemove:hover {
+  background: var(--surface-hover);
+  color: var(--text-2);
+}

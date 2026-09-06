@@ -1,79 +1,199 @@
-import { SparkIcon } from '../components/icons';
-import styles from './CreatePage.module.css';
-
 /**
- * The Create screen — layout only.
+ * The Create screen.
  *
  * PLAN.md §6 fixes the shape: a ~396px left panel holding *every* input with
  * Generate pinned to its bottom, and the right side given over to the running
- * job at full size. The controls themselves (prompt, references, model tiles,
- * quality, the Advanced drawer) are a parallel workstream; what is here is the
- * frame they drop into, with the scroll behaviour and the pinned footer already
- * settled so nobody has to re-litigate them later.
+ * job at full size. This module is the state that joins the two — the form
+ * lives here, the job lives in `useJobStage`, and Remix is the one arrow
+ * pointing back from the job to the form.
+ *
+ * Everything with a rule worth testing is somewhere else and pure:
+ * `create/form.ts` (what we POST, and what the seed does), `create/jobProgress.ts`
+ * (what a `JobEvent` does to the job on screen).
  */
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import type { Job, Model } from '@comfy/shared';
+import { SparkIcon } from '../components/icons';
+import { Chips, Group, Segmented, Slider } from '../create/Controls';
+import { AdvancedDrawer } from '../create/AdvancedDrawer';
+import { JobStage } from '../create/JobStage';
+import { ModelPicker } from '../create/ModelPicker';
+import { PromptFields } from '../create/PromptFields';
+import {
+  ASPECT_RATIOS,
+  type CreateFormState,
+  MAX_BATCH,
+  MIN_BATCH,
+  QUALITY_LABELS,
+  QUALITY_PRESETS,
+  checkSubmittable,
+  estimateSeconds,
+  fromGenerationParams,
+  initialFormState,
+  prepareSubmit,
+  toGenerationParams,
+} from '../create/form';
+import { useAdvancedOpen } from '../create/useAdvancedOpen';
+import { useJobStage } from '../create/useJobStage';
+import { useModels } from '../create/useModels';
+import { modelSupported } from '../lib/api-jobs';
+import { isTerminal } from '../create/jobProgress';
+import styles from './CreatePage.module.css';
+
 export function CreatePage() {
+  const [form, setForm] = useState<CreateFormState>(initialFormState);
+  const [advancedOpen, setAdvancedOpen] = useAdvancedOpen();
+  const { checkpoints, loras, capabilities, loading, error } = useModels();
+  const stage = useJobStage();
+
+  const patch = useCallback(
+    (next: Partial<CreateFormState>) => setForm((prev) => ({ ...prev, ...next })),
+    [],
+  );
+
+  // Preselect the first model we can actually generate with. A screen that
+  // opens with nothing chosen makes the user do work the app could do, and
+  // preselecting an *unrunnable* model would arm a disabled Generate for a
+  // reason that is not the user's fault.
+  useEffect(() => {
+    if (form.modelId || checkpoints.length === 0) return;
+    const first = checkpoints.find((model) => modelSupported(model, form.kind, capabilities));
+    if (first) patch({ modelId: first.id });
+  }, [checkpoints, capabilities, form.modelId, form.kind, patch]);
+
+  const selectedModel: Model | null =
+    checkpoints.find((model) => model.id === form.modelId) ?? null;
+
+  const supported = selectedModel
+    ? modelSupported(selectedModel, form.kind, capabilities)
+    : false;
+
+  const busy = Boolean(stage.job && !isTerminal(stage.job.status)) || stage.submitting;
+  const submittable = useMemo(
+    () => checkSubmittable(form, { modelSupported: supported, busy }),
+    [form, supported, busy],
+  );
+
+  const generate = useCallback(() => {
+    if (!submittable.ok) return;
+    // The seed is settled *before* the request, so what the drawer shows is
+    // what the sampler gets. `prepareSubmit` re-rolls it unless it is locked.
+    const submitted = prepareSubmit(form);
+    setForm(submitted);
+    void stage.submit(toGenerationParams(submitted));
+  }, [form, stage, submittable.ok]);
+
+  const remix = useCallback(
+    (job: Job) => {
+      setForm((prev) => fromGenerationParams(job.params, prev));
+      // A remix always touches Advanced (it pins the seed), so open the drawer
+      // rather than leaving the change invisible.
+      setAdvancedOpen(true);
+    },
+    [setAdvancedOpen],
+  );
+
   return (
     <div className={styles.workspace}>
       <section className={styles.panel} aria-label="Generation settings">
         <div className={styles.inputs}>
-          <ControlPlaceholder label="Prompt" height={96} note="Prompt and negative prompt" />
-          <ControlPlaceholder label="Reference images" height={84} note="Drop a file or pick from your library" />
-          <ControlPlaceholder label="Model" height={70} note="Installed checkpoints, as tiles" />
-          <ControlPlaceholder label="Quality" height={44} note="Fast · Balanced · High" />
-          <ControlPlaceholder label="Advanced" height={120} note="Steps, guidance, sampler, seed, LoRA" />
+          <PromptFields
+            prompt={form.prompt}
+            negativePrompt={form.negativePrompt}
+            negativeOpen={form.negativeOpen}
+            onPromptChange={(prompt) => patch({ prompt })}
+            onNegativeChange={(negativePrompt) => patch({ negativePrompt })}
+            onNegativeOpenChange={(negativeOpen) => patch({ negativeOpen })}
+            onSubmit={generate}
+          />
+
+          <Group label="Model">
+            <ModelPicker
+              models={checkpoints}
+              kind={form.kind}
+              capabilities={capabilities}
+              loading={loading}
+              error={error}
+              value={form.modelId}
+              onChange={(modelId) => patch({ modelId })}
+            />
+          </Group>
+
+          <Segmented
+            label="Quality"
+            value={form.quality}
+            options={QUALITY_PRESETS.map((value) => ({ value, label: QUALITY_LABELS[value] }))}
+            onChange={(quality) => patch({ quality })}
+          />
+
+          <Group label="Aspect ratio">
+            <Chips
+              label="Aspect ratio"
+              value={form.aspect}
+              options={ASPECT_RATIOS.map((value) => ({ value, label: value }))}
+              onChange={(aspect) => patch({ aspect })}
+            />
+          </Group>
+
+          <Group label="Images">
+            <Slider
+              label="Image count"
+              accent
+              min={MIN_BATCH}
+              max={MAX_BATCH}
+              value={form.batchSize}
+              display={String(form.batchSize)}
+              hint="Every image in a batch uses the same seed with a different offset."
+              onChange={(batchSize) => patch({ batchSize })}
+            />
+          </Group>
+
+          <AdvancedDrawer
+            open={advancedOpen}
+            onOpenChange={setAdvancedOpen}
+            quality={form.quality}
+            value={form.advanced}
+            onChange={(advanced) => patch({ advanced })}
+            loras={form.loras}
+            loraModels={loras}
+            onLorasChange={(next) => patch({ loras: next })}
+          />
         </div>
 
         {/* Pinned: it must not scroll away, however long the Advanced drawer
             gets. The footer is a flex sibling of the scroll area, not a
             position:sticky child of it, so it never overlaps the last control. */}
         <footer className={styles.footer}>
-          <button type="button" className={styles.generate} disabled>
+          <button
+            type="button"
+            className={styles.generate}
+            disabled={!submittable.ok}
+            title={submittable.reason ?? undefined}
+            onClick={generate}
+          >
             <SparkIcon size={17} />
-            Generate
+            {stage.submitting ? 'Starting…' : 'Generate'}
           </button>
-          <div className={styles.estimate}>Controls arrive in the next workstream</div>
+          <div className={styles.estimate}>
+            {submittable.reason ?? (
+              <>
+                {form.batchSize} {form.batchSize === 1 ? 'image' : 'images'} &middot; about{' '}
+                {estimateSeconds(form)} seconds
+              </>
+            )}
+          </div>
         </footer>
       </section>
 
-      <section className={styles.stage} aria-label="Current job">
-        <div className={styles.glow} aria-hidden />
-        <div className={styles.stageInner}>
-          <div className={styles.canvas}>
-            <div className={styles.empty}>
-              <SparkIcon size={22} />
-              <p className={styles.emptyTitle}>Nothing running</p>
-              <p className={styles.emptyBody}>
-                The job you start appears here at full size, with live preview, a variation strip
-                and per-result actions.
-              </p>
-            </div>
-          </div>
-        </div>
-      </section>
-    </div>
-  );
-}
-
-/**
- * A labelled hole of the right size. Keeping the real heights means the panel's
- * scroll behaviour is exercised now rather than discovered when the controls
- * land.
- */
-function ControlPlaceholder({
-  label,
-  height,
-  note,
-}: {
-  label: string;
-  height: number;
-  note: string;
-}) {
-  return (
-    <div className={styles.group}>
-      <div className="label">{label}</div>
-      <div className={styles.placeholder} style={{ minHeight: height }}>
-        {note}
-      </div>
+      <JobStage
+        job={stage.job}
+        submitting={stage.submitting}
+        submitError={stage.submitError}
+        disconnected={stage.connection !== 'open'}
+        onCancel={stage.cancel}
+        onRemix={remix}
+        onDismiss={stage.clear}
+      />
     </div>
   );
 }

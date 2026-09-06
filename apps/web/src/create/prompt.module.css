@@ -1,0 +1,104 @@
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-sm);
+}
+
+/* 96px minimum, 12px radius, 14px type on a 1.5 leading — straight off the
+   artboard. It grows with the text rather than scrolling inside itself: a
+   prompt you cannot see all of is a prompt you cannot edit. */
+.prompt {
+  min-height: 96px;
+  border-radius: var(--radius-lg);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: var(--surface-2);
+  padding: 13px 14px;
+  font-size: var(--text-lg);
+  line-height: 1.5;
+  color: var(--text);
+  resize: vertical;
+  font-family: inherit;
+  transition: border-color var(--transition), background var(--transition);
+}
+
+.prompt:hover {
+  border-color: var(--line-input);
+}
+
+.prompt:focus-visible {
+  outline: none;
+  border-color: var(--accent-line);
+  background: var(--surface-3);
+}
+
+.prompt::placeholder,
+.negative::placeholder {
+  color: var(--text-muted);
+}
+
+.addNegative {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--text-sm);
+  color: var(--text-4);
+  align-self: flex-start;
+  transition: color var(--transition);
+}
+
+.addNegative:hover {
+  color: var(--text-2);
+}
+
+.negativeBlock {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-xs);
+}
+
+.negativeHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.negativeLabel {
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--text-4);
+}
+
+.negativeClose {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-4);
+}
+
+.negativeClose:hover {
+  background: var(--surface-3);
+  color: var(--text-2);
+}
+
+/* Secondary by construction: shorter, dimmer, on a quieter fill. */
+.negative {
+  min-height: 54px;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  background: var(--surface-1);
+  padding: 10px 12px;
+  font-size: var(--text-base);
+  line-height: 1.5;
+  color: var(--text-2);
+  resize: vertical;
+  font-family: inherit;
+}
+
+.negative:focus-visible {
+  outline: none;
+  border-color: var(--line-input);
+}

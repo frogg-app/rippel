@@ -85,6 +85,8 @@
   --pane-pad-x: 28px;
 
   --radius-sm: 7px;
+  /* The segmented control's outer shell on Main — 10px around 7px segments. */
+  --radius-seg: 10px;
   --radius: 9px;
   --radius-md: 11px;
   --radius-lg: 12px;

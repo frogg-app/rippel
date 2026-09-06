@@ -1,0 +1,105 @@
+/* Tiles: 70px tall, 11px radius, name over a bottom-up scrim. The grid wraps at
+   three across the 396px panel, which is what the artboard draws. */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--gap-sm);
+}
+
+.tile {
+  position: relative;
+  height: 70px;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+  /* The inline gradient from tileArt() paints the background; the border is the
+     only thing selection changes, so the art never shifts. */
+  transition: border-color var(--transition), transform var(--transition);
+}
+
+.tile:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.tileOn {
+  border: 1.5px solid var(--accent);
+}
+
+/* Not-runnable: drained of colour, and it says why on the tile. */
+.tileBlocked {
+  cursor: not-allowed;
+  filter: grayscale(0.85) brightness(0.5);
+  border-style: dashed;
+  border-color: var(--line);
+}
+
+.art {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.name {
+  position: absolute;
+  inset: auto 0 0 0;
+  padding: 6px 8px;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0), rgba(4, 4, 6, 0.9));
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--text-2);
+  text-align: left;
+  line-height: 1.25;
+  /* Model names run long ("Hunyuan Video 720p Fp8 E4m3fn"); two lines, then
+     an ellipsis, rather than a tile that grows out of the grid. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.tileOn .name {
+  color: var(--text);
+}
+
+.badge {
+  position: absolute;
+  top: 5px;
+  left: 5px;
+  padding: 2px 6px;
+  border-radius: 5px;
+  background: var(--scrim);
+  border: 1px solid var(--line-strong);
+  font-size: 9.5px;
+  letter-spacing: 0.03em;
+  color: var(--text-3);
+}
+
+.skeleton {
+  background: var(--surface-2);
+  border-style: dashed;
+  border-color: var(--line);
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.45;
+  }
+}
+
+.note {
+  margin: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.noteIcon {
+  flex-shrink: 0;
+  margin-top: 2px;
+}

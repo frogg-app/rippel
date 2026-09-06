@@ -1,0 +1,289 @@
+/*
+ * The input-panel primitives, measured off design/parts/Main.body.html.
+ *
+ * Every colour and radius is a token from styles/tokens.css. Where the artboard
+ * uses a value that had no token — the 10px segmented-control radius, the 4px
+ * slider rail, the 28px icon button — the token is added in tokens.css rather
+ * than inlined here.
+ */
+
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-sm);
+}
+
+.groupHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gap-sm);
+  min-height: 16px;
+}
+
+/* ------------------------------------------------------------ segmented */
+
+.segmented {
+  display: flex;
+  gap: var(--gap-sm);
+  background: var(--surface-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-seg);
+  padding: 3px;
+}
+
+.segment {
+  flex-grow: 1;
+  text-align: center;
+  padding: 8px 0;
+  border-radius: var(--radius-sm);
+  font-size: 12.5px;
+  color: var(--text-4);
+  border: 1px solid transparent;
+  transition: color var(--transition), background var(--transition);
+}
+
+.segment:hover {
+  color: var(--text-2);
+}
+
+.segmentOn,
+.segmentOn:hover {
+  font-weight: 600;
+  background: var(--accent-tint-strong);
+  border-color: var(--accent-line);
+  color: var(--accent);
+}
+
+/* ------------------------------------------------------------ chips */
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--gap-xs);
+}
+
+.chip {
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line-strong);
+  background: var(--surface-2);
+  font-size: var(--text-sm);
+  color: var(--text-3);
+  transition: color var(--transition), background var(--transition), border-color var(--transition);
+}
+
+.chip:hover {
+  background: var(--surface-hover);
+  color: var(--text-2);
+}
+
+.chipOn,
+.chipOn:hover {
+  background: var(--accent-tint-strong);
+  border-color: var(--accent-line);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* ------------------------------------------------------------ slider */
+
+.slider {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.sliderHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: var(--text-sm);
+}
+
+.sliderLabel {
+  color: var(--text-3);
+}
+
+.value {
+  color: var(--text-bright);
+}
+
+.valueAccent {
+  color: var(--accent);
+}
+
+.hint {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+/*
+ * A range input styled to the artboard: 4px rail, filled to `--fill`, with a
+ * 12px thumb. `appearance: none` is required on both the track and the thumb in
+ * WebKit, and the two vendor thumb rules cannot be merged into one selector
+ * list — a browser that does not know one of them drops the whole rule.
+ */
+.range {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 100%;
+  height: 13px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.range::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 2px;
+  background: linear-gradient(
+    90deg,
+    var(--slider-fill) 0 var(--fill, 0%),
+    rgba(255, 255, 255, 0.1) var(--fill, 0%) 100%
+  );
+}
+
+.range::-moz-range-track {
+  height: 4px;
+  border-radius: 2px;
+  background: linear-gradient(
+    90deg,
+    var(--slider-fill) 0 var(--fill, 0%),
+    rgba(255, 255, 255, 0.1) var(--fill, 0%) 100%
+  );
+}
+
+.range::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 12px;
+  height: 12px;
+  margin-top: -4px;
+  border-radius: 50%;
+  background: var(--slider-thumb);
+  border: none;
+}
+
+.range::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--slider-thumb);
+  border: none;
+}
+
+.range {
+  --slider-fill: #8b8b95;
+  --slider-thumb: var(--text-bright);
+}
+
+/* The accent slider — influence, LoRA weight — gets the gold ramp and a halo,
+   which the artboard uses to mark the sliders that change the *image* rather
+   than the sampler. */
+.rangeAccent {
+  --slider-fill: linear-gradient(90deg, var(--accent-deep), var(--accent));
+  --slider-thumb: var(--accent-hover);
+}
+
+.rangeAccent::-webkit-slider-thumb {
+  width: 13px;
+  height: 13px;
+  margin-top: -4.5px;
+  box-shadow: 0 0 0 3px rgba(227, 176, 75, 0.2);
+}
+
+.rangeAccent::-moz-range-thumb {
+  width: 13px;
+  height: 13px;
+  box-shadow: 0 0 0 3px rgba(227, 176, 75, 0.2);
+}
+
+/* ------------------------------------------------------------ rows */
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gap-sm);
+}
+
+.rowLabel {
+  font-size: var(--text-sm);
+  color: var(--text-3);
+}
+
+.rowControls {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+/* ------------------------------------------------------------ select */
+
+.selectWrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  border-radius: 8px;
+  border: 1px solid var(--line-input);
+  padding: 0 26px 0 10px;
+  height: 28px;
+}
+
+.selectWrap:hover {
+  background: var(--surface-2);
+}
+
+.select {
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
+  border: none;
+  outline-offset: 4px;
+  font-size: 11.5px;
+  color: var(--text-bright);
+  padding: 0;
+  max-width: 150px;
+}
+
+/* The popup itself is OS-drawn and cannot take our dark ground on every
+   platform; setting it here at least fixes Chrome on Linux, where an unstyled
+   option list renders white text on white. */
+.select option {
+  background: var(--panel);
+  color: var(--text);
+}
+
+.selectChevron {
+  position: absolute;
+  right: 8px;
+  color: var(--text-4);
+  pointer-events: none;
+}
+
+/* ------------------------------------------------------------ icon button */
+
+.iconButton {
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  border-radius: 8px;
+  border: 1px solid var(--line-input);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-3);
+  transition: color var(--transition), background var(--transition), border-color var(--transition);
+}
+
+.iconButton:hover {
+  background: var(--surface-2);
+  color: var(--text-2);
+}
+
+.iconButtonOn,
+.iconButtonOn:hover {
+  border-color: rgba(227, 176, 75, 0.32);
+  background: var(--accent-tint);
+  color: var(--accent);
+}
