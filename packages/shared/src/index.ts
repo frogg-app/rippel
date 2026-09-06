@@ -147,6 +147,42 @@ export interface Job {
   assets: Asset[];
 }
 
+// ---------------------------------------------------------------- queue
+
+/**
+ * A job as the shared queue shows it.
+ *
+ * Identical to `Job` except that `params` can be withheld. There is one GPU and
+ * several people, so the queue is visible to everyone — but only its owner (and
+ * an admin) may read what somebody typed into it. `null` is that withholding,
+ * made explicit in the type rather than left as a field that mysteriously
+ * disappears: a client can tell "not allowed to see this" from "empty".
+ */
+export type QueueJob = Omit<Job, 'params'> & { params: GenerationParams | null };
+
+/** A `Job` plus who owns it and where it sits. */
+export interface QueueEntry {
+  job: QueueJob;
+  /**
+   * Global place in the queue, 1 = next to be dispatched. Deliberately not the
+   * same number as `Job.queuePosition`, which is per-user and 0-based: one
+   * answers "how busy is the machine", the other "how long until *mine*".
+   */
+  position: number;
+  ownerName: string | null;
+  ownerId: Uuid;
+}
+
+/**
+ * What `GET /queue` returns. `running` is the job on the GPU right now, which
+ * is not in `entries` — it is no longer waiting — and is null when the box is
+ * idle. A job caught mid-dispatch appears in exactly one of the two.
+ */
+export interface QueueView {
+  entries: QueueEntry[];
+  running: QueueEntry | null;
+}
+
 // ---------------------------------------------------------------- assets
 
 export interface Asset {

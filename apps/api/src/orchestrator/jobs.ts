@@ -22,6 +22,8 @@ export interface JobRow {
   backend_id: string | null;
   comfy_prompt_id: string | null;
   progress: Partial<JobProgress>;
+  /** Admin override; higher runs first. 0 for every job nobody has touched. */
+  priority: number;
   error: string | null;
   created_at: Date;
   started_at: Date | null;
@@ -160,29 +162,56 @@ export async function failJob(row: JobRow, error: string): Promise<void> {
 }
 
 /**
+ * The order the queue runs in, as a SQL fragment.
+ *
+ * Shared by `nextQueuedJob` and by the queue view so that the positions a user
+ * is shown are the positions that will actually happen. FIFO by `created_at`,
+ * with an admin's `priority` ahead of it — see migration 007 for why the
+ * override is a column rather than a rewritten timestamp.
+ */
+export const QUEUE_ORDER = 'priority DESC, created_at';
+
+/**
  * How many of this user's jobs are ahead of this one. 0 means next.
  *
  * Deliberately per-user: with one shared GPU a global position would tell a
  * user how much other people are generating, which is neither their business
- * nor useful to them.
+ * nor useful to them. (The queue view's `position` is the global number, and
+ * is a different thing.)
+ *
+ * "Ahead" means ahead in `QUEUE_ORDER`, so a promoted job of theirs counts —
+ * otherwise promoting job B past job A would leave A still claiming to be next.
  */
 export async function queuePosition(row: JobRow): Promise<number> {
   const rows = await query<{ count: string }>(
     `SELECT count(*) AS count
        FROM jobs
-      WHERE user_id = $1 AND status = 'queued' AND created_at < $2`,
-    [row.user_id, row.created_at],
+      WHERE user_id = $1
+        AND status = 'queued'
+        AND (priority > $2 OR (priority = $2 AND created_at < $3))`,
+    [row.user_id, row.priority, row.created_at],
   );
   return Number(rows[0]?.count ?? 0);
 }
 
-/** The oldest job still waiting, across all users. FIFO, no priorities yet. */
-export async function nextQueuedJob(): Promise<JobRow | null> {
-  const rows = await query<JobRow>(
-    `SELECT * FROM jobs WHERE status = 'queued' ORDER BY created_at LIMIT 1`,
+/**
+ * The next job to dispatch, across all users.
+ *
+ * The db handle is a parameter with a default so the ordering can be exercised
+ * in a unit test — this one statement is what makes a promotion mean anything.
+ */
+export async function nextQueuedJob(db: JobsDb = realJobsDb): Promise<JobRow | null> {
+  const rows = await db.query<JobRow>(
+    `SELECT * FROM jobs WHERE status = 'queued' ORDER BY ${QUEUE_ORDER} LIMIT 1`,
   );
   return rows[0] ?? null;
 }
+
+export interface JobsDb {
+  query: typeof query;
+}
+
+export const realJobsDb: JobsDb = { query };
 
 /** Jobs the orchestrator believes are in flight — used to reconcile on boot. */
 export async function inFlightJobs(): Promise<JobRow[]> {

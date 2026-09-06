@@ -15,9 +15,12 @@ import { compile, TemplateError, ValidationError } from '../compiler/index.js';
 import { findTemplate } from '../workflows/registry.js';
 import { candidatesFor, filenamesOn } from './select.js';
 import { preflight } from './preflight.js';
-import { createJob, getJob, queuePosition, setStatus, type JobRow } from './jobs.js';
+import { createJob, getJob, queuePosition, type JobRow } from './jobs.js';
 import { jobWithAssets } from './runner.js';
 import { publish, subscribe } from './events.js';
+import { cancelJob } from './cancel.js';
+import { publishQueuePositions } from './queue.js';
+import { makeQueueRoutes } from './queue-routes.js';
 
 /**
  * Shallow validation only. The manifest is the authority on what a legal value
@@ -58,6 +61,10 @@ const generationParams = z.object({
 }).passthrough();
 
 export default async function jobRoutes(app: FastifyInstance) {
+  // The queue is the same objects seen from the outside, so it is registered
+  // here rather than given its own top-level plugin.
+  await app.register(makeQueueRoutes());
+
   app.post<{ Body: { params?: unknown } }>(
     '/jobs',
     { onRequest: [app.requireAuth] },
@@ -204,42 +211,28 @@ export default async function jobRoutes(app: FastifyInstance) {
   /**
    * Cancel.
    *
-   * A queued job is ours to drop. A dispatched one belongs to the backend, and
-   * ComfyUI's own queue is the only thing that can stop it — so we ask, and
-   * mark it cancelled regardless, because a user who cancels should not be left
-   * watching something they have disowned.
+   * Owner or admin. What cancelling *does* lives in cancel.ts, shared with the
+   * admin's `DELETE /queue/:id`: a queued job is ours to drop, a dispatched one
+   * belongs to the backend and is asked for politely and disowned regardless.
+   *
+   * The scoping is in the read: a normal user passes their own id, so someone
+   * else's job is indistinguishable from one that does not exist, while an
+   * admin reads it unscoped.
    */
   app.post<{ Params: { id: string } }>(
     '/jobs/:id/cancel',
     { onRequest: [app.requireAuth] },
     async (req, reply) => {
-      const row = await getJob(req.params.id, req.user!.id);
+      const user = req.user!;
+      const row = await getJob(req.params.id, user.role === 'admin' ? undefined : user.id);
       if (!row) return reply.code(404).send({ error: 'not_found', message: 'No such job.' });
 
-      if (['complete', 'failed', 'cancelled'].includes(row.status)) {
-        return { job: await jobWithAssets(row) };
-      }
-
-      if (row.comfy_prompt_id && row.backend_id) {
-        const backend = await queryOne<{ base_url: string }>(
-          'SELECT base_url FROM backends WHERE id = $1',
-          [row.backend_id],
-        );
-        if (backend) {
-          await fetch(`${backend.base_url}/queue`, {
-            method: 'POST',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ delete: [row.comfy_prompt_id] }),
-            signal: AbortSignal.timeout(10_000),
-          }).catch(() => {
-            // Best effort: if the backend will not listen, the job is still
-            // cancelled from the user's point of view.
-          });
-        }
-      }
-
-      const updated = await setStatus(row.id, 'cancelled');
-      return { job: await jobWithAssets(updated ?? row) };
+      const wasQueued = row.status === 'queued';
+      const updated = await cancelJob(row);
+      // Dropping one job out of the queue moves everybody behind it up; their
+      // tabs learn that from the same `job.status` events they already handle.
+      if (wasQueued) await publishQueuePositions();
+      return { job: await jobWithAssets(updated) };
     },
   );
 
