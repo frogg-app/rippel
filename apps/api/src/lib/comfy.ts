@@ -42,6 +42,21 @@ export interface ObjectInfo {
   };
 }
 
+/**
+ * One output file as ComfyUI names it in a /history entry. `type` is the
+ * folder class: finished work is `output`, live previews are `temp`.
+ */
+export interface ComfyOutputRef {
+  filename: string;
+  subfolder?: string;
+  type?: 'output' | 'temp' | 'input';
+}
+
+export interface ComfyImageBytes {
+  bytes: Buffer;
+  contentType: string;
+}
+
 export class ComfyError extends Error {
   constructor(
     message: string,
@@ -80,6 +95,53 @@ export class ComfyClient {
 
   objectInfo(): Promise<ObjectInfo> {
     return this.get<ObjectInfo>('/object_info');
+  }
+
+  /**
+   * Download one finished output's bytes from /view.
+   *
+   * This deliberately does not go through `get()`: that path parses JSON and
+   * gives up after 8s, which is right for a status poll and wrong here. A
+   * finished image is megabytes coming off a LAN box that may still be busy
+   * with the next job, so image transfers get their own, much longer budget —
+   * failing a download after 8s would throw away GPU time already spent.
+   *
+   * `subfolder` and `type` come straight from the history entry's output
+   * record; ComfyUI needs all three to resolve the file.
+   */
+  async viewImage(ref: ComfyOutputRef, timeoutMs = 120_000): Promise<ComfyImageBytes> {
+    const params = new URLSearchParams({
+      filename: ref.filename,
+      subfolder: ref.subfolder ?? '',
+      type: ref.type ?? 'output',
+    });
+    const url = `${this.baseUrl}/view?${params.toString()}`;
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await fetch(url, { signal: controller.signal });
+      if (!res.ok) {
+        throw new ComfyError(`/view ${ref.filename} returned ${res.status}`, res.status);
+      }
+      const bytes = Buffer.from(await res.arrayBuffer());
+      // A 200 with an empty body means the file vanished between /history and
+      // this request — a purged temp output, say. Treat it as a failure here
+      // rather than storing a zero-byte asset the library cannot render.
+      if (bytes.byteLength === 0) {
+        throw new ComfyError(`/view ${ref.filename} returned an empty body`);
+      }
+      return {
+        bytes,
+        contentType: res.headers.get('content-type') ?? 'application/octet-stream',
+      };
+    } catch (err) {
+      if (err instanceof ComfyError) throw err;
+      const reason = err instanceof Error ? err.message : String(err);
+      throw new ComfyError(`Could not download ${ref.filename} from ${this.baseUrl}: ${reason}`);
+    } finally {
+      clearTimeout(timer);
+    }
   }
 }
 

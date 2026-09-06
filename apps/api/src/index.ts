@@ -1,7 +1,7 @@
 import Fastify from 'fastify';
 import type { FastifyError } from 'fastify';
 import cookie from '@fastify/cookie';
-import { env } from './env.js';
+import { env, assertStorageConfigured } from './env.js';
 import { migrate, pool, waitForDatabase } from './db.js';
 import { seed } from './seed.js';
 import { pruneSessions } from './auth/sessions.js';
@@ -11,6 +11,7 @@ import authRoutes from './routes/auth.js';
 import backendRoutes from './routes/backends.js';
 import healthRoutes from './routes/health.js';
 import modelRoutes from './routes/models.js';
+import assetRoutes from './storage/routes.js';
 
 const app = Fastify({
   logger: {
@@ -31,6 +32,7 @@ await app.register(
     await api.register(authRoutes);
     await api.register(backendRoutes);
     await api.register(modelRoutes);
+    await api.register(assetRoutes);
   },
   { prefix: '/api' },
 );
@@ -46,6 +48,9 @@ app.setErrorHandler((err: FastifyError, req, reply) => {
 });
 
 async function main() {
+  // Fail fast on a bad storage configuration, before any GPU time is spent.
+  assertStorageConfigured();
+
   app.log.info('waiting for the database');
   await waitForDatabase();
   await migrate((msg) => app.log.info(msg));

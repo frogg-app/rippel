@@ -4,3 +4,6 @@ dist/
 .env
 *.log
 data/
+
+# Agent worktrees, not project content
+.claude/worktrees/
