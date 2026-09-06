@@ -1,13 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../auth/context';
 import { initial } from '../lib/format';
-import { SignOutIcon } from '../components/icons';
+import { SettingsIcon, SignOutIcon } from '../components/icons';
+import { SettingsModal } from '../settings/SettingsModal';
 import styles from './UserMenu.module.css';
 
-/** The avatar chip at the far right, and the one thing behind it: sign out. */
+/** The avatar chip, and what is behind it: Settings for an administrator, and sign out. */
 export function UserMenu({ placement = 'bar' }: { placement?: 'bar' | 'rail' }) {
   const { user, signOut } = useAuth();
   const [open, setOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const container = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -48,11 +50,29 @@ export function UserMenu({ placement = 'bar' }: { placement?: 'bar' | 'rail' }) 
             {user.displayName ? <div className={styles.email}>{user.email}</div> : null}
             {user.role === 'admin' ? <div className={styles.role}>Administrator</div> : null}
           </div>
+          {user.role === 'admin' ? (
+            <button
+              type="button"
+              role="menuitem"
+              className={styles.item}
+              onClick={() => {
+                setOpen(false);
+                setSettingsOpen(true);
+              }}
+            >
+              <SettingsIcon size={15} />
+              Settings
+            </button>
+          ) : null}
           <button type="button" role="menuitem" className={styles.item} onClick={() => void signOut()}>
             <SignOutIcon size={15} />
             Sign out
           </button>
         </div>
+      ) : null}
+
+      {user.role === 'admin' ? (
+        <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
       ) : null}
     </div>
   );

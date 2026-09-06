@@ -20,6 +20,17 @@ export interface BackendsState {
  * rather than the pill component so a future Library or Models screen can show
  * the same numbers without a second poll loop.
  */
+/**
+ * Anyone who has just changed the fleet — the Settings modal, after a save —
+ * calls this so every mounted `useBackends` re-reads at once rather than
+ * waiting out the poll. A tiny subscriber set, not an event bus.
+ */
+const listeners = new Set<() => void>();
+
+export function refreshBackends(): void {
+  for (const listener of listeners) listener();
+}
+
 export function useBackends(): BackendsState {
   const [state, setState] = useState<BackendsState>({
     backends: [],
@@ -53,6 +64,12 @@ export function useBackends(): BackendsState {
       }
     };
     document.addEventListener('visibilitychange', onVisible);
+    const onRefresh = () => {
+      if (stopped) return;
+      clearTimeout(timer);
+      void tick();
+    };
+    listeners.add(onRefresh);
 
     void tick();
 
@@ -61,6 +78,7 @@ export function useBackends(): BackendsState {
       clearTimeout(timer);
       controller.abort();
       document.removeEventListener('visibilitychange', onVisible);
+      listeners.delete(onRefresh);
     };
   }, []);
 

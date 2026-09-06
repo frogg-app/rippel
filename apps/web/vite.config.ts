@@ -2,6 +2,9 @@
 // typed, so the dev server and the test runner stay in one file.
 import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
+import { createRequire } from 'node:module';
+
+const { version: appVersion } = createRequire(import.meta.url)('../../package.json') as { version: string };
 
 /**
  * The app only ever talks to same-origin `/api/*` (see src/lib/api.ts), so in
@@ -18,6 +21,8 @@ const apiTarget = process.env.API_PROXY_TARGET ?? 'http://127.0.0.1:4000';
 
 export default defineConfig({
   plugins: [react()],
+  // The About section shows this; it is the root package's version.
+  define: { __APP_VERSION__: JSON.stringify(appVersion) },
   server: {
     // Bound to all interfaces: the box is reached over SSH from another
     // machine, so a loopback-only dev server would be unreachable.

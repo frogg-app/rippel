@@ -1,0 +1,520 @@
+/*
+ * Settings: a centred glass sheet, a section rail on the left, the section's
+ * content on the right. Same entrance and backdrop as the library modal.
+ */
+
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 28px;
+  background: rgba(6, 9, 12, 0.72);
+  backdrop-filter: blur(18px) saturate(1.2);
+  -webkit-backdrop-filter: blur(18px) saturate(1.2);
+  animation: fade var(--dur-slow) var(--ease-out) both;
+}
+
+.sheet {
+  width: min(880px, 100%);
+  height: min(620px, 100%);
+  display: flex;
+  border-radius: 20px;
+  border: 1px solid var(--glass-line);
+  background: var(--library-drawer-bg);
+  box-shadow: var(--shadow-3), var(--edge-highlight);
+  overflow: hidden;
+  animation: sheet-in var(--dur-page) var(--ease-out) both;
+}
+
+@keyframes sheet-in {
+  from {
+    opacity: 0;
+    transform: translateY(18px) scale(0.975);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ------------------------------------------------------------ rail */
+
+.railCol {
+  width: 200px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--ground-sunken);
+  border-right: 1px solid var(--line);
+  padding: 18px 12px;
+  gap: 14px;
+}
+
+.railHead {
+  font-family: var(--font-display);
+  font-weight: 300;
+  font-size: var(--display-sm);
+  letter-spacing: var(--tracking-brand);
+  padding: 0 10px;
+}
+
+.sections {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.sectionTab {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 36px;
+  padding: 0 10px;
+  border-radius: 10px;
+  font-size: var(--text-base);
+  color: var(--text-3);
+  text-align: left;
+  transition: background var(--transition), color var(--transition);
+}
+
+.sectionTab:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.sectionOn,
+.sectionOn:hover {
+  background: var(--accent-tint);
+  color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent-line);
+}
+
+/* ------------------------------------------------------------ pane */
+
+.pane {
+  flex-grow: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.paneHead {
+  height: 54px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 14px 0 24px;
+  border-bottom: 1px solid var(--line);
+}
+
+.paneTitle {
+  font-size: var(--text-lg);
+  font-weight: 500;
+}
+
+.close {
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-soft);
+}
+
+.close:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.paneBody {
+  flex-grow: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 20px 24px 28px;
+  animation: rise var(--dur-slow) var(--ease-out) both;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.blurb {
+  margin: 0;
+  max-width: 56ch;
+  font-size: var(--text-base);
+  line-height: 1.55;
+  color: var(--text-4);
+}
+
+.loading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-4);
+  font-size: var(--text-sm);
+}
+
+.empty {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.notice {
+  padding: 10px 13px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--danger-line);
+  background: var(--danger-tint);
+  color: var(--danger-text);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  animation: pop var(--dur) var(--ease-out) both;
+}
+
+/* ------------------------------------------------------------ cards */
+
+.cards {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.card {
+  border-radius: 14px;
+  border: 1px solid var(--line-strong);
+  background: var(--surface-1);
+  box-shadow: var(--edge-highlight);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  animation: rise var(--dur-slow) var(--ease-out) both;
+  animation-delay: calc(var(--i, 0) * 45ms);
+  transition: border-color var(--transition), background var(--transition);
+}
+
+.card:hover {
+  border-color: var(--line-input);
+  background: var(--surface-2);
+}
+
+.cardMain {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.dot {
+  position: relative;
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  margin-top: 6px;
+  border-radius: 50%;
+  background: var(--offline);
+}
+
+.dot[data-status='online'] {
+  background: var(--ok);
+  box-shadow: var(--ok-glow);
+}
+
+.dot[data-status='offline'] {
+  background: var(--danger);
+}
+
+.cardText {
+  flex-grow: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.cardName {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: var(--text-lg);
+  font-weight: 500;
+  color: var(--text);
+}
+
+.cardStatus {
+  font-size: var(--text-xs);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.cardStatus[data-status='online'] {
+  color: var(--ok-text);
+}
+
+.cardStatus[data-status='offline'] {
+  color: var(--danger-text);
+}
+
+.cardUrl {
+  font-size: var(--text-sm);
+  color: var(--text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cardMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  font-size: var(--text-xs);
+  color: var(--text-4);
+}
+
+.cardActions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* ------------------------------------------------------------ switch */
+
+.switch {
+  flex-shrink: 0;
+  position: relative;
+  display: inline-flex;
+  cursor: pointer;
+}
+
+.switch input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.switchTrack {
+  width: 40px;
+  height: 22px;
+  border-radius: 999px;
+  background: var(--surface-hover);
+  border: 1px solid var(--line-input);
+  position: relative;
+  transition: background var(--transition), border-color var(--transition);
+}
+
+.switchThumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--text-3);
+  transition: transform var(--dur-slow) var(--ease-spring), background var(--transition);
+}
+
+.switch input:checked + .switchTrack {
+  background: var(--accent-tint-strong);
+  border-color: var(--accent-line-strong);
+}
+
+.switch input:checked + .switchTrack .switchThumb {
+  transform: translateX(18px);
+  background: var(--accent);
+}
+
+.switch input:focus-visible + .switchTrack {
+  box-shadow: var(--focus-ring);
+}
+
+/* ------------------------------------------------------------ actions */
+
+.action {
+  height: 32px;
+  padding: 0 13px;
+  border-radius: var(--radius);
+  border: 1px solid var(--line-input);
+  background: var(--surface-1);
+  box-shadow: var(--edge-highlight);
+  font-size: var(--text-sm);
+  color: var(--text-2);
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.action:hover:not(:disabled) {
+  background: var(--surface-3);
+  border-color: var(--line-strong);
+  color: var(--text);
+}
+
+.action:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.actionPrimary {
+  background: var(--accent-gradient);
+  border-color: transparent;
+  color: var(--accent-ink);
+  font-weight: 600;
+}
+
+.actionPrimary:hover:not(:disabled) {
+  background: var(--accent-gradient);
+  color: var(--accent-ink);
+  filter: brightness(1.06);
+}
+
+.actionDanger,
+.actionDanger:hover:not(:disabled) {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+  box-shadow: 0 6px 20px rgba(235, 111, 146, 0.35);
+  animation: pop var(--dur) var(--ease-out) both;
+}
+
+.add {
+  align-self: flex-start;
+  height: 36px;
+  padding: 0 14px;
+  border-radius: var(--radius-md);
+  border: 1px dashed var(--line-dashed);
+  color: var(--text-3);
+  font-size: var(--text-sm);
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  transition: border-color var(--transition), color var(--transition), background var(--transition);
+}
+
+.add:hover {
+  border-color: var(--accent-line);
+  color: var(--accent);
+  background: var(--accent-tint);
+}
+
+.probe {
+  font-size: var(--text-xs);
+  line-height: 1.4;
+  padding: 4px 9px;
+  border-radius: 999px;
+}
+
+.probeOk {
+  color: var(--ok-text);
+  background: var(--ok-tint);
+  border: 1px solid var(--ok-line);
+}
+
+.probeBad {
+  color: var(--danger-text);
+  background: var(--danger-tint);
+  border: 1px solid var(--danger-line);
+}
+
+/* ------------------------------------------------------------ form */
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px;
+  border-radius: 14px;
+  border: 1px solid var(--accent-line);
+  background: var(--accent-tint);
+  animation: rise var(--dur-slow) var(--ease-out) both;
+}
+
+.formRow {
+  display: grid;
+  grid-template-columns: 1fr 220px;
+  gap: 12px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.input {
+  height: var(--control-height);
+  padding: 0 11px;
+  border-radius: var(--radius);
+  border: 1px solid var(--line-input);
+  background: var(--panel);
+  color: var(--text);
+  font-size: var(--text-base);
+}
+
+.addressRow {
+  display: flex;
+  gap: 8px;
+}
+
+.addressRow .input {
+  flex-grow: 1;
+  min-width: 0;
+}
+
+.formActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* ------------------------------------------------------------ about */
+
+.about {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+.aboutName {
+  font-family: var(--font-display);
+  font-weight: 300;
+  font-size: 28px;
+  letter-spacing: var(--tracking-brand);
+  line-height: 1;
+}
+
+.aboutVersion {
+  margin-top: 6px;
+  font-size: var(--text-sm);
+  color: var(--text-4);
+}
+
+.toast {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 70;
+  max-width: 380px;
+  padding: 12px 16px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--danger-line);
+  background: var(--glass-panel-strong);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  box-shadow: var(--shadow-pop);
+  font-size: var(--text-sm);
+  color: var(--danger-text);
+}

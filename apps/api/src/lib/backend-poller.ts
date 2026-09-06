@@ -50,6 +50,29 @@ export function startBackendPoller(log: (msg: string) => void = console.log): ()
   };
 }
 
+/**
+ * Poll one backend right now, outside the 15s sweep. The admin screen calls
+ * this after creating or editing a backend so the status pill does not sit on
+ * "unknown" for up to a poll interval. A disabled backend is marked offline
+ * instead of being asked anything.
+ */
+export async function pollBackendNow(
+  id: string,
+  log: (msg: string) => void = console.log,
+): Promise<void> {
+  const rows = await query<BackendRow & { enabled: boolean }>(
+    `SELECT id, name, base_url, enabled FROM backends WHERE id = $1`,
+    [id],
+  );
+  const backend = rows[0];
+  if (!backend) return;
+  if (!backend.enabled) {
+    await query(`UPDATE backends SET status = 'offline' WHERE id = $1`, [id]);
+    return;
+  }
+  await pollOne(backend, log);
+}
+
 async function pollOne(backend: BackendRow, log: (msg: string) => void): Promise<void> {
   const client = new ComfyClient(backend.base_url);
 
