@@ -93,13 +93,21 @@ export async function collectOutputs(params: {
   jobId: string;
   backendUrl: string;
   outputs: ComfyOutputRef[];
+  /**
+   * Called before each download, 1-based, so the caller can say "Storing 2 of
+   * 4". Reported before rather than after: the interesting part is what is
+   * happening now, and the last file's several seconds would otherwise be
+   * announced only once they were over.
+   */
+  onAsset?: (index: number, total: number) => void;
 }): Promise<Asset[]> {
   const assets: Asset[] = [];
 
   // Sequential on purpose: these are multi-megabyte files off a machine that is
   // probably already starting the next job, and there is nothing to be gained
   // by making its disk seek for four of them at once.
-  for (const source of params.outputs) {
+  for (const [index, source] of params.outputs.entries()) {
+    params.onAsset?.(index + 1, params.outputs.length);
     assets.push(
       await fetchAndPersist({
         userId: params.userId,

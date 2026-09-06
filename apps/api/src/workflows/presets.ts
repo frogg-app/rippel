@@ -199,3 +199,77 @@ export const LTXV_MAX_FRAMES = LTXV_FRAME_QUANTUM * 20 + 1;
 export const LTXV_NATIVE_FPS = 25;
 export const LTXV_MIN_FPS = 8;
 export const LTXV_MAX_FPS = 30;
+
+// -------------------------------------------- generic Stable-Diffusion tiers
+//
+// The two tables below exist for the generic fallback templates (see
+// sd-generic.ts). They are *not* interchangeable with `SDXL_RESOLUTIONS`, and
+// the reason is the most expensive thing to get wrong in this directory: an
+// SD 1.5 checkpoint asked for 1024x1024 does not merely look soft, it produces
+// the classic duplicated-subject failure — two heads, four arms, a horizon
+// repeated halfway up the frame — because the UNet never saw a latent that
+// large in training and tiles its composition instead. An SDXL checkpoint asked
+// for 640x640 degrades the *other* way: softer and less detailed, but
+// compositionally coherent. That asymmetry is what both tables are built
+// around, and it is the whole reason the fallback cannot have one table.
+
+/**
+ * SD 1.x / 2.x buckets.
+ *
+ * 512x512 is SD 1.5's native training size and the only shape it is
+ * unambiguously happy at; every other entry keeps the *long edge* at or below
+ * 640, which is empirically where the duplication artefacts start on a 1.x
+ * UNet. Total area stays around 0.25-0.29 MP — a quarter of the SDXL budget,
+ * which is exactly the point.
+ *
+ * SD 2.x is folded in here even though 2.1-768 is happiest at 768. `family.ts`
+ * deliberately does not distinguish 2.0 from 2.1 (see the note on
+ * `FAMILIES.sd2`), so we cannot tell a 512-base checkpoint from a 768-v one, and
+ * 640 is the safe intersection: fine on both, rather than right on one and
+ * duplicated on the other.
+ *
+ * Multiples of 64 throughout, for the same VAE/UNet downsampling reason as the
+ * SDXL table.
+ */
+export const SD15_RESOLUTIONS: ResolutionTable = {
+  '1:1': { width: 512, height: 512 },
+  '3:2': { width: 640, height: 448 },
+  '2:3': { width: 448, height: 640 },
+  '16:9': { width: 640, height: 384 },
+  '9:16': { width: 384, height: 640 },
+};
+
+/**
+ * Buckets for a checkpoint whose family we could not infer at all.
+ *
+ * This is the only table in the codebase chosen under genuine uncertainty, so
+ * the reasoning matters more than the numbers:
+ *
+ *  - The population is skewed towards XL. An unrecognised checkpoint today is
+ *    far more likely to be an SDXL / Pony / Illustrious merge with an invented
+ *    name than an SD 1.5 one, so a 512 table would under-serve most of the
+ *    models it will ever see.
+ *  - But the *cost* is skewed the other way. Guessing 1024 on an SD 1.5 merge
+ *    costs a mangled, duplicated image and the GPU minute that produced it;
+ *    guessing 768 on an SDXL merge costs some sharpness on an image that is
+ *    otherwise entirely usable. A confident failure is worse than a slightly
+ *    soft success — the same rule `family.ts` is built on.
+ *
+ * So: the long edge is capped at 768, SD 1.5's practical ceiling, and the area
+ * is pushed as high as that cap allows (~0.34-0.5 MP) so an XL-lineage model is
+ * not starved. Both land somewhere reasonable; neither lands somewhere smeared.
+ *
+ * If we ever learn a model's real training size this table stops being a guess.
+ * ComfyUI serves the safetensors header at
+ * `/view_metadata/checkpoints?filename=…`, and a file carrying
+ * `modelspec.resolution` ("1024x1024" on stock SDXL — verified on the live
+ * backend) states it outright. That belongs upstream in family inference, where
+ * it would produce a real `base_model` rather than being second-guessed here.
+ */
+export const GENERIC_SD_RESOLUTIONS: ResolutionTable = {
+  '1:1': { width: 704, height: 704 },
+  '3:2': { width: 768, height: 512 },
+  '2:3': { width: 512, height: 768 },
+  '16:9': { width: 768, height: 448 },
+  '9:16': { width: 448, height: 768 },
+};

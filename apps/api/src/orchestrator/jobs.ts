@@ -10,6 +10,7 @@
 import type { GenerationParams, Job, JobProgress, JobStatus, Uuid } from '@comfy/shared';
 import { query, queryOne } from '../db.js';
 import { publish } from './events.js';
+import { phaseForStatus } from './phases.js';
 
 export interface JobRow {
   id: string;
@@ -36,6 +37,8 @@ export const EMPTY_PROGRESS: JobProgress = {
   fraction: 0,
   etaSeconds: null,
   previewUrl: null,
+  phase: null,
+  phaseLabel: null,
 };
 
 export function toJob(row: JobRow, assets: Job['assets'] = []): Job {
@@ -48,12 +51,32 @@ export function toJob(row: JobRow, assets: Job['assets'] = []): Job {
     queuePosition: null,
     params: row.params,
     backendId: row.backend_id,
-    progress: { ...EMPTY_PROGRESS, ...row.progress },
+    // A job nobody was watching live has whatever progress was last written,
+    // which for a queued job is nothing at all. Deriving the phase from the
+    // status covers the two cases the socket never reports — waiting in *our*
+    // queue, and the storing pass — so a page load shows the same thing a live
+    // tab does instead of an unlabelled empty bar.
+    progress: withStatusPhase({ ...EMPTY_PROGRESS, ...row.progress }, row.status),
     error: row.error,
     createdAt: row.created_at.toISOString(),
     startedAt: row.started_at?.toISOString() ?? null,
     finishedAt: row.finished_at?.toISOString() ?? null,
     assets,
+  };
+}
+
+/**
+ * Fill in a phase the socket cannot have reported. Never overwrites one that is
+ * already there: a live 'sampling' is better information than the status.
+ */
+function withStatusPhase(progress: JobProgress, status: JobStatus): JobProgress {
+  if (progress.phase) return progress;
+  const phase = phaseForStatus(status);
+  if (!phase) return progress;
+  return {
+    ...progress,
+    phase,
+    phaseLabel: phase === 'queued' ? 'Waiting for a free backend' : 'Storing the result',
   };
 }
 

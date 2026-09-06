@@ -158,12 +158,21 @@ describe('inferred families resolve against the real registry', () => {
     }
   });
 
-  it('finds no template for families we have not written one for yet', () => {
+  it('finds no template for families that need a graph we have not written', () => {
     // Not a failure: a null lookup is the readable "no workflow for this yet"
-    // error. It is here so that adding a template later is a visible change.
+    // error. FLUX needs a diffusion-model loader and dual CLIP, so it is on the
+    // generic fallback's exclusion list and stays unanswered until someone
+    // writes it a template of its own.
     expect(findTemplate('txt2img', familyFromFilename('flux1-dev.safetensors'))).toBeUndefined();
-    expect(findTemplate('txt2img', familyFromFilename('v1-5-pruned-emaonly.safetensors')))
-      .toBeUndefined();
+  });
+
+  it('routes an SD 1.5 checkpoint to the generic SD template', () => {
+    // SD 1.5 has no hand-authored template, but it runs the same node set as
+    // SDXL at a quarter of the resolution, so the generic fallback covers it —
+    // flagged as generic rather than passed off as authored. See sd-generic.ts.
+    const template = findTemplate('txt2img', familyFromFilename('v1-5-pruned-emaonly.safetensors'));
+    expect(template?.manifest.id).toBe('txt2img-sd-generic');
+    expect(template?.manifest.isFallback).toBe(true);
   });
 
   it('spells every family it can return in one canonical form', () => {

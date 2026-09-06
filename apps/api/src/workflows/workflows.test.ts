@@ -35,6 +35,19 @@ import {
   parseInputPath,
   resolveInputPath,
   txt2imgSdxlTemplate,
+  GENERIC_SD_RESOLUTIONS,
+  NON_SD_NODE_SET_FAMILIES,
+  SD15_RESOLUTIONS,
+  SD_GENERIC_TEMPLATES,
+  buildTemplateIndex,
+  capabilityOffersFor,
+  img2imgSdGenericTemplate,
+  img2imgSdGenericUnknownTemplate,
+  resolveTemplate,
+  txt2imgSdGenericManifest,
+  txt2imgSdGenericTemplate,
+  txt2imgSdGenericUnknownManifest,
+  txt2imgSdGenericUnknownTemplate,
   IMG2IMG_INIT_IMAGE_NODE_ID,
   img2imgSdxlTemplate,
   withInitImage,
@@ -337,11 +350,22 @@ describe('registry', () => {
     }
   });
 
-  it('returns undefined for an unknown family or a model with none', () => {
+  it('returns undefined for a family that needs a graph we do not have', () => {
     expect(findTemplate('txt2img', 'flux.1')).toBeUndefined();
     expect(findTemplate('img2img', 'flux.1')).toBeUndefined();
     expect(findTemplate('img2vid', 'sdxl')).toBeUndefined();
-    expect(findTemplate('txt2img', null)).toBeUndefined();
+  });
+
+  it('falls back to the generic template for a model with no family at all', () => {
+    // This used to be undefined. See findTemplate: refusing a checkpoint whose
+    // family we could not infer meant an ordinary merge was unusable, and an
+    // unrecognised checkpoint is far more likely SD-family than anything else.
+    expect(findTemplate('txt2img', null)?.manifest.id).toBe('txt2img-sd-generic-unknown');
+    expect(findTemplate('img2img', null)?.manifest.id).toBe('img2img-sd-generic-unknown');
+    // But only for the capabilities the generic node set can actually serve.
+    expect(findTemplate('txt2vid', null)).toBeUndefined();
+    expect(findTemplate('img2vid', null)).toBeUndefined();
+    expect(findTemplate('upscale', null)).toBeUndefined();
   });
 
   it('finds by manifest id', () => {
@@ -352,7 +376,9 @@ describe('registry', () => {
   it('reports capabilities per family', () => {
     expect([...capabilitiesFor('SDXL 1.0')].sort()).toEqual(['img2img', 'txt2img']);
     expect(capabilitiesFor('flux.1')).toEqual([]);
-    expect(capabilitiesFor(null)).toEqual([]);
+    // A model with no inferred family is now offered the generic still-image
+    // capabilities rather than nothing at all.
+    expect([...capabilitiesFor(null)].sort()).toEqual(['img2img', 'txt2img']);
   });
 
   it('gives every template a unique id', () => {
@@ -942,5 +968,384 @@ describe('LTX-Video quality preset table', () => {
       expect(frames.max, template.manifest.id).toBe(LTXV_MAX_FRAMES);
       expect(template.manifest.frameQuantum).toBe(LTXV_FRAME_QUANTUM);
     }
+  });
+});
+
+// ------------------------------------------- generic Stable-Diffusion fallback
+
+/**
+ * The generic templates run through the per-template block at the top of this
+ * file like every other one: their graphs are checked for API format, links,
+ * cycles and manifest paths there. What follows is the part that block cannot
+ * know about — that the fallback covers what it claims to, refuses what it must
+ * not, resolves to a sane resolution, and never shadows a real template.
+ */
+
+const IMAGE_MODEL_ID = '00000000-0000-4000-8000-0000000000aa';
+const IMAGE_JOB_ID = '00000000-0000-4000-8000-0000000000ab';
+
+function compileImage(template: WorkflowTemplate, overrides: Partial<GenerationParams> = {}) {
+  return compile({
+    params: {
+      kind: template.manifest.capability,
+      prompt: 'a lighthouse in fog',
+      modelId: IMAGE_MODEL_ID,
+      quality: 'balanced',
+      aspect: '1:1',
+      batchSize: 1,
+      ...overrides,
+    },
+    template,
+    modelFilenames: { [IMAGE_MODEL_ID]: 'someMerge_v40.safetensors' },
+    jobId: IMAGE_JOB_ID,
+  });
+}
+
+describe('generic SD fallback: what it is', () => {
+  it('is the same node set as the reference SDXL template, node for node', () => {
+    // Identical wiring is the claim the whole fallback rests on: SD 1.5, SDXL,
+    // Pony, Illustrious, NoobAI and their merges all run this graph. If the two
+    // ever diverge, one of them is wrong.
+    const generic = txt2imgSdGenericTemplate.graph;
+    const sdxl = txt2imgSdxlTemplate.graph;
+    expect(Object.keys(generic).sort()).toEqual(Object.keys(sdxl).sort());
+    for (const id of Object.keys(sdxl)) {
+      expect(generic[id]!.class_type, id).toBe(sdxl[id]!.class_type);
+      for (const [name, value] of Object.entries(sdxl[id]!.inputs)) {
+        if (!isNodeLink(value)) continue;
+        expect(generic[id]!.inputs[name], `${id}.inputs.${name}`).toEqual(value);
+      }
+    }
+  });
+
+  it('is the img2img substitution too: LoadImage -> VAEEncode, no empty latent', () => {
+    const graph = img2imgSdGenericTemplate.graph;
+    expect(graph['5'], 'the empty latent must be gone').toBeUndefined();
+    expect(graph['10']!.class_type).toBe('LoadImage');
+    expect(graph['11']!.class_type).toBe('VAEEncode');
+    expect(graph['3']!.inputs['latent_image']).toEqual(['11', 0]);
+    // The same node id img2img-sdxl uses, so one upload path serves both.
+    expect(IMG2IMG_INIT_IMAGE_NODE_ID).toBe('10');
+  });
+
+  it('flags every generic template, and no hand-authored one', () => {
+    // This flag is the only thing standing between "we generated your image"
+    // and "we guessed a workflow and generated your image".
+    for (const t of SD_GENERIC_TEMPLATES) {
+      expect(t.manifest.isFallback, t.manifest.id).toBe(true);
+    }
+    for (const t of [txt2imgSdxlTemplate, img2imgSdxlTemplate, txt2vidLtxvTemplate, img2vidLtxvTemplate]) {
+      expect(t.manifest.isFallback, t.manifest.id).toBeUndefined();
+    }
+  });
+
+  it('gives the unknown-family slot to exactly one template per capability', () => {
+    const claims = TEMPLATES.filter((t) => t.manifest.appliesToUnknownFamily);
+    expect(claims.map((t) => t.manifest.id).sort()).toEqual([
+      'img2img-sd-generic-unknown',
+      'txt2img-sd-generic-unknown',
+    ]);
+    // …and it never carries family aliases, or it would compete with the tier
+    // template for models we did recognise.
+    for (const t of claims) expect(t.manifest.baseModels, t.manifest.id).toEqual([]);
+  });
+});
+
+describe('generic SD fallback: what it covers', () => {
+  it('covers SD 1.x and 2.x, whatever the catalogue calls them', () => {
+    for (const spelling of ['sd1.5', 'SD 1.5', 'sd15', 'SD1.x', 'sd2.x', 'SD 2.1', 'sd2.0']) {
+      expect(findTemplate('txt2img', spelling)?.manifest.id, spelling).toBe('txt2img-sd-generic');
+      expect(findTemplate('img2img', spelling)?.manifest.id, spelling).toBe('img2img-sd-generic');
+    }
+  });
+
+  it('covers a model with no inferred family at all', () => {
+    // The case the fallback exists for: a checkpoint dropped on disk whose name
+    // says nothing we recognise. `Model.baseModel` is null and used to mean
+    // "unusable"; now it means "use the generic graph, and say so".
+    expect(findTemplate('txt2img', null)?.manifest.id).toBe('txt2img-sd-generic-unknown');
+    expect(findTemplate('img2img', null)?.manifest.id).toBe('img2img-sd-generic-unknown');
+    expect(findTemplate('txt2img', null)?.manifest.isFallback).toBe(true);
+  });
+
+  it('does not invent video or upscale capabilities out of an image node set', () => {
+    for (const kind of ['txt2vid', 'img2vid', 'upscale'] as const) {
+      expect(findTemplate(kind, null), kind).toBeUndefined();
+      expect(findTemplate(kind, 'sd1.5'), kind).toBeUndefined();
+    }
+  });
+
+  it('lists no two family spellings that normalise to the same key', () => {
+    for (const t of SD_GENERIC_TEMPLATES) {
+      const normalised = t.manifest.baseModels.map(normalizeBaseModel);
+      expect(new Set(normalised).size, t.manifest.id).toBe(normalised.length);
+    }
+  });
+});
+
+describe('generic SD fallback: what it must never touch', () => {
+  it('gives the video families no template, for any capability', () => {
+    // The failure this prevents is the expensive one: a video checkpoint on an
+    // SDXL-shaped graph fails only after the GPU has been busy for a minute.
+    // The live backend has exactly such a file — hunyuan_video_720p — sitting
+    // next to the SDXL one in /models/checkpoints.
+    for (const family of ['hunyuan-video', 'ltx-video', 'svd', 'wan']) {
+      expect(findTemplate('txt2img', family), family).toBeUndefined();
+      expect(findTemplate('img2img', family), family).toBeUndefined();
+    }
+    // LTX-Video keeps its own video templates and gains no image ones.
+    expect([...capabilitiesFor('ltx-video')].sort()).toEqual(['img2vid', 'txt2vid']);
+    expect(capabilitiesFor('hunyuan-video')).toEqual([]);
+    expect(capabilitiesFor('svd')).toEqual([]);
+    expect(capabilitiesFor('wan')).toEqual([]);
+  });
+
+  it('gives FLUX and SD3 nothing, because they need a different loader', () => {
+    // FLUX wants UNETLoader + DualCLIPLoader and has no cfg or negative
+    // conditioning; SD3 wants a triple CLIP loader. Neither is this graph.
+    for (const family of ['flux.1', 'flux1', 'sd3']) {
+      expect(capabilitiesFor(family), family).toEqual([]);
+    }
+  });
+
+  it('gives SDXL Turbo nothing, because the presets would burn the image', () => {
+    // The one excluded family whose *nodes* would be fine. See the note on
+    // NON_SD_NODE_SET_FAMILIES: 16-45 steps at cfg 5.5-7 on a 1-8 step
+    // distillation is a confident failure, which is worse than a refusal.
+    expect(capabilitiesFor('sdxl-turbo')).toEqual([]);
+    expect(capabilitiesFor('SDXL Lightning')).toEqual([]);
+  });
+
+  it('refuses at import time if a fallback ever claims an excluded family', () => {
+    // The exclusion list is not decoration; this is the assertion that makes it
+    // load-bearing against a future edit to `baseModels`.
+    for (const family of NON_SD_NODE_SET_FAMILIES) {
+      const rogue: WorkflowTemplate = {
+        ...txt2imgSdGenericTemplate,
+        manifest: { ...txt2imgSdGenericManifest, id: 'rogue', baseModels: [family] },
+      };
+      expect(() => buildTemplateIndex([rogue]), family).toThrow(/exclusion list/);
+    }
+  });
+
+  it('names every family that needs a different graph, and nothing that does not', () => {
+    // Guards the list against drift in family.ts: a new video or DiT family
+    // added there must be considered here too.
+    expect([...NON_SD_NODE_SET_FAMILIES].sort()).toEqual(
+      ['flux.1', 'hunyuan-video', 'ltx-video', 'sd3', 'sdxl-turbo', 'svd', 'wan'].sort(),
+    );
+  });
+});
+
+describe('generic SD fallback: a specific template always wins', () => {
+  it('leaves the hand-authored SDXL templates in charge of their families', () => {
+    for (const spelling of ['sdxl', 'SDXL 1.0', 'Pony', 'illustrious']) {
+      expect(findTemplate('txt2img', spelling)?.manifest.id, spelling).toBe('txt2img-sdxl');
+      expect(findTemplate('txt2img', spelling)?.manifest.isFallback, spelling).toBeUndefined();
+    }
+  });
+
+  it('shadows a fallback that claims the same family, whichever order they register', () => {
+    // The invariant with no example among the templates we ship today: adding a
+    // real SD 1.5 template later must take over from the generic one without
+    // anybody remembering to withdraw the generic one first. Built against a
+    // synthetic registry precisely so the rule is tested rather than assumed.
+    const specific: WorkflowTemplate = {
+      ...txt2imgSdxlTemplate,
+      manifest: { ...txt2imgSdxlTemplate.manifest, id: 'txt2img-sd15-authored', baseModels: ['sd1.5'] },
+    };
+    for (const order of [
+      [specific, txt2imgSdGenericTemplate],
+      [txt2imgSdGenericTemplate, specific],
+    ]) {
+      const index = buildTemplateIndex(order);
+      expect(resolveTemplate(index, 'txt2img', 'sd1.5')?.manifest.id).toBe('txt2img-sd15-authored');
+      expect(resolveTemplate(index, 'txt2img', 'SD 1.5')?.manifest.id).toBe('txt2img-sd15-authored');
+      // The fallback still answers for the aliases the specific one did not take.
+      expect(resolveTemplate(index, 'txt2img', 'sd2.x')?.manifest.id).toBe('txt2img-sd-generic');
+    }
+  });
+
+  it('still rejects two specific templates, or two fallbacks, for one family', () => {
+    const twin = (id: string): WorkflowTemplate => ({
+      ...txt2imgSdxlTemplate,
+      manifest: { ...txt2imgSdxlTemplate.manifest, id, baseModels: ['sd1.5'] },
+    });
+    expect(() => buildTemplateIndex([twin('a'), twin('b')])).toThrow(/Two templates claim/);
+    const genericTwin = (id: string): WorkflowTemplate => ({
+      ...txt2imgSdGenericTemplate,
+      manifest: { ...txt2imgSdGenericManifest, id, baseModels: ['sd1.5'] },
+    });
+    expect(() => buildTemplateIndex([genericTwin('a'), genericTwin('b')])).toThrow(
+      /Two templates claim/,
+    );
+  });
+
+  it('rejects an unknown-family claim that does not admit to being a guess', () => {
+    const dishonest: WorkflowTemplate = {
+      ...txt2imgSdxlTemplate,
+      manifest: {
+        ...txt2imgSdxlTemplate.manifest,
+        id: 'dishonest',
+        appliesToUnknownFamily: true,
+      },
+    };
+    expect(() => buildTemplateIndex([dishonest])).toThrow(/without isFallback/);
+    expect(() =>
+      buildTemplateIndex([
+        txt2imgSdGenericUnknownTemplate,
+        {
+          ...txt2imgSdGenericUnknownTemplate,
+          manifest: { ...txt2imgSdGenericUnknownManifest, id: 'second' },
+        },
+      ]),
+    ).toThrow(/unknown-family txt2img fallback/);
+  });
+});
+
+describe('capabilitiesFor, which is what the user actually sees', () => {
+  it('reports the fallback capabilities alongside the authored ones', () => {
+    expect([...capabilitiesFor('sd1.5')].sort()).toEqual(['img2img', 'txt2img']);
+    expect([...capabilitiesFor(null)].sort()).toEqual(['img2img', 'txt2img']);
+  });
+
+  it('says which of those answers is a guess', () => {
+    // The Create screen was telling users "2 checkpoints have no workflow
+    // template for this kind of job yet". It can now say "generic workflow"
+    // instead, and this is where it reads that from.
+    const authored = capabilityOffersFor('sdxl').find((o) => o.capability === 'txt2img')!;
+    expect(authored).toEqual({ capability: 'txt2img', templateId: 'txt2img-sdxl', isFallback: false });
+
+    const guessed = capabilityOffersFor(null).find((o) => o.capability === 'txt2img')!;
+    expect(guessed).toEqual({
+      capability: 'txt2img',
+      templateId: 'txt2img-sd-generic-unknown',
+      isFallback: true,
+    });
+
+    expect(capabilityOffersFor('flux.1')).toEqual([]);
+  });
+
+  it('agrees with findTemplate for every family and capability it reports', () => {
+    const families = [null, 'sdxl', 'pony', 'sd1.5', 'sd2.x', 'ltx-video', 'flux.1', 'sdxl-turbo'];
+    for (const family of families) {
+      for (const offer of capabilityOffersFor(family)) {
+        expect(findTemplate(offer.capability, family)?.manifest.id, `${family}`).toBe(
+          offer.templateId,
+        );
+      }
+    }
+  });
+});
+
+describe('generic SD fallback: resolution, the part that is expensive to get wrong', () => {
+  it.each(ALL_ASPECTS)('SD 1.x %s stays at or below a 640 long edge', (aspect) => {
+    const { width, height } = SD15_RESOLUTIONS[aspect];
+    expect(width % 64, 'width').toBe(0);
+    expect(height % 64, 'height').toBe(0);
+    // Past ~640 on a 1.x UNet the composition duplicates. This is the assertion
+    // that catches someone reaching for SDXL_RESOLUTIONS.
+    expect(Math.max(width, height), aspect).toBeLessThanOrEqual(640);
+    expect(SD15_RESOLUTIONS[aspect]).not.toEqual(SDXL_RESOLUTIONS[aspect]);
+  });
+
+  it.each(ALL_ASPECTS)('unknown-family %s stays at or below a 768 long edge', (aspect) => {
+    const { width, height } = GENERIC_SD_RESOLUTIONS[aspect];
+    expect(width % 64, 'width').toBe(0);
+    expect(height % 64, 'height').toBe(0);
+    // 768 is SD 1.5's practical ceiling. Guessing 1024 on an SD 1.5 merge costs
+    // a mangled image; guessing 768 on an SDXL merge costs some sharpness.
+    expect(Math.max(width, height), aspect).toBeLessThanOrEqual(768);
+    expect(GENERIC_SD_RESOLUTIONS[aspect]).not.toEqual(SDXL_RESOLUTIONS[aspect]);
+  });
+
+  it('gives the unknown tier more room than the SD 1.x tier, everywhere', () => {
+    // Deliberate: an unrecognised checkpoint is more likely XL-lineage than
+    // 1.5, so the unknown tier leans up to the safe ceiling rather than down.
+    for (const aspect of ALL_ASPECTS) {
+      const unknown = GENERIC_SD_RESOLUTIONS[aspect];
+      const sd15 = SD15_RESOLUTIONS[aspect];
+      expect(unknown.width * unknown.height, aspect).toBeGreaterThan(sd15.width * sd15.height);
+      expect(unknown.width * unknown.height, aspect).toBeLessThan(
+        SDXL_RESOLUTIONS[aspect].width * SDXL_RESOLUTIONS[aspect].height,
+      );
+    }
+  });
+
+  it('covers, orients and mirrors both tables the way every other one does', () => {
+    for (const table of [SD15_RESOLUTIONS, GENERIC_SD_RESOLUTIONS]) {
+      expect(Object.keys(table).sort()).toEqual([...ALL_ASPECTS].sort());
+      for (const aspect of ALL_ASPECTS) {
+        const { width, height } = table[aspect];
+        const [w, h] = aspect.split(':').map(Number) as [number, number];
+        if (w === h) expect(width).toBe(height);
+        else if (w > h) expect(width).toBeGreaterThan(height);
+        else expect(height).toBeGreaterThan(width);
+      }
+      expect(table['3:2'].width).toBe(table['2:3'].height);
+      expect(table['3:2'].height).toBe(table['2:3'].width);
+      expect(table['16:9'].width).toBe(table['9:16'].height);
+      expect(table['16:9'].height).toBe(table['9:16'].width);
+    }
+  });
+
+  it('stays inside each template\'s own declared width and height range', () => {
+    for (const template of [txt2imgSdGenericTemplate, txt2imgSdGenericUnknownTemplate]) {
+      const { inputs, resolutions } = template.manifest;
+      const widthC = inputs.find((i) => i.source === 'width')!.constraint!;
+      const heightC = inputs.find((i) => i.source === 'height')!.constraint!;
+      if (widthC.kind !== 'int' || heightC.kind !== 'int') throw new Error('expected int bounds');
+      for (const aspect of ALL_ASPECTS) {
+        const { width, height } = resolutions[aspect];
+        expect(width % widthC.step!, `${template.manifest.id} ${aspect}`).toBe(0);
+        expect(width).toBeGreaterThanOrEqual(widthC.min);
+        expect(width).toBeLessThanOrEqual(widthC.max);
+        expect(height).toBeGreaterThanOrEqual(heightC.min);
+        expect(height).toBeLessThanOrEqual(heightC.max);
+      }
+    }
+  });
+
+  it('never offers an SD 1.x model a size SDXL would have used', () => {
+    // The single most expensive mistake available here, asserted directly.
+    const widthC = txt2imgSdGenericManifest.inputs.find((i) => i.source === 'width')!.constraint!;
+    if (widthC.kind !== 'int') throw new Error('expected int bounds');
+    expect(widthC.max).toBeLessThan(1216);
+  });
+});
+
+describe('generic SD fallback: it compiles to something dispatchable', () => {
+  it('writes the SD 1.x tier size into the empty latent', () => {
+    const { graph, resolved } = compileImage(txt2imgSdGenericTemplate, { aspect: '16:9' });
+    expect(graph['5']!.inputs['width']).toBe(640);
+    expect(graph['5']!.inputs['height']).toBe(384);
+    expect(graph['4']!.inputs['ckpt_name']).toBe('someMerge_v40.safetensors');
+    expect(graph['9']!.inputs['filename_prefix']).toBe(`comfy-studio/txt2img/${IMAGE_JOB_ID}`);
+    expect(resolved.templateId).toBe('txt2img-sd-generic');
+    expect(graph['3']!.inputs['denoise']).toBe(1.0);
+  });
+
+  it('writes the unknown tier size instead, for the same request', () => {
+    // Same params, different tier, different pixels: this is the whole reason
+    // the fallback is more than one manifest.
+    const { graph } = compileImage(txt2imgSdGenericUnknownTemplate, { aspect: '16:9' });
+    expect(graph['5']!.inputs['width']).toBe(768);
+    expect(graph['5']!.inputs['height']).toBe(448);
+  });
+
+  it('takes an init image and a denoise strength on the img2img side', () => {
+    const { graph } = compileImage(img2imgSdGenericUnknownTemplate, {
+      references: [{ source: { from: 'upload', uploadId: IMAGE_MODEL_ID }, role: 'init', influence: 0.45 }],
+    });
+    expect(graph['3']!.inputs['denoise']).toBe(0.45);
+    const withImage = withInitImage(graph as ComfyApiGraph, 'comfy-studio/dropped.png');
+    expect(withImage[IMG2IMG_INIT_IMAGE_NODE_ID]!.inputs['image']).toBe('comfy-studio/dropped.png');
+  });
+
+  it('accepts LoRAs, because the loader is the ordinary one', () => {
+    const { resolved } = compileImage(txt2imgSdGenericTemplate, {
+      loras: [{ modelId: IMAGE_MODEL_ID, weight: 0.7 }],
+    });
+    expect(resolved.loraNodeIds.length).toBe(1);
   });
 });

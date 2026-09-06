@@ -13,13 +13,23 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import type { Job, JobProgress } from '@comfy/shared';
+import type { Job, JobPhase, JobProgress } from '@comfy/shared';
 import { query } from '../db.js';
 import { publish } from './events.js';
 import { collectOutputs, readHistory } from './collect.js';
 import { rowToAsset, type AssetRow } from '../storage/persist.js';
 import { ComfySocket } from './comfy-socket.js';
+import {
+  decodingLabel,
+  isSamplerClass,
+  preparingLabel,
+  samplingLabel,
+  savingLabel,
+  classOf,
+  type PhaseContext,
+} from './phases.js';
 import { dispatch, DispatchError } from './dispatch.js';
+import type { ResolvedValues } from '../compiler/index.js';
 import { NoBackendError } from './select.js';
 import {
   EMPTY_PROGRESS,
@@ -52,6 +62,23 @@ interface Tracked {
   dispatchedAt: number;
   /** Steps seen so far, for an ETA that is measured rather than guessed. */
   firstStepAt: number | null;
+  /**
+   * Everything the labels need. A job this process re-adopted after a restart
+   * has no submitted graph to read node classes from, so it gets a context with
+   * an empty class map: the phases stay right and the wording degrades to the
+   * generic form, which is much better than losing the phase entirely.
+   */
+  phaseContext: PhaseContext;
+  /**
+   * Whether a sampler step has arrived. This, not the node class, is what
+   * separates 'preparing' from 'sampling': the weights reach the GPU *inside*
+   * the sampler node, so a job can sit in KSampler for minutes before step 1.
+   */
+  sawStep: boolean;
+  /** The last progress we published, so a preview frame does not erase it. */
+  lastProgress: JobProgress;
+  /** Phase+label of the last publish, so idle repeats are not republished. */
+  lastPhaseKey: string | null;
 }
 
 export function startOrchestrator(log: (msg: string) => void = console.log): () => void {
@@ -75,6 +102,7 @@ export function startOrchestrator(log: (msg: string) => void = console.log): () 
 
           const now = Date.now();
           entry.firstStepAt ??= now;
+          entry.sawStep = true;
 
           // ETA from the rate we have actually observed on this job. A number
           // derived from step counts alone would be wrong on every backend.
@@ -91,6 +119,41 @@ export function startOrchestrator(log: (msg: string) => void = console.log): () 
             totalSteps: progress.max,
             fraction: progress.max > 0 ? progress.value / progress.max : 0,
             etaSeconds,
+            phase: 'sampling',
+            phaseLabel: samplingLabel(entry.phaseContext),
+          });
+        },
+
+        /**
+         * Which node is running is the only thing that distinguishes loading
+         * from decoding — neither reports progress, and on this hardware the
+         * VAE decode was 12 of the 20 seconds in the captured run.
+         */
+        onExecuting: (promptId, node) => {
+          const entry = tracked.get(promptId);
+          if (!entry) return;
+          // `node: null` means the prompt is over; /history decides what became
+          // of it, and inventing a phase here would race that.
+          if (node === null) return;
+
+          const className = classOf(entry.phaseContext, node);
+
+          if (!entry.sawStep) {
+            void publishPhase(entry, 'preparing', preparingLabel(entry.phaseContext, node), {
+              fraction: 0,
+            });
+            return;
+          }
+
+          // Back in a sampler after steps have been seen: the step frames are
+          // the better source, so leave it to them.
+          if (isSamplerClass(className)) return;
+
+          // Everything after the last step and before /history: the VAE, the
+          // save node, the video encoder.
+          void publishPhase(entry, 'decoding', decodingLabel(entry.phaseContext, node), {
+            fraction: 1,
+            etaSeconds: null,
           });
         },
 
@@ -104,7 +167,10 @@ export function startOrchestrator(log: (msg: string) => void = console.log): () 
             type: 'job.progress',
             jobId: entry.jobId,
             progress: {
-              ...EMPTY_PROGRESS,
+              // Merged onto the last real progress rather than onto an empty
+              // one: a preview must not blank out the step count and the phase
+              // for the frame it happens to arrive in.
+              ...entry.lastProgress,
               previewUrl: `data:${mimeType};base64,${image.toString('base64')}`,
             },
           });
@@ -130,13 +196,59 @@ export function startOrchestrator(log: (msg: string) => void = console.log): () 
     sockets.set(baseUrl, socket);
   }
 
-  async function applyProgress(entry: Tracked, progress: JobProgress): Promise<void> {
+  async function applyProgress(
+    entry: Tracked,
+    progress: JobProgress,
+    /**
+     * False only for the label we publish at dispatch, which describes our own
+     * hand-off rather than anything the backend has said. Claiming 'running'
+     * for a prompt sitting behind three others in ComfyUI's queue would be the
+     * same lie this module exists to avoid.
+     */
+    markRunning = true,
+  ): Promise<void> {
     const row = await getJob(entry.jobId);
     if (!row) return;
-    // First real progress means it is genuinely running, not merely queued on
-    // the backend.
-    if (row.status === 'dispatched') await setStatus(row.id, 'running');
+    // Any frame at all about our prompt means the backend has started on it —
+    // it is genuinely running, not merely queued there.
+    if (markRunning && row.status === 'dispatched') await setStatus(row.id, 'running');
+    entry.lastProgress = progress;
+    entry.lastPhaseKey = `${progress.phase ?? ''}|${progress.phaseLabel ?? ''}`;
     await setProgress(row, progress);
+  }
+
+  /**
+   * Publish a phase change, and only a change.
+   *
+   * Preparing and decoding have no counter of their own, so the frames that
+   * drive them repeat the same node for as long as it runs. Writing that to the
+   * database on every frame would be a row update per socket message for no new
+   * information; the phase and its label are the whole payload, so they are the
+   * key.
+   */
+  async function publishPhase(
+    entry: Tracked,
+    phase: JobPhase,
+    label: string,
+    overrides: Partial<JobProgress> = {},
+    markRunning = true,
+  ): Promise<void> {
+    const key = `${phase}|${label}`;
+    if (entry.lastPhaseKey === key) return;
+
+    await applyProgress(
+      entry,
+      {
+        // Keep the numbers we already have: after the last step, "28 of 28" is
+        // still true while the VAE runs, and losing it looks like a reset.
+        ...entry.lastProgress,
+        previewUrl: null,
+        ...overrides,
+        phase,
+        phaseLabel: label,
+      },
+      markRunning,
+    );
   }
 
   /** Send one queued job to a backend. */
@@ -159,15 +271,38 @@ export function startOrchestrator(log: (msg: string) => void = console.log): () 
         JSON.stringify(result.resolved),
       ]);
 
-      tracked.set(result.promptId, {
+      const entry: Tracked = {
         jobId: job.id,
         userId: job.user_id,
         promptId: result.promptId,
         backendUrl: result.backend.base_url,
         dispatchedAt: Date.now(),
         firstStepAt: null,
-      });
+        phaseContext: {
+          nodeClasses: result.nodeClasses,
+          modelLabel: result.modelLabel,
+          backendName: result.backend.name,
+          isVideo: job.kind === 'txt2vid' || job.kind === 'img2vid',
+          batchSize: job.params.batchSize,
+          totalFrames: frameCountOf(result.resolved),
+        },
+        sawStep: false,
+        lastProgress: EMPTY_PROGRESS,
+        lastPhaseKey: null,
+      };
+      tracked.set(result.promptId, entry);
       socketFor(result.backend.base_url);
+
+      // Say something immediately. Between here and the backend's first frame
+      // there is a gap that is a moment when the box is idle and minutes when
+      // it is not, and an unlabelled 0% for that long is what reads as a hang.
+      await publishPhase(
+        entry,
+        'preparing',
+        preparingLabel(entry.phaseContext, null),
+        { fraction: 0 },
+        false,
+      );
 
       log(`[orchestrator] ${job.id} -> ${result.backend.name} as ${result.promptId}`);
     } catch (err) {
@@ -189,14 +324,17 @@ export function startOrchestrator(log: (msg: string) => void = console.log): () 
     for (const row of rows) {
       if (!row.comfy_prompt_id || !row.backend_id) continue;
 
-      const backend = await query<{ base_url: string }>(
-        'SELECT base_url FROM backends WHERE id = $1',
+      const backend = await query<{ base_url: string; name: string }>(
+        'SELECT base_url, name FROM backends WHERE id = $1',
         [row.backend_id],
       );
       const baseUrl = backend[0]?.base_url;
       if (!baseUrl) continue;
 
-      // Re-adopt jobs this process never dispatched — the restart case.
+      // Re-adopt jobs this process never dispatched — the restart case. The
+      // graph we submitted is gone with the process, so the phase context has
+      // no node classes: phases still work off the step counter, and the labels
+      // fall back to their generic wording.
       if (!tracked.has(row.comfy_prompt_id)) {
         tracked.set(row.comfy_prompt_id, {
           jobId: row.id,
@@ -205,6 +343,17 @@ export function startOrchestrator(log: (msg: string) => void = console.log): () 
           backendUrl: baseUrl,
           dispatchedAt: row.started_at?.getTime() ?? Date.now(),
           firstStepAt: null,
+          phaseContext: {
+            nodeClasses: {},
+            modelLabel: 'the model',
+            backendName: backend[0]?.name ?? 'the backend',
+            isVideo: row.kind === 'txt2vid' || row.kind === 'img2vid',
+            batchSize: row.params.batchSize,
+            totalFrames: null,
+          },
+          sawStep: (row.progress.step ?? 0) > 0,
+          lastProgress: { ...EMPTY_PROGRESS, ...row.progress },
+          lastPhaseKey: null,
         });
         socketFor(baseUrl);
       }
@@ -246,12 +395,20 @@ export function startOrchestrator(log: (msg: string) => void = console.log): () 
     // 'uploading' is our word for "generated, now being stored".
     if (row.status !== 'uploading') await setStatus(row.id, 'uploading');
 
+    const entry = tracked.get(promptId);
+
     try {
       const assets = await collectOutputs({
         userId: row.user_id,
         jobId: row.id,
         backendUrl: baseUrl,
         outputs: outcome.outputs,
+        // The last stretch is ours, not the backend's: a 4-image batch off a
+        // LAN box plus thumbnailing is seconds the bar would otherwise spend
+        // pinned at 100%.
+        onAsset: (index, total) => {
+          if (entry) void publishPhase(entry, 'saving', savingLabel(index, total), { fraction: 1 });
+        },
       });
 
       tracked.delete(promptId);
@@ -289,6 +446,16 @@ export function startOrchestrator(log: (msg: string) => void = console.log): () 
     for (const socket of sockets.values()) socket.close();
     sockets.clear();
   };
+}
+
+/**
+ * How many frames the compiler settled on, for a label that can say "97
+ * frames" rather than "the clip". Absent on image templates, which do not bind
+ * `frameCount` at all.
+ */
+function frameCountOf(resolved: ResolvedValues): number | null {
+  const frames = resolved.values.frameCount;
+  return typeof frames === 'number' ? frames : null;
 }
 
 /**

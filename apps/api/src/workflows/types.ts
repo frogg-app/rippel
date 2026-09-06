@@ -180,6 +180,32 @@ export interface WorkflowManifest {
    */
   readonly baseModels: readonly string[];
   /**
+   * True when this graph is a *best guess* rather than a hand-authored,
+   * verified template for the model in front of us — the generic
+   * Stable-Diffusion node set in sd-generic.ts is the only thing that sets it.
+   *
+   * It exists to be surfaced. A fallback runs the same nodes as a real SDXL
+   * template but nobody has checked this particular checkpoint against them, so
+   * the API and the UI should say "using a generic workflow for this model"
+   * rather than implying the confidence of `txt2img-sdxl`. Omitted (rather than
+   * `false`) on every hand-authored manifest, so the flag reads as an exception.
+   *
+   * `findTemplate` treats it as a *tie-breaker*, not as a filter: a specific
+   * template for the same (capability, family) always wins.
+   */
+  readonly isFallback?: boolean;
+  /**
+   * True when this template is also the answer for a model whose family we
+   * could not infer at all (`Model.baseModel IS NULL`).
+   *
+   * Kept separate from `isFallback` because they are different claims: one says
+   * "this graph is a guess", the other says "this graph is the guess we make
+   * when we know nothing". A manifest may only set this if it also sets
+   * `isFallback` — the registry asserts that at import time — and at most one
+   * template per capability may claim it.
+   */
+  readonly appliesToUnknownFamily?: boolean;
+  /**
    * Node classes the backend must have registered for this graph to run. The
    * orchestrator can check this against the backend's `/object_info` before
    * dispatching, so a missing custom node is a clear error rather than a 400.

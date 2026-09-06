@@ -15,6 +15,7 @@ import type { ResolvedValues } from '../compiler/index.js';
 import { findTemplate } from '../workflows/registry.js';
 import { queryOne } from '../db.js';
 import { filenamesOn, pickBackend, type Candidate } from './select.js';
+import { preflight } from './preflight.js';
 import type { JobRow } from './jobs.js';
 
 export class DispatchError extends Error {
@@ -59,13 +60,14 @@ async function initImageKey(job: JobRow): Promise<string | null> {
   return row.storage_key;
 }
 
-/** The model family a job's checkpoint belongs to, for template lookup. */
-async function familyOf(modelId: Uuid): Promise<string | null> {
-  const row = await queryOne<{ base_model: string | null }>(
-    'SELECT base_model FROM models WHERE id = $1',
+/** The model row a job's checkpoint comes from: its family, and what to call it. */
+async function modelOf(
+  modelId: Uuid,
+): Promise<{ base_model: string | null; display_name: string } | null> {
+  return queryOne<{ base_model: string | null; display_name: string }>(
+    'SELECT base_model, display_name FROM models WHERE id = $1',
     [modelId],
   );
-  return row?.base_model ?? null;
 }
 
 export interface Dispatched {
@@ -74,6 +76,19 @@ export interface Dispatched {
   templateId: string;
   /** Everything the compiler decided, recorded so the job can be reproduced. */
   resolved: ResolvedValues;
+  /**
+   * Node id -> class_type for the graph we actually submitted, including any
+   * LoRA loaders the compiler spliced in.
+   *
+   * The runner needs it to say what the backend is *doing*: ComfyUI's frames
+   * name the node that is executing and nothing else, so without the classes
+   * "executing node 8" cannot be turned into "decoding the image". Carried on
+   * the dispatch result rather than re-derived later because this is the one
+   * moment the exact submitted graph exists.
+   */
+  nodeClasses: Record<string, string>;
+  /** What to call the weights in a progress label, e.g. "SDXL 1.0". */
+  modelLabel: string;
 }
 
 /**
@@ -85,7 +100,8 @@ export interface Dispatched {
  * user's, so its body is worth keeping.
  */
 export async function dispatch(job: JobRow, clientId: string): Promise<Dispatched> {
-  const family = await familyOf(job.params.modelId);
+  const model = await modelOf(job.params.modelId);
+  const family = model?.base_model ?? null;
   if (!family) {
     throw new DispatchError(
       'That model has no known family yet, so there is no workflow for it.',
@@ -141,6 +157,14 @@ export async function dispatch(job: JobRow, clientId: string): Promise<Dispatche
     }
   }
 
+  // Last line of defence before the user starts waiting: a graph naming a file
+  // this backend cannot load is refused here rather than by ComfyUI two minutes
+  // later. `POST /jobs` already ran this against the same backend, but a job
+  // may have sat in our queue while a model was removed, and dispatch is free
+  // to choose a *different* backend than the one the route checked.
+  const problem = await preflight(graph, backend);
+  if (problem) throw new DispatchError(problem, false);
+
   const res = await fetch(`${backend.base_url}/prompt`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -172,5 +196,9 @@ export async function dispatch(job: JobRow, clientId: string): Promise<Dispatche
     promptId,
     templateId: template.manifest.id,
     resolved: compiled.resolved,
+    nodeClasses: Object.fromEntries(
+      Object.entries(graph).map(([nodeId, node]) => [nodeId, node.class_type]),
+    ),
+    modelLabel: model?.display_name ?? family,
   };
 }

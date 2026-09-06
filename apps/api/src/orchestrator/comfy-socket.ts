@@ -6,15 +6,29 @@
  * with our own `clientId` and ComfyUI echoes it back on the frames caused by
  * our prompts, which is what makes filtering possible at all.
  *
- * The frames we care about, as ComfyUI 0.34 sends them:
+ * The frames we care about, verified against ComfyUI 0.34.0 at
+ * 192.168.1.10:8188 on 2026-09-06 by submitting a real SDXL prompt and logging
+ * everything it sent back (the ordering is written out in phases.ts):
  *
  *   {type:'status',    data:{status:{exec_info:{queue_remaining:N}}}}
- *   {type:'execution_start',  data:{prompt_id}}
- *   {type:'executing', data:{node, prompt_id}}          node null = finished
+ *   {type:'execution_start',  data:{prompt_id, timestamp}}
+ *   {type:'executing', data:{node, display_node, prompt_id}}   node null = done
  *   {type:'progress',  data:{value, max, prompt_id, node}}
+ *   {type:'progress_state', data:{prompt_id, nodes:{
+ *      "<id>":{value,max,state:'running'|'finished',node_id,display_node_id,
+ *              parent_node_id,real_node_id}}}}
  *   {type:'executed',  data:{node, output, prompt_id}}
+ *   {type:'execution_success', data:{prompt_id, timestamp}}
  *   {type:'execution_error', data:{prompt_id, exception_message, node_type,...}}
  *   {type:'execution_cached', data:{nodes, prompt_id}}
+ *
+ * `progress_state` is the newer vocabulary and reports *every* node's state on
+ * every change; the flat `progress` frame is still sent alongside it on 0.34,
+ * and this class deliberately reads both. Recent ComfyUI has been moving
+ * towards progress_state as the only one, and a build that stops sending the
+ * flat frame must not silently stop our progress bar — so both are normalised
+ * onto the same callbacks here and deduplicated, and each frame type alone is
+ * sufficient.
  *
  * Binary frames are live preview images (a small header then JPEG/PNG bytes).
  *
@@ -59,6 +73,13 @@ export class ComfySocket {
    * all — so we track it here and attribute untagged frames to it.
    */
   private currentPrompt: string | null = null;
+  /**
+   * The last thing we told the caller, so that the two frame vocabularies do
+   * not each announce the same step. ComfyUI 0.34 sends `progress_state` and
+   * `progress` for one sampler step, a millisecond apart.
+   */
+  private lastProgressKey: string | null = null;
+  private lastExecutingKey: string | null = null;
 
   constructor(
     private readonly baseUrl: string,
@@ -118,7 +139,7 @@ export class ComfySocket {
 
       case 'executing': {
         const node = data['node'] === null ? null : String(data['node'] ?? '');
-        if (promptId) this.handlers.onExecuting?.(promptId, node);
+        if (promptId) this.emitExecuting(promptId, node);
         // `node: null` is ComfyUI's way of saying this prompt is finished.
         if (node === null && promptId) {
           this.handlers.onDone?.(promptId);
@@ -131,11 +152,46 @@ export class ComfySocket {
         const value = Number(data['value'] ?? 0);
         const max = Number(data['max'] ?? 0);
         if (promptId && Number.isFinite(value) && Number.isFinite(max) && max > 0) {
-          this.handlers.onProgress?.(promptId, {
+          this.emitProgress(promptId, {
             value,
             max,
             node: data['node'] == null ? null : String(data['node']),
           });
+        }
+        break;
+      }
+
+      /**
+       * The newer per-node vocabulary. It reports every node of the prompt on
+       * every change, so the interesting part is the one that is `running`:
+       * that is both "which node is executing" (which distinguishes loading
+       * from sampling from decoding) and, when its `max` is greater than one,
+       * the step counter itself.
+       */
+      case 'progress_state': {
+        if (!promptId) break;
+        const nodes = data['nodes'];
+        if (!nodes || typeof nodes !== 'object') break;
+
+        let running: { id: string; value: number; max: number } | null = null;
+        for (const [id, raw] of Object.entries(nodes as Record<string, unknown>)) {
+          if (!raw || typeof raw !== 'object') continue;
+          const state = (raw as { state?: unknown }).state;
+          if (state !== 'running') continue;
+          const value = Number((raw as { value?: unknown }).value ?? 0);
+          const max = Number((raw as { max?: unknown }).max ?? 0);
+          // With more than one node running — a subgraph, or a node that fans
+          // out — the one carrying a real step count is the one worth
+          // reporting; ties fall to the last, which is the deepest.
+          if (!running || max > 1 || running.max <= 1) running = { id, value, max };
+        }
+
+        if (!running) break;
+        this.emitExecuting(promptId, running.id);
+        // `max: 1` is a node that simply runs and finishes (a loader, a text
+        // encode); only a real counter is progress.
+        if (running.max > 1 && Number.isFinite(running.value)) {
+          this.emitProgress(promptId, { value: running.value, max: running.max, node: running.id });
         }
         break;
       }
@@ -156,6 +212,25 @@ export class ComfySocket {
         // convenience and /history is the authority.
         break;
     }
+  }
+
+  /** Announce the executing node once, however many frame types said so. */
+  private emitExecuting(promptId: string, node: string | null): void {
+    const key = `${promptId}:${node ?? 'null'}`;
+    if (this.lastExecutingKey === key) return;
+    this.lastExecutingKey = key;
+    // A new node means the previous node's counter is spent; forgetting it
+    // keeps two nodes that both report "1 of 20" from cancelling each other.
+    this.lastProgressKey = null;
+    this.handlers.onExecuting?.(promptId, node);
+  }
+
+  /** Announce a step once, whether it arrived as `progress` or in a state. */
+  private emitProgress(promptId: string, progress: ComfyProgress): void {
+    const key = `${promptId}:${progress.node ?? ''}:${progress.value}/${progress.max}`;
+    if (this.lastProgressKey === key) return;
+    this.lastProgressKey = key;
+    this.handlers.onProgress?.(promptId, progress);
   }
 
   /**

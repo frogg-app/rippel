@@ -14,6 +14,7 @@ import { query, queryOne } from '../db.js';
 import { compile, TemplateError, ValidationError } from '../compiler/index.js';
 import { findTemplate } from '../workflows/registry.js';
 import { candidatesFor, filenamesOn } from './select.js';
+import { preflight } from './preflight.js';
 import { createJob, getJob, queuePosition, setStatus, type JobRow } from './jobs.js';
 import { jobWithAssets } from './runner.js';
 import { publish, subscribe } from './events.js';
@@ -98,7 +99,10 @@ export default async function jobRoutes(app: FastifyInstance) {
         return reply.code(400).send({ error: 'invalid_input', message: 'No such model.' });
       }
 
-      const template = model.base_model ? findTemplate(params.kind, model.base_model) : undefined;
+      // Not guarded on base_model being set: a null family is exactly what the
+      // generic fallback template exists to serve, and short-circuiting here
+      // would make it unreachable from job creation.
+      const template = findTemplate(params.kind, model.base_model);
       if (!template) {
         return reply.code(501).send({
           error: 'no_template',
@@ -121,12 +125,13 @@ export default async function jobRoutes(app: FastifyInstance) {
 
       // Compile before persisting: this is where a bad steps value or an
       // unknown sampler is caught, and it costs nothing to find out now.
+      let compiled;
       try {
         const filenames = await filenamesOn(backend.id, [
           params.modelId,
           ...(params.loras ?? []).map((l) => l.modelId),
         ]);
-        compile({
+        compiled = compile({
           params,
           template,
           modelFilenames: filenames,
@@ -142,6 +147,16 @@ export default async function jobRoutes(app: FastifyInstance) {
           return reply.code(500).send({ error: 'template_error', message: err.message });
         }
         throw err;
+      }
+
+      // Having a compiled graph, ask the backend whether it can actually load
+      // every file in it. Possession of the checkpoint is not enough: a
+      // template can name a text encoder or a VAE of its own, and those are
+      // exactly the ones nobody notices are missing until ComfyUI rejects the
+      // prompt minutes later, at which point the user has waited for nothing.
+      const problem = await preflight(compiled.graph, backend);
+      if (problem) {
+        return reply.code(422).send({ error: 'missing_files', message: problem });
       }
 
       const row = await createJob(req.user!.id, params, template.manifest.id);

@@ -178,7 +178,7 @@ export interface DiscoveredModel {
 }
 
 /** Extensions a real model file on disk actually has. */
-const MODEL_EXTENSIONS = /\.(safetensors|sft|ckpt|pt|pth|bin|gguf|onnx)$/i;
+export const MODEL_EXTENSIONS = /\.(safetensors|sft|ckpt|pt|pth|bin|gguf|onnx)$/i;
 
 /**
  * Read the option list out of one node input spec.
@@ -191,8 +191,8 @@ const MODEL_EXTENSIONS = /\.(safetensors|sft|ckpt|pt|pth|bin|gguf|onnx)$/i;
  * Handling only the first silently discovers nothing for the loaders that use
  * the second, so both are read here.
  */
-function readOptions(spec: unknown): string[] {
-  if (!Array.isArray(spec)) return [];
+export function comboOptions(spec: unknown): string[] | null {
+  if (!Array.isArray(spec)) return null;
 
   const [head, config] = spec;
 
@@ -207,9 +207,20 @@ function readOptions(spec: unknown): string[] {
     if (Array.isArray(options)) {
       return options.filter((v): v is string => typeof v === 'string');
     }
+    return [];
   }
 
-  return [];
+  return null;
+}
+
+/**
+ * The same thing for callers that only want the list. An input that is not a
+ * combo at all and a combo with nothing installed both read as empty here —
+ * which is fine for discovery and emphatically not fine for preflight, hence
+ * the nullable {@link comboOptions} underneath.
+ */
+function readOptions(spec: unknown): string[] {
+  return comboOptions(spec) ?? [];
 }
 
 export function extractModels(info: ObjectInfo): DiscoveredModel[] {

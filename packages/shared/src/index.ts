@@ -91,6 +91,17 @@ export type JobStatus =
   | 'failed'
   | 'cancelled';
 
+/**
+ * Which part of a generation is happening right now.
+ *
+ * A generation spends most of its wall clock outside sampling — loading
+ * weights (minutes on a cold model), then sampling, then a VAE decode that on
+ * some hardware runs on the CPU, then our own download and thumbnail. Reporting
+ * only sampler steps leaves a bar at 0% and then at 100% for long stretches,
+ * which reads as a hang; the phase is what makes those stretches explicable.
+ */
+export type JobPhase = 'queued' | 'preparing' | 'sampling' | 'decoding' | 'saving';
+
 export interface JobProgress {
   /** Current diffusion step, when the backend is reporting them. */
   step: number | null;
@@ -105,20 +116,19 @@ export interface JobProgress {
   /** Data URL of the latest live preview frame, when the backend sends one. */
   previewUrl: string | null;
   /**
-   * Which part of the run this is, when the backend reports it.
-   *
-   * Added by API_CONTRACT.md "Progress detail". Optional and additive: a
-   * client must tolerate its absence, and must not treat `fraction` as
-   * meaningful outside `sampling` — most of a run's wall clock is spent
-   * loading weights and decoding the VAE, where there is no number to show.
+   * Optional, and additive: older clients and older stored rows simply have no
+   * phase. `fraction` remains 0..1 within *sampling* and means nothing outside
+   * it, so a client that sees a phase other than 'sampling' should show an
+   * indeterminate bar rather than a number.
    */
   phase?: JobPhase | null;
-  /** Human text for the phase, e.g. "Loading SDXL", "Decoding image". */
+  /**
+   * Human sentence for the phase — "Loading SDXL", "Decoding image",
+   * "Storing 1 of 2". Deliberately not a restatement of `phase`: it is the
+   * only place the user learns *what* is being loaded or stored.
+   */
   phaseLabel?: string | null;
 }
-
-/** The phases a job passes through; see API_CONTRACT.md, "Progress detail". */
-export type JobPhase = 'queued' | 'preparing' | 'sampling' | 'decoding' | 'saving';
 
 export interface Job {
   id: Uuid;

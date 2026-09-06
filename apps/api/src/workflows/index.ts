@@ -23,6 +23,8 @@ export type {
 } from './types.js';
 
 export {
+  GENERIC_SD_RESOLUTIONS,
+  SD15_RESOLUTIONS,
   LTXV_FRAME_QUANTUM,
   LTXV_MAX_FPS,
   LTXV_MAX_FRAMES,
@@ -43,14 +45,36 @@ export {
 
 export { isNodeLink, parseInputPath, resolveInputPath } from './paths.js';
 
+export type { CapabilityOffer, TemplateIndex } from './registry.js';
 export {
   TEMPLATES,
   allManifests,
+  buildTemplateIndex,
   capabilitiesFor,
+  capabilityOffersFor,
   findTemplate,
   findTemplateById,
   normalizeBaseModel,
+  resolveTemplate,
 } from './registry.js';
+
+/**
+ * The generic Stable-Diffusion fallback. Exported so the API can name the
+ * templates it is falling back to, and so tests can assert the exclusion list is
+ * the one being enforced.
+ */
+export {
+  NON_SD_NODE_SET_FAMILIES,
+  SD_GENERIC_TEMPLATES,
+  img2imgSdGenericManifest,
+  img2imgSdGenericTemplate,
+  img2imgSdGenericUnknownManifest,
+  img2imgSdGenericUnknownTemplate,
+  txt2imgSdGenericManifest,
+  txt2imgSdGenericTemplate,
+  txt2imgSdGenericUnknownManifest,
+  txt2imgSdGenericUnknownTemplate,
+} from './sd-generic.js';
 
 export { txt2imgSdxlManifest, txt2imgSdxlTemplate } from './txt2img-sdxl.js';
 
