@@ -1,6 +1,11 @@
 /**
  * The Advanced drawer.
  *
+ * Extra styles (LoRA) used to live here and no longer do — see
+ * `LoraSection.tsx`. Advanced is for overriding what the quality preset chose;
+ * a LoRA overrides nothing, it is a creative choice like the prompt, so it has
+ * its own section in the panel.
+ *
  * Two rules govern everything here.
  *
  * The first is behavioural and load-bearing: opening this drawer must never
@@ -19,7 +24,6 @@
  *   guidance  -> "How closely should it follow your prompt?"  loose … literal
  *   steps     -> "How much detail — and how long are you willing to wait?"
  *   seed      -> "The dice roll", with the only reason to care: repeatability.
- *   LoRA      -> "Extra styles", with a strength in words, not a number alone.
  *
  * and carries three things a raw number cannot: a word for the value now, the
  * consequence of moving it, and the ends of the rail named so "more" has a
@@ -32,17 +36,16 @@
  * already, only now the screen says so.
  */
 import { useEffect, useId, useRef, useState } from 'react';
-import type { LoraSelection, Model, QualityPreset } from '@comfy/shared';
-import { ChevronDownIcon, PlusIcon } from '../components/icons';
+import type { QualityPreset } from '@comfy/shared';
+import { ChevronDownIcon } from '../components/icons';
 import { Hint, IconButton, Row, Select, Slider } from './Controls';
-import { CloseIcon, DiceIcon, LockIcon, UnlockIcon } from './icons';
+import { DiceIcon, LockIcon, UnlockIcon } from './icons';
 import {
   type AdvancedState,
   PRESET_DEFAULTS,
   QUALITY_LABELS,
   formatSeed,
   guidanceReading,
-  loraReading,
   overrideCount,
   randomSeed,
   resetAdvanced,
@@ -59,9 +62,6 @@ export function AdvancedDrawer({
   batchSize,
   value,
   onChange,
-  loras,
-  loraModels,
-  onLorasChange,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -73,9 +73,6 @@ export function AdvancedDrawer({
   batchSize: number;
   value: AdvancedState;
   onChange: (next: AdvancedState) => void;
-  loras: LoraSelection[];
-  loraModels: Model[];
-  onLorasChange: (next: LoraSelection[]) => void;
 }) {
   const bodyId = useId();
   const preset = PRESET_DEFAULTS[quality];
@@ -214,12 +211,6 @@ export function AdvancedDrawer({
           />
 
           <SeedControl value={value} onChange={onChange} />
-
-          <LoraPicker
-            loras={loras}
-            models={loraModels}
-            onChange={onLorasChange}
-          />
 
           <ExpertSettings
             value={value}
@@ -389,125 +380,6 @@ function ExpertSettings({
           />
         </div>
       ) : null}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------- LoRAs
-
-const DEFAULT_LORA_WEIGHT = 0.7;
-
-/**
- * LoRAs.
- *
- * "LoRA" is an acronym for a training technique, which is of no use to anyone
- * choosing one. What a user needs to know is that these are extra styles
- * somebody trained and installed, that you can stack them, and that the number
- * beside each is how much of it to mix in. The acronym stays in the label —
- * it is what every other tool and every download page calls them, and hiding it
- * would leave someone unable to look one up — but it follows the plain words
- * rather than standing in for them.
- */
-function LoraPicker({
-  loras,
-  models,
-  onChange,
-}: {
-  loras: LoraSelection[];
-  models: Model[];
-  onChange: (next: LoraSelection[]) => void;
-}) {
-  const chosen = new Set(loras.map((lora) => lora.modelId));
-  const available = models.filter((model) => !chosen.has(model.id));
-
-  return (
-    <div className={styles.loras}>
-      <div className={styles.row}>
-        <span className={styles.labelRow}>
-          <span className={styles.rowLabel}>Extra styles (LoRA)</span>
-          <Hint
-            text={
-              models.length === 0
-                ? 'Add-on styles you install show up here, on top of whichever model you pick.'
-                : 'Trained looks you can mix on top of the model — a film stock, an illustrator, a subject.'
-            }
-          />
-        </span>
-        {models.length === 0 ? (
-          <span className={styles.none}>none installed</span>
-        ) : (
-          <div className={styles.addWrap}>
-            {/* A select styled as the artboard's dashed "+" square: one control,
-                one click, and the list is the installed LoRAs. */}
-            <select
-              className={styles.add}
-              value=""
-              aria-label="Add an extra style"
-              disabled={available.length === 0}
-              onChange={(event) => {
-                if (!event.target.value) return;
-                onChange([
-                  ...loras,
-                  { modelId: event.target.value, weight: DEFAULT_LORA_WEIGHT },
-                ]);
-              }}
-            >
-              <option value="">Add…</option>
-              {available.map((model) => (
-                <option key={model.id} value={model.id}>
-                  {model.displayName}
-                </option>
-              ))}
-            </select>
-            <PlusIcon size={12} className={styles.addIcon} />
-          </div>
-        )}
-      </div>
-
-      {loras.map((lora, index) => {
-        const model = models.find((entry) => entry.id === lora.modelId);
-        const words = loraReading(lora.weight);
-        return (
-          <div key={lora.modelId} className={styles.lora}>
-            <div className={styles.loraHead}>
-              <span className={styles.loraName}>
-                {model?.displayName ?? lora.modelId}
-              </span>
-              <button
-                type="button"
-                className={styles.loraRemove}
-                title={`Remove ${model?.displayName ?? 'this style'}`}
-                aria-label={`Remove ${model?.displayName ?? 'this style'}`}
-                onClick={() => onChange(loras.filter((_, i) => i !== index))}
-              >
-                <CloseIcon size={11} />
-              </button>
-            </div>
-            <Slider
-              label="How much of it"
-              accent
-              min={-1}
-              max={2}
-              step={0.05}
-              value={lora.weight}
-              reading={words.word}
-              display={lora.weight.toFixed(2)}
-              ends={['Off', 'Overdone']}
-              valueText={`${words.word}, ${lora.weight.toFixed(2)}`}
-              hint={words.hint}
-              onChange={(weight) =>
-                onChange(
-                  loras.map((entry, i) =>
-                    i === index
-                      ? { ...entry, weight: Number(weight.toFixed(2)) }
-                      : entry,
-                  ),
-                )
-              }
-            />
-          </div>
-        );
-      })}
     </div>
   );
 }

@@ -7,7 +7,7 @@
  * interchangeable. The component takes options and gives back a value; which
  * vocabulary they are in is the caller's business.
  *
- * The families are a `<select>` rather than the chip row the artboard shows for
+ * The families are a dropdown rather than the chip row the artboard shows for
  * types: the real catalogue has 42 of them, and 42 chips is a wall, not a
  * filter. Types stay chips — there are six.
  *
@@ -26,6 +26,7 @@ import {
   type RunFilter,
 } from './catalogue';
 import { ChevronIcon, SearchIcon } from './icons';
+import { Dropdown } from '../components/Dropdown';
 import styles from './ModelsPanels.module.css';
 
 export interface FilterBarProps {
@@ -86,6 +87,7 @@ export function FilterBar({
 }: FilterBarProps) {
   const searchId = useId();
   const familyId = useId();
+  const familyLabelId = useId();
 
   return (
     <div className={styles.filters}>
@@ -104,23 +106,19 @@ export function FilterBar({
         </div>
 
         <div className={styles.familyPicker}>
-          <label className={styles.familyLabel} htmlFor={familyId}>
+          <label className={styles.familyLabel} id={familyLabelId} htmlFor={familyId}>
             {familyLabel}
           </label>
-          <select
+          <Dropdown
             id={familyId}
+            aria-labelledby={familyLabelId}
             className={styles.familySelect}
             value={activeFamily ?? ''}
-            onChange={(event) => onFamily(event.target.value || null)}
+            options={[{ value: '', label: 'All' }, ...familyOptions]}
+            onChange={(next) => onFamily(next || null)}
           >
-            <option value="">All</option>
-            {familyOptions.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-          <ChevronIcon size={12} className={styles.familyChevron} />
+            <ChevronIcon size={12} className={styles.familyChevron} />
+          </Dropdown>
         </div>
 
         <span className={`mono ${styles.resultCount}`}>

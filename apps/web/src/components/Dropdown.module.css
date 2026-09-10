@@ -1,0 +1,123 @@
+/*
+ * The listbox that replaces the OS popup.
+ *
+ * Only the *menu* is styled here. Triggers keep whatever the call site already
+ * gave them — the pill on Models, the dashed square in the LoRA row — because
+ * those already look right; it was the white OS menu underneath them that
+ * looked pasted in from another program.
+ *
+ * The menu is portalled to <body> and positioned in viewport coordinates, so
+ * it is `position: fixed` and owes nothing to any ancestor's overflow.
+ */
+
+.trigger {
+  /* A bare reset. The call site's own class supplies the appearance — this
+     only guarantees that a button laid out like an input still puts its value
+     where the `<select>` used to put it. */
+  appearance: none;
+  display: flex;
+  align-items: center;
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.trigger:disabled {
+  cursor: not-allowed;
+}
+
+.value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.menu {
+  position: fixed;
+  z-index: var(--dropdown-z);
+  margin: 0;
+  padding: var(--dropdown-pad);
+  list-style: none;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border-radius: var(--dropdown-radius);
+  border: 1px solid var(--glass-line);
+  background: var(--dropdown-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  box-shadow: var(--shadow-pop);
+  animation: dropdownIn var(--dur-fast) var(--ease-out);
+}
+
+.menuUp {
+  transform-origin: bottom center;
+}
+
+@keyframes dropdownIn {
+  from {
+    opacity: 0;
+    transform: translateY(-2px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .menu {
+    animation: none;
+  }
+}
+
+.option {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-xs);
+  min-height: var(--dropdown-option-height);
+  padding: 0 var(--dropdown-option-pad);
+  border-radius: var(--dropdown-option-radius);
+  font-size: var(--text-sm);
+  color: var(--text-2);
+  cursor: pointer;
+  user-select: none;
+}
+
+.optionLabel {
+  flex-grow: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The keyboard cursor. Deliberately the *only* moving highlight: hover paints
+   the same tint by moving the cursor, so the pointer and the arrow keys never
+   disagree about which row is live. */
+.optionActive {
+  background: var(--dropdown-active);
+  color: var(--text);
+}
+
+.optionSelected {
+  color: var(--accent);
+}
+
+.optionDisabled {
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+
+.check {
+  flex-shrink: 0;
+  width: 12px;
+  color: var(--accent);
+}
+
+.checkHidden {
+  visibility: hidden;
+}
+
+.empty {
+  padding: 0 var(--dropdown-option-pad);
+  min-height: var(--dropdown-option-height);
+  display: flex;
+  align-items: center;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}

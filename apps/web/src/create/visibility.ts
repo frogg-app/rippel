@@ -20,6 +20,10 @@
  *            installed). Fixable, and the readiness endpoint returns the exact
  *            remedy. Hiding it would turn a solvable problem into "that model
  *            does not exist".
+ *   shown    pending — the readiness probe is still in flight. No verdict is
+ *            drawn at all: no badge, no dimming, nothing hidden and no count.
+ *            A wrong label followed by a correction is worse than a moment of
+ *            plain tiles.
  *   shown    needs a starting image — same family, other side of the
  *            txt2img / img2img split. Also fixable, in one drag.
  *
@@ -44,6 +48,15 @@ export type BlockReason = 'needs-setup' | 'needs-image' | 'no-template';
 
 export interface ModelEntry {
   model: Model;
+  /**
+   * The server has not answered about this model yet.
+   *
+   * A pending entry carries no verdict at all: not runnable, not hidden, not
+   * blocked. It is the difference between "we know it cannot run" and "we have
+   * not asked", and rendering the second as the first is what made the grid
+   * flash five wrong "No template" badges on every page load.
+   */
+  pending: boolean;
   runnable: boolean;
   hidden: HiddenReason | null;
   blocked: BlockReason | null;
@@ -58,6 +71,8 @@ export interface Partition {
   hidden: ModelEntry[];
   /** Of `listed`, the ones that can actually be selected. */
   runnable: ModelEntry[];
+  /** True while any listed model is still waiting on a verdict. */
+  pending: boolean;
   hiddenNoTemplate: ModelEntry[];
   hiddenOtherMode: ModelEntry[];
   /** Anything the *other* tab would run — the sentence worth saying when this
@@ -92,12 +107,20 @@ export function classify(
   const elsewhere = ready(there?.state) || mapModes.has(otherMode);
 
   const entry = (
-    partial: Pick<ModelEntry, 'runnable' | 'hidden' | 'blocked'>,
+    partial: Pick<ModelEntry, 'runnable' | 'hidden' | 'blocked'> & { pending?: boolean },
   ): ModelEntry => ({
     model,
+    pending: false,
     ...partial,
     runsInMode: partial.runnable ? mode : elsewhere && !mapModes.has(mode) ? otherMode : null,
   });
+
+  // Nothing is decided until the probe lands. The client-side capability map
+  // below is a hardcoded mirror that knows one family, so consulting it in the
+  // meantime does not produce a provisional answer — it produces a wrong one.
+  if (readiness.loading && !(here && here.state !== 'unknown')) {
+    return entry({ runnable: false, hidden: null, blocked: null, pending: true });
+  }
 
   if (here && here.state !== 'unknown') {
     if (here.state === 'ready') return entry({ runnable: true, hidden: null, blocked: null });
@@ -149,6 +172,7 @@ export function partitionModels(
   return {
     listed,
     hidden,
+    pending: entries.some((entry) => entry.pending),
     runnable: listed.filter((entry) => entry.runnable),
     hiddenNoTemplate: hidden.filter((entry) => entry.hidden === 'no-template'),
     hiddenOtherMode: hidden.filter((entry) => entry.hidden === 'other-mode'),

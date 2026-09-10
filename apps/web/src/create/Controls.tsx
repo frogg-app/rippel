@@ -9,6 +9,7 @@
  */
 import type { CSSProperties, ReactNode } from 'react';
 import { useId, useState } from 'react';
+import { Dropdown } from '../components/Dropdown';
 import { createPortal } from 'react-dom';
 import { ChevronDownIcon } from '../components/icons';
 import styles from './controls.module.css';
@@ -396,10 +397,13 @@ export function Slider({
 // ---------------------------------------------------------------- select
 
 /**
- * A native `<select>` wearing the artboard's bordered pill. The chevron is
- * drawn alongside and the select itself is transparent on top of it, which
- * keeps the OS popup — a hand-rolled listbox here would be worse in every way
- * that matters.
+ * The artboard's bordered pill, wrapping the app's own listbox.
+ *
+ * It used to be a native `<select>` on the argument that the OS popup was
+ * better than anything hand-rolled. That was true of a hand-rolled listbox;
+ * it is not true of `components/Dropdown`, which puts the keyboard, the roles
+ * and the type-ahead back — and the OS popup was a white menu on a near-black
+ * screen, which is the one thing it could not fix.
  */
 export interface SelectOption {
   value: string;
@@ -435,6 +439,7 @@ export function Select({
   onChange: (value: string) => void;
 }) {
   const id = useId();
+  const labelId = useId();
   const descriptionId = useId();
   const entries = selectOptions(options);
   const stacked = wide;
@@ -442,7 +447,7 @@ export function Select({
   return (
     <div className={stacked ? styles.field : styles.row}>
       <span className={styles.labelRow}>
-        <label htmlFor={id} className={styles.rowLabel}>
+        <label htmlFor={id} id={labelId} className={styles.rowLabel}>
           {label}
         </label>
         {description ? <Hint id={descriptionId} text={description} /> : null}
@@ -455,20 +460,17 @@ export function Select({
             : styles.selectWrap
         }
       >
-        <select
+        <Dropdown
           id={id}
+          aria-labelledby={labelId}
           className={stacked ? styles.select : `mono ${styles.select}`}
           value={value}
+          options={entries}
           aria-describedby={description ? descriptionId : undefined}
-          onChange={(event) => onChange(event.target.value)}
+          onChange={onChange}
         >
-          {entries.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-        <ChevronDownIcon size={12} className={styles.selectChevron} />
+          <ChevronDownIcon size={12} className={styles.selectChevron} />
+        </Dropdown>
       </div>
     </div>
   );

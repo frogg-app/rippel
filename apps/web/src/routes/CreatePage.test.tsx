@@ -129,6 +129,51 @@ function queuedJob(params: GenerationParams): Job {
   };
 }
 
+/**
+ * Installed LoRAs, in the three states the picker has to tell apart: one
+ * trained for the SDXL checkpoints, one whose family nothing recorded (the
+ * normal case for a locally discovered file), and one for another family
+ * entirely, which must not be offered.
+ */
+const loras: Model[] = [
+  {
+    id: 'lora-film',
+    type: 'lora',
+    filename: 'film_grain_xl.safetensors',
+    displayName: 'Film Grain XL',
+    baseModel: 'sdxl',
+    previewUrl: null,
+    sizeBytes: null,
+    source: 'local',
+    sourceRef: null,
+    backendIds: ['backend-1'],
+  },
+  {
+    id: 'lora-unknown',
+    type: 'lora',
+    filename: 'pytorch_lora_weights.safetensors',
+    displayName: 'Pytorch LoRA Weights',
+    baseModel: null,
+    previewUrl: null,
+    sizeBytes: null,
+    source: 'local',
+    sourceRef: null,
+    backendIds: ['backend-1'],
+  },
+  {
+    id: 'lora-sd15',
+    type: 'lora',
+    filename: 'hyper_sd15_1step.safetensors',
+    displayName: 'Hyper SD15 1step LoRA',
+    baseModel: 'sd15',
+    previewUrl: null,
+    sizeBytes: null,
+    source: 'local',
+    sourceRef: null,
+    backendIds: ['backend-1'],
+  },
+];
+
 vi.mock('../lib/api-jobs', async () => {
   const actual = await vi.importActual<typeof import('../lib/api-jobs')>('../lib/api-jobs');
   return {
@@ -136,7 +181,7 @@ vi.mock('../lib/api-jobs', async () => {
     MOCK: { jobs: true },
     modelsApi: {
       list: vi.fn(async ({ type }: { type?: string } = {}) => ({
-        models: type === 'checkpoint' ? checkpoints : [],
+        models: type === 'checkpoint' ? checkpoints : type === 'lora' ? loras : [],
         families: ['sdxl', 'hunyuan-video'],
       })),
     },
@@ -601,7 +646,10 @@ describe('the Advanced drawer', () => {
     await openAdvanced(user);
     await user.click(screen.getByRole('button', { name: /sampling method/i }));
 
-    await user.selectOptions(screen.getByLabelText('Sampler'), 'ddim');
+    // Sampler is the app's own listbox now, not a native <select>: open the
+    // combobox and press the row. Same value reaches the form either way.
+    await user.click(screen.getByRole('combobox', { name: 'Sampler' }));
+    await user.click(screen.getByRole('option', { name: /^DDIM/ }));
     // The header says so with the drawer shut, so an override is never invisible.
     expect(screen.getByText('1 changed')).toBeInTheDocument();
 
@@ -850,6 +898,172 @@ describe('model picker', () => {
     await user.click(screen.getByRole('button', { name: /^generate$/i }));
     await waitFor(() => expect(created).toHaveLength(1));
     expect(created[0]!.modelId).toBe('model-sdxl-2');
+  });
+});
+
+describe('the first paint', () => {
+  /** Hold every readiness probe open until the test lets it answer. */
+  function gatedReadiness(answers: Record<string, 'ready' | 'no-template'>) {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    return {
+      install: async () => {
+        const { readinessApi } = await import('../lib/api-jobs');
+        vi.mocked(readinessApi.get).mockImplementation(async (_backend, modelId) => {
+          await gate;
+          const state = answers[modelId];
+          return state ? { ...UNKNOWN, state } : UNKNOWN;
+        });
+      },
+      release: () => act(() => release()),
+    };
+  }
+
+  const tiles = () => within(screen.getByRole('radiogroup', { name: 'Model' })).getAllByRole('radio');
+
+  it('draws no verdict before the probes answer, and the right one after', async () => {
+    // The reported flash: all six checkpoints painted, five badged
+    // "No template", then corrected to three plus a hidden count. The badge was
+    // not merely ugly mid-flight, it was wrong — it came from the hardcoded
+    // capability mirror, which knows one family.
+    const probes = gatedReadiness({ 'model-sdxl': 'ready', 'model-sdxl-2': 'ready' });
+    await probes.install();
+
+    render(<CreatePage />);
+
+    // The tiles themselves are known from /models and paint at once...
+    await screen.findByRole('radiogroup', { name: 'Model' });
+    expect(tiles().length).toBeGreaterThan(2);
+    // ...but nothing claims a verdict yet.
+    expect(screen.queryByText(/No template/i)).toBeNull();
+    expect(screen.queryByText(/models? hidden/i)).toBeNull();
+    for (const tile of tiles()) expect(tile).toHaveAttribute('aria-disabled', 'false');
+
+    // And the answers, when they land, are the real ones.
+    probes.release();
+    await waitFor(() => expect(tiles()).toHaveLength(2));
+    expect(screen.getByText(/models? hidden/i)).toBeInTheDocument();
+  });
+
+  it('does not preselect or clear a model on an unanswered probe', async () => {
+    const probes = gatedReadiness({ 'model-sdxl': 'ready' });
+    await probes.install();
+
+    render(<CreatePage />);
+    await screen.findByRole('radiogroup', { name: 'Model' });
+
+    // Nothing is chosen on a guess: preselecting here would visibly swap the
+    // model out from under the user a moment later.
+    expect(tiles().every((tile) => tile.getAttribute('aria-checked') === 'false')).toBe(true);
+
+    probes.release();
+    await waitFor(() =>
+      expect(screen.getByRole('radio', { name: /SDXL Base/i })).toHaveAttribute(
+        'aria-checked',
+        'true',
+      ),
+    );
+  });
+});
+
+describe('extra styles', () => {
+  it('is a section of the panel, not something buried in Advanced', async () => {
+    render(<CreatePage />);
+    await screen.findByRole('radio', { name: /SDXL Base/i });
+
+    // Visible with the Advanced drawer shut, which is the point of the move.
+    expect(screen.getByRole('button', { name: /add a style/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /show advanced|advanced/i })).toBeTruthy();
+  });
+
+  it('offers what fits the chosen checkpoint and hides what cannot run', async () => {
+    const user = userEvent.setup();
+    render(<CreatePage />);
+    await screen.findByRole('radio', { name: /SDXL Base/i });
+
+    await user.click(screen.getByRole('button', { name: /add a style/i }));
+
+    const list = screen.getByRole('listbox', { name: /extra styles/i });
+    expect(within(list).getByText('Film Grain XL')).toBeInTheDocument();
+    // Unknown family is offered, marked, never hidden: it is the normal state
+    // of a locally discovered file.
+    expect(within(list).getByText('Pytorch LoRA Weights')).toBeInTheDocument();
+    // Trained for SD 1.5 against an SDXL checkpoint: impossible, so hidden.
+    expect(within(list).queryByText('Hyper SD15 1step LoRA')).toBeNull();
+
+    // Hidden, but counted honestly and reachable. (The model grid has a
+    // reveal of its own, hence scoping this to the picker.)
+    const picker = screen.getByRole('dialog', { name: /add an extra style/i });
+    await user.click(within(picker).getByRole('button', { name: /show anyway/i }));
+    expect(within(list).getByText('Hyper SD15 1step LoRA')).toBeInTheDocument();
+  });
+
+  it('adds a style, stacks a second, and sends both with their weights', async () => {
+    const user = userEvent.setup();
+    render(<CreatePage />);
+    await screen.findByRole('radio', { name: /SDXL Base/i });
+    await user.type(screen.getByRole('textbox', { name: /prompt/i }), 'neon');
+
+    await user.click(screen.getByRole('button', { name: /add a style/i }));
+    await user.click(screen.getByRole('option', { name: /Film Grain XL/ }));
+    expect(screen.getByRole('button', { name: /remove film grain xl/i })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /add another/i }));
+    await user.click(screen.getByRole('option', { name: /Pytorch LoRA Weights/ }));
+
+    await user.click(screen.getByRole('button', { name: /^generate$/i }));
+    await waitFor(() => expect(created).toHaveLength(1));
+    expect(created[0]!.loras).toEqual([
+      { modelId: 'lora-film', weight: 0.7 },
+      { modelId: 'lora-unknown', weight: 0.7 },
+    ]);
+  });
+
+  it('removes one again, and sends nothing when none are left', async () => {
+    const user = userEvent.setup();
+    render(<CreatePage />);
+    await screen.findByRole('radio', { name: /SDXL Base/i });
+    await user.type(screen.getByRole('textbox', { name: /prompt/i }), 'neon');
+
+    await user.click(screen.getByRole('button', { name: /add a style/i }));
+    await user.click(screen.getByRole('option', { name: /Film Grain XL/ }));
+    await user.click(screen.getByRole('button', { name: /remove film grain xl/i }));
+
+    await user.click(screen.getByRole('button', { name: /^generate$/i }));
+    await waitFor(() => expect(created).toHaveLength(1));
+    expect(created[0]!.loras).toBeUndefined();
+  });
+
+  it('closes the picker on Escape and puts focus back on the button', async () => {
+    const user = userEvent.setup();
+    render(<CreatePage />);
+    await screen.findByRole('radio', { name: /SDXL Base/i });
+
+    const add = screen.getByRole('button', { name: /add a style/i });
+    await user.click(add);
+    expect(screen.getByRole('dialog', { name: /add an extra style/i })).toBeInTheDocument();
+
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(add).toHaveFocus();
+  });
+
+  it('filters the picker by typing, and chooses with the keyboard', async () => {
+    const user = userEvent.setup();
+    render(<CreatePage />);
+    await screen.findByRole('radio', { name: /SDXL Base/i });
+    await user.type(screen.getByRole('textbox', { name: /prompt/i }), 'neon');
+
+    await user.click(screen.getByRole('button', { name: /add a style/i }));
+    await user.type(screen.getByRole('combobox', { name: /search extra styles/i }), 'pytorch');
+
+    const list = screen.getByRole('listbox', { name: /extra styles/i });
+    expect(within(list).queryByText('Film Grain XL')).toBeNull();
+
+    await user.keyboard('{Enter}');
+    expect(screen.getByRole('button', { name: /remove pytorch lora weights/i })).toBeInTheDocument();
   });
 });
 

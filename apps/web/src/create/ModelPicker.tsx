@@ -23,7 +23,7 @@
  * tooltip, so the explanation for why you cannot pick it is unreachable by
  * exactly the person asking. These take the click and answer it.
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { JobKind, Model } from '@comfy/shared';
 import { type CapabilityMap, isFallbackFamily } from '../lib/api-jobs';
 import { WarningIcon } from './icons';
@@ -67,6 +67,51 @@ export function ModelPicker({
   // whole point is that they are noise. Available because a list that quietly
   // omits things the user installed is lying about what is on the machine.
   const [revealed, setRevealed] = useState(false);
+
+  // Verdicts landing can drop a whole grid row, and a row vanishing under the
+  // cursor shoves the quality preset and everything below it up the panel. So
+  // the grid's height is animated across that one moment instead: pinned to
+  // the height it had, then transitioned to the height it now wants, then let
+  // go. `min-height: auto` is not an animatable endpoint, which is why the
+  // target is a measured number and not simply released.
+  const gridRef = useRef<HTMLDivElement | null>(null);
+  const lastGridHeight = useRef(0);
+  const wasPending = useRef(readiness.loading);
+  const [collapse, setCollapse] = useState<{ phase: 'from' | 'to'; height: number } | null>(null);
+
+  // Runs after every commit, which is how it has the previous render's height
+  // to hand on the render that drops a row.
+  useLayoutEffect(() => {
+    const settled = wasPending.current && !readiness.loading;
+    wasPending.current = readiness.loading;
+    const now = gridRef.current?.offsetHeight ?? 0;
+    if (settled && lastGridHeight.current > 0 && now !== lastGridHeight.current) {
+      setCollapse({ phase: 'from', height: lastGridHeight.current });
+      return;
+    }
+    if (!collapse) lastGridHeight.current = now;
+  });
+
+  // Two frames and a timer: one frame at the old height to transition from,
+  // then the new height, then the inline style goes away so the grid is free
+  // again. Keyed on the phase rather than dependency-free — an effect that
+  // reran on every render would cancel its own pending frame forever, and the
+  // grid would keep the dead space for good.
+  useEffect(() => {
+    if (!collapse) return undefined;
+    if (collapse.phase === 'from') {
+      const frame = requestAnimationFrame(() => {
+        const height = gridRef.current?.offsetHeight ?? 0;
+        setCollapse({ phase: 'to', height });
+      });
+      return () => cancelAnimationFrame(frame);
+    }
+    const timer = setTimeout(() => {
+      lastGridHeight.current = gridRef.current?.offsetHeight ?? 0;
+      setCollapse(null);
+    }, 260);
+    return () => clearTimeout(timer);
+  }, [collapse]);
 
   const mode = modeOfKind(kind);
   // A mode change re-derives the whole list; anything opened or explained about
@@ -116,15 +161,21 @@ export function ModelPicker({
       {/* Keyed by mode: the grid re-enters, tiles staggering in, when the
           toggle flips. */}
       {shown.length > 0 ? (
-        <div key={mode} className={styles.grid} role="radiogroup" aria-label="Model">
+        <div
+          className={styles.gridHold}
+          style={collapse ? { height: collapse.height, overflow: 'hidden' } : undefined}
+        >
+        <div ref={gridRef} key={mode} className={styles.grid} role="radiogroup" aria-label="Model">
           {shown.map((entry, index) => {
             const model = entry.model;
-            const supported = entry.runnable;
+            // Pending tiles are plain and pressable. We have no verdict, and a
+            // guess dressed as one is what we are here to stop drawing.
+            const supported = entry.runnable || entry.pending;
             const selected = model.id === value;
             const reason = supported
               ? null
               : blockedReason(entry, kind, capabilities, readiness);
-            const generic = supported && isFallbackFamily(model, capabilities);
+            const generic = entry.runnable && isFallbackFamily(model, capabilities);
 
             return (
               <button
@@ -171,12 +222,14 @@ export function ModelPicker({
             );
           })}
         </div>
+        </div>
       ) : null}
 
+      <div className={styles.notes}>
       {/* Nothing to draw. An empty grid with no words is worse than the greyed
           tiles it replaced, so this always says what happened and what would
           change it. */}
-      {listed.length === 0 ? <EmptyState
+      {listed.length === 0 && !partition.pending ? <EmptyState
         mode={mode}
         otherMode={otherMode}
         partition={partition}
@@ -210,7 +263,7 @@ export function ModelPicker({
             ) : null}
           </span>
         </p>
-      ) : listed.length > 0 && runnable.length === 0 ? (
+      ) : listed.length > 0 && runnable.length === 0 && !partition.pending ? (
         <p className={styles.note}>
           <WarningIcon size={12} className={styles.noteIcon} />
           <span>
@@ -231,7 +284,7 @@ export function ModelPicker({
 
       {/* The honest count. Hiding a checkpoint the user installed is fine;
           not saying so is not. */}
-      {hiddenNoTemplate.length > 0 ? (
+      {hiddenNoTemplate.length > 0 && !partition.pending ? (
         <p className={styles.note}>
           <span>
             {hiddenNoTemplate.length} {hiddenNoTemplate.length === 1 ? 'model' : 'models'} hidden —
@@ -247,6 +300,7 @@ export function ModelPicker({
           </span>
         </p>
       ) : null}
+      </div>
     </>
   );
 }
@@ -401,12 +455,15 @@ function listNames(models: Model[]): string {
 /**
  * A deterministic wash for a model with no preview image.
  *
+ * Exported because the extra-styles picker needs the same fallback: one path
+ * for "this file has no picture", not two that disagree.
+ *
  * Every discovered local model has `previewUrl: null` — nothing has downloaded
  * a Civitai card for it — so this is the *normal* case, not a fallback. The hue
  * is derived from the id so a given checkpoint keeps its colour between
  * sessions and becomes recognisable by it.
  */
-function tileArt(model: Model): React.CSSProperties {
+export function tileArt(model: Model): React.CSSProperties {
   let hash = 0;
   for (const char of model.id) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
   const hue = hash % 360;

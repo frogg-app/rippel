@@ -58,7 +58,15 @@ export interface ReadinessMap {
   here: Record<string, ModelReadiness>;
   /** By model id, for the same job in the other mode — "would Video run this?" */
   other: Record<string, ModelReadiness>;
-  /** True while the first pass for this capability is still outstanding. */
+  /**
+   * True until the server has answered for this exact (models, capability).
+   *
+   * Derived during render, not set by an effect — an effect runs *after* the
+   * first paint, so a flag raised there leaves one frame in which the screen
+   * confidently renders the fallback map's guesses as verdicts. That frame was
+   * the flash: five of six checkpoints badged "No template", corrected a few
+   * hundred milliseconds later.
+   */
   loading: boolean;
 }
 
@@ -95,6 +103,9 @@ async function probe(
 
 export function useReadiness(models: Model[], kind: JobKind): ReadinessMap {
   const [map, setMap] = useState<ReadinessMap>(EMPTY);
+  // Which (models, capability) the state in `map` is an answer *to*. Anything
+  // else means we have not asked yet, whatever `map` happens to contain.
+  const [answeredFor, setAnsweredFor] = useState<string | null>(null);
 
   // The identity of the model list, not the array: `useModels` hands back a new
   // array on every render and we must not probe on every render.
@@ -103,14 +114,11 @@ export function useReadiness(models: Model[], kind: JobKind): ReadinessMap {
   useEffect(() => {
     if (models.length === 0) {
       setMap(EMPTY);
+      setAnsweredFor(`|${kind}`);
       return;
     }
     const controller = new AbortController();
     const other = counterpartKind(kind);
-
-    // Show what is already cached immediately — flipping the toggle a second
-    // time must not blank the grid while nothing is actually being fetched.
-    setMap((previous) => ({ ...previous, loading: true }));
 
     void (async () => {
       const [hereResults, otherResults] = await Promise.all([
@@ -133,13 +141,17 @@ export function useReadiness(models: Model[], kind: JobKind): ReadinessMap {
       };
 
       setMap({ here: collect(hereResults), other: collect(otherResults), loading: false });
+      setAnsweredFor(`${modelKey}|${kind}`);
     })();
 
     return () => controller.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [modelKey, kind]);
 
-  return map;
+  // The flag the screen actually reads. Note this is true on the very first
+  // render, before the effect above has run at all, which is the whole point.
+  const loading = answeredFor !== `${modelKey}|${kind}`;
+  return useMemo(() => ({ ...map, loading }), [map, loading]);
 }
 
 /** Test seam: forget what the server said. */

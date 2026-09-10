@@ -16,6 +16,7 @@ import type { Job, Model } from '@comfy/shared';
 import { SparkIcon } from '../components/icons';
 import { Chips, Group, Segmented, Slider } from '../create/Controls';
 import { AdvancedDrawer } from '../create/AdvancedDrawer';
+import { LoraSection } from '../create/LoraSection';
 import { JobStage } from '../create/JobStage';
 import { ModelPicker } from '../create/ModelPicker';
 import { PromptFields } from '../create/PromptFields';
@@ -108,6 +109,10 @@ export function CreatePage() {
   // job of finding a replacement that is actually visible.
   useEffect(() => {
     if (!form.modelId) return;
+    // Never on an unanswered probe. `visibility.ts` refuses to hide while a
+    // verdict is pending; clearing the user's choice here would undo that and
+    // reintroduce the swap it exists to prevent.
+    if (partition.pending) return;
     if (!partition.listed.some((entry) => entry.model.id === form.modelId)) {
       patch({ modelId: null });
     }
@@ -119,6 +124,9 @@ export function CreatePage() {
   // reason that is not the user's fault.
   useEffect(() => {
     if (form.modelId || checkpoints.length === 0) return;
+    // Same rule: preselecting on a guess means visibly swapping the model out
+    // from under the user a moment later.
+    if (partition.pending) return;
     const first = partition.runnable[0];
     if (first) patch({ modelId: first.model.id });
   }, [checkpoints, partition, form.modelId, patch]);
@@ -259,6 +267,15 @@ export function CreatePage() {
             </div>
           )}
 
+          {/* Below the reference image, above Advanced: a creative choice on
+              the same footing as the model, not a preset override. */}
+          <LoraSection
+            loras={form.loras}
+            models={loras}
+            checkpoint={checkpoints.find((model) => model.id === form.modelId) ?? null}
+            onChange={(next) => patch({ loras: next })}
+          />
+
           <AdvancedDrawer
             open={advancedOpen}
             onOpenChange={setAdvancedOpen}
@@ -266,9 +283,6 @@ export function CreatePage() {
             batchSize={form.batchSize}
             value={form.advanced}
             onChange={(advanced) => patch({ advanced })}
-            loras={form.loras}
-            loraModels={loras}
-            onLorasChange={(next) => patch({ loras: next })}
           />
         </div>
 

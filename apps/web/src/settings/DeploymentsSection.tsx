@@ -13,7 +13,15 @@ import { ApiRequestError } from '../lib/api';
 import { deploymentsApi as defaultApi, type DeploymentsApi, type InstallInstructions } from '../lib/api-deployments';
 import { refreshBackends } from '../shell/useBackends';
 import shared from './SettingsModal.module.css';
+import { Dropdown } from '../components/Dropdown';
 import styles from './DeploymentsSection.module.css';
+
+/** The three platforms the agent installer knows how to reach. */
+const PLATFORM_OPTIONS = [
+  { value: 'linux', label: 'Linux' },
+  { value: 'darwin', label: 'macOS' },
+  { value: 'win32', label: 'Windows (OpenSSH)' },
+];
 
 /**
  * Deployment, for administrators.
@@ -952,15 +960,13 @@ function SshInstallForm({
         </label>
         <label className={shared.field}>
           <span className="label">Operating system</span>
-          <select
+          <Dropdown
             className={shared.input}
+            aria-label="Operating system"
             value={platform}
-            onChange={(event) => setPlatform(event.target.value as typeof platform)}
-          >
-            <option value="linux">Linux</option>
-            <option value="darwin">macOS</option>
-            <option value="win32">Windows (OpenSSH)</option>
-          </select>
+            options={PLATFORM_OPTIONS}
+            onChange={(next) => setPlatform(next as typeof platform)}
+          />
         </label>
       </div>
 

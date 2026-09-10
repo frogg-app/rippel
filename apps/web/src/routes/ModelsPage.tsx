@@ -45,7 +45,8 @@ import { WorkflowSheet, type WorkflowSheetSubject } from '../models/WorkflowShee
 import { ApiRequestError } from '../lib/api';
 import { WorkflowIcon } from '../models/icons';
 import { Notice } from '../models/Notice';
-import { CubeIcon } from '../models/icons';
+import { CubeIcon, ChevronIcon } from '../models/icons';
+import { Dropdown } from '../components/Dropdown';
 import {
   catalogueBases,
   catalogueTypes,
@@ -336,22 +337,22 @@ export function ModelsPage({ api = modelsApi, storageApi: storage = storageApi }
               className={`${styles.dot} ${backend?.status === 'online' ? styles.dotOn : ''}`}
               aria-hidden
             />
-            <label className={styles.backendLabel} htmlFor="models-backend">
+            <label className={styles.backendLabel} id="models-backend-label" htmlFor="models-backend">
               {tab === 'installed' ? 'Highlighting' : tab === 'storage' ? 'Files on' : 'Installing to'}
             </label>
-            <select
+            <Dropdown
               id="models-backend"
+              aria-labelledby="models-backend-label"
               className={styles.backendSelect}
               value={backendId ?? ''}
-              onChange={(event) => setBackendId(event.target.value || null)}
+              options={library.backends.map((candidate) => ({
+                value: candidate.id,
+                label: `${candidate.name}${candidate.status === 'online' ? '' : ' (offline)'}`,
+              }))}
+              onChange={(next) => setBackendId(next || null)}
             >
-              {library.backends.map((candidate) => (
-                <option key={candidate.id} value={candidate.id}>
-                  {candidate.name}
-                  {candidate.status === 'online' ? '' : ' (offline)'}
-                </option>
-              ))}
-            </select>
+              <ChevronIcon size={12} className={styles.backendChevron} />
+            </Dropdown>
           </div>
         ) : null}
       </header>
