@@ -567,6 +567,15 @@ function CopyField({ label, value }: { label: string; value: string }) {
 
 const PLATFORM_ORDER: AgentPlatform[] = ['linux', 'darwin', 'win32'];
 
+/**
+ * The assets carry a Node runtime, so they are megabytes, not kilobytes. Saying
+ * "42000 KB" to someone about to start that download on a slow link is not the
+ * honest way to put it.
+ */
+function fileSize(bytes: number): string {
+  return bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.round(bytes / 1024)} KB`;
+}
+
 function InstallInstructionsPanel({ api, deployment }: { api: DeploymentsApi; deployment: Deployment }) {
   const [data, setData] = useState<InstallInstructions | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
@@ -633,10 +642,11 @@ function InstallInstructionsPanel({ api, deployment }: { api: DeploymentsApi; de
       <details className={styles.details}>
         <summary>Set it up by hand instead</summary>
         <p className={shared.blurb}>
-          The agent is a folder of JavaScript files and needs Node.js 20 or newer and nothing else.
-          Download the release below, unpack it, and put these values in
+          The agent is a folder of JavaScript files, and the release below carries a Node.js runtime
+          with it, so the machine needs nothing preinstalled — that is why the download is tens of
+          megabytes. Unpack it, put these values in
           <code className="mono"> ~/.rippel-agent/config.json</code>, then run{' '}
-          <code className="mono">node src/main.mjs</code>.
+          <code className="mono">./node/bin/node src/main.mjs</code> from the unpacked folder.
         </p>
         <CopyField label="rippel address" value={data.serverUrl} />
         <CopyField label="Deployment id" value={deployment.id} />
@@ -670,13 +680,18 @@ function InstallInstructionsPanel({ api, deployment }: { api: DeploymentsApi; de
           <a className={shared.action} href={download.url} target="_blank" rel="noreferrer">
             <DownloadIcon size={14} />
             Download for {download.label}
-            {download.sizeBytes ? <span className="mono"> ({Math.round(download.sizeBytes / 1024)} KB)</span> : null}
+            {download.sizeBytes ? <span className="mono"> ({fileSize(download.sizeBytes)})</span> : null}
           </a>
         ) : null}
         <a className={shared.action} href={data.release.url} target="_blank" rel="noreferrer">
           All releases
         </a>
       </div>
+      <p className={styles.muted}>
+        The download carries a Node.js runtime as well as the agent — tens of megabytes rather than
+        a handful of kilobytes — so the machine needs nothing preinstalled. Unpack it and run the
+        install command above from inside that folder.
+      </p>
       {data.release.note ? <p className={styles.muted}>{data.release.note}</p> : null}
     </div>
   );
@@ -1002,8 +1017,10 @@ function SshInstallForm({
 
       <p className={styles.muted}>
         The account needs no root: the agent installs into its own home directory and runs as a user
-        service. It does need Node.js 20 or newer, plus git and Python for ComfyUI itself — the
-        installer says so before it downloads anything.
+        service. Deploying over SSH runs the installer on a machine that has not unpacked a release,
+        so this path does need Node.js 20 or newer already installed there, plus git and Python for
+        ComfyUI itself — the installer says so before it downloads anything. A machine with no Node
+        at all can be set up from the release download instead, which carries its own runtime.
       </p>
 
       {error ? (

@@ -12,6 +12,11 @@ deployment with no ComfyUI yet.
 It has **no dependencies**. Node.js 20 or newer, and the files in `src/`. That
 is deliberate — a release is a folder, and installing it is copying it.
 
+The published releases go one step further and carry the Node runtime itself, so
+a machine with nothing but the Python ComfyUI brought along can still install.
+See [The bundled runtime](#the-bundled-runtime), which is also where the
+obligation that comes with shipping someone a runtime is written down.
+
 ## Installing it
 
 Almost always: rippel → Settings → **Deployment**, then either
@@ -25,8 +30,11 @@ Almost always: rippel → Settings → **Deployment**, then either
 
 Both install exactly the same thing. The installer:
 
-- checks for Node 20+, and warns if `git` or `python3` are missing (ComfyUI
-  needs those, the agent does not)
+- finds a runtime: the `node/` folder in the unpacked release first, a system
+  Node 20+ second, and copies whichever it used into `~/.rippel-agent/node/` so
+  the service does not depend on a Downloads folder surviving
+- warns if `git` or `python3` are missing (ComfyUI needs those, the agent does
+  not)
 - downloads `src/` from the rippel that will drive it — so the agent and the
   helper always match the server, which is the one version skew this whole
   panel exists to prevent
@@ -40,6 +48,54 @@ by root is one you cannot maintain as yourself later.
 
 Re-running the installer upgrades in place: files replaced, config kept, service
 restarted.
+
+## The bundled runtime
+
+Each release asset contains an official Node.js build, taken unmodified from
+`https://nodejs.org/dist/` and verified against that release's
+`SHASUMS256.txt` at package time. Only the `node` binary ships — npm, the
+headers and the docs are not part of what the agent runs.
+
+| Asset | Runtime inside | Built for | Roughly |
+| --- | --- | --- | --- |
+| `rippel-agent-windows.zip` | `node\node.exe` | win-x64 | 34 MB |
+| `rippel-agent-macos.tar.gz` | `node/bin/node-arm64`, `node/bin/node-x64` | osx-arm64 and osx-x64 | 76 MB |
+| `rippel-agent-linux.tar.gz` | `node/bin/node` | linux-x64 | 43 MB |
+
+macOS carries both architectures because Macs are genuinely still split and the
+installer cannot know which one it will be unpacked on; it picks by `uname -m`
+and copies only that one into `~/.rippel-agent`. Windows and Linux are x64 only:
+a ComfyUI machine is an x64 box with a discrete GPU essentially without
+exception, and on anything else the installer falls back to a system Node rather
+than the release carrying runtimes nobody runs.
+
+Build them from any machine — this is packaging, not compiling:
+
+```bash
+npm run build:release -w @comfy/agent          # all three, into apps/agent/dist
+node apps/agent/scripts/build-release.mjs --only linux --node v24.21.0
+```
+
+### Keeping it patched
+
+**Releases currently bundle Node v24.21.0** (the LTS line, Krypton).
+
+Shipping a runtime means we are the ones responsible for the version on those
+machines: nothing on a deployed box updates it, and the agent has no
+auto-update. A Node security release is therefore a trigger to act here.
+
+To act on one: bump `DEFAULT_NODE_VERSION` in
+`apps/agent/scripts/build-release.mjs`, update the version in this section,
+rebuild the assets, and cut a release. Existing deployments pick it up when the
+operator re-runs the installer from the newly unpacked release — re-running is
+already the documented upgrade path, and it overwrites
+`~/.rippel-agent/node/bin/node` along with `src/`. An operator who installed
+using a system Node is unaffected, because there is no bundled runtime on that
+machine to patch.
+
+Watch <https://nodejs.org/en/blog/vulnerability> for the announcements, and stay
+on an LTS line — a runtime we ship should still be getting fixes for longer than
+a deployment lives.
 
 ## Running it by hand
 

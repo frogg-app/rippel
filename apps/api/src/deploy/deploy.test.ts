@@ -494,6 +494,40 @@ describe('the generated installers', () => {
     expect(bashInstaller(params)).toContain('NODE_MAJOR');
     expect(powershellInstaller(params)).toContain('Node.js 20 or newer is required');
   });
+
+  it('prefers the runtime bundled in the release over a system Node', () => {
+    const script = bashInstaller(params);
+    // The bundle is looked for first, and only then is $PATH consulted.
+    expect(script.indexOf('$base/node/bin/node')).toBeLessThan(script.indexOf('command -v node'));
+    expect(script).toContain('using the Node runtime bundled with this release');
+
+    const ps = powershellInstaller(params);
+    expect(ps.indexOf("'node\\node.exe'")).toBeLessThan(ps.indexOf('Get-Command node'));
+    expect(ps).toContain('using the Node runtime bundled with this release');
+  });
+
+  it('installs the bundled runtime beside the agent and points the service at it', () => {
+    const script = bashInstaller(params);
+    // Not $(command -v node): the unit must survive the unpacked folder being
+    // deleted, and must not silently switch runtime if one is installed later.
+    expect(script).toContain('ExecStart=$NODE_BIN $HOME_DIR/src/main.mjs');
+    expect(script).toContain('<string>$NODE_BIN</string>');
+    expect(script).toContain('cp -f "$BUNDLED_NODE" "$INSTALLED_NODE"');
+    expect(script).not.toContain('ExecStart=$(command -v node)');
+
+    const ps = powershellInstaller(params);
+    expect(ps).toContain('New-ScheduledTaskAction -Execute $nodeExe');
+    expect(ps).toContain('Copy-Item -LiteralPath $bundledNode -Destination $InstalledNode');
+    // A user folder with a space in it is the normal case on Windows.
+    expect(ps).toContain('-Argument "`"$HomeDir\\src\\main.mjs`""');
+  });
+
+  it('says how to get a runtime when there is neither a bundle nor a system Node', () => {
+    for (const script of [bashInstaller(params), powershellInstaller(params)]) {
+      expect(script).toContain('no bundled runtime was found');
+      expect(script).toContain('it carries its own runtime');
+    }
+  });
 });
 
 // ---------------------------------------------------------------- releases
