@@ -21,8 +21,20 @@ const capabilities = {
     // The box this runs on: two of the three checkpoints are video models,
     // which is what made the picker read as broken.
     hunyuanvideo: ['txt2vid'],
+    // A family the server holds a video template for, whose backend is not set
+    // up to run it — the "needs setup" case, which must stay visible.
+    ltxv: ['txt2vid'],
   },
   live: true,
+};
+
+/** What the readiness endpoint says when it cannot be reached. */
+const UNKNOWN = {
+  state: 'unknown' as const,
+  templateLabel: null,
+  isFallback: false,
+  summary: null,
+  steps: [] as string[],
 };
 
 const checkpoints: Model[] = [
@@ -56,6 +68,18 @@ const checkpoints: Model[] = [
     filename: 'hunyuan_video.safetensors',
     displayName: 'Hunyuan Video 720p',
     baseModel: 'hunyuan-video',
+    previewUrl: null,
+    sizeBytes: null,
+    source: 'local',
+    sourceRef: null,
+    backendIds: ['backend-1'],
+  },
+  {
+    id: 'model-ltx',
+    type: 'checkpoint',
+    filename: 'ltx-video-2b.safetensors',
+    displayName: 'LTX Video 2B',
+    baseModel: 'ltxv',
     previewUrl: null,
     sizeBytes: null,
     source: 'local',
@@ -117,6 +141,10 @@ vi.mock('../lib/api-jobs', async () => {
       })),
     },
     workflowsApi: { capabilities: vi.fn(async () => capabilities) },
+    // The GPU box is usually unreachable, and an unreachable backend must not
+    // make anybody's models disappear: `unknown` is the default here for the
+    // same reason it is the default in production.
+    readinessApi: { get: vi.fn(async () => UNKNOWN) },
     jobsApi: {
       create: vi.fn(async (params: GenerationParams) => {
         created.push(params);
@@ -141,12 +169,14 @@ vi.mock('../lib/api-jobs', async () => {
 const { CreatePage } = await import('./CreatePage');
 const { ModeToggle } = await import('../shell/ModeToggle');
 const { resetCreateMode } = await import('../create/mode');
+const { resetReadinessCache } = await import('../create/useReadiness');
 
 beforeEach(() => {
   created.length = 0;
   localStorage.clear();
   sessionStorage.clear();
   resetCreateMode();
+  resetReadinessCache();
 });
 
 afterEach(() => {
@@ -177,9 +207,14 @@ describe('CreatePage', () => {
     // not there at all. The toggle is what changes the list.
     expect(screen.queryByRole('radio', { name: /Hunyuan/i })).not.toBeInTheDocument();
 
-    // A model whose family has no template at all stays, blocked, so that
-    // pressing it answers. `aria-disabled`, not `disabled`: a disabled button
-    // takes no click and shows no tooltip.
+    // A model whose family has no workflow at all is not there either — that
+    // is the ask — but the count under the grid says so rather than letting
+    // the list quietly misrepresent what is installed.
+    expect(screen.queryByRole('radio', { name: /Mystery Mix/i })).not.toBeInTheDocument();
+    expect(screen.getByText(/1 model hidden/i)).toBeInTheDocument();
+
+    // ...and it can still be brought back, blocked, to answer for itself.
+    await user.click(screen.getByRole('button', { name: /show anyway/i }));
     const blocked = screen.getByRole('radio', { name: /Mystery Mix/i });
     expect(blocked).toHaveAttribute('aria-disabled', 'true');
     await user.click(blocked);
@@ -681,6 +716,118 @@ describe('mode toggle', () => {
       'aria-disabled',
       'false',
     );
+  });
+});
+
+describe('what the picker hides', () => {
+  // The rule: hide what is impossible, keep what is not yet possible.
+
+  it('keeps a needs-setup model visible, with the remedy the server gave', async () => {
+    const user = userEvent.setup();
+    const { readinessApi } = await import('../lib/api-jobs');
+    vi.mocked(readinessApi.get).mockImplementation(async (_backend, modelId, capability) => {
+      if (modelId === 'model-ltx' && capability === 'txt2vid') {
+        return {
+          state: 'blocked' as const,
+          templateLabel: 'Text to video (LTX-Video)',
+          isFallback: false,
+          summary:
+            'the checkpoint is in a folder ComfyUI cannot load it from and the T5 text encoder is not installed.',
+          steps: ['Move it into models/checkpoints.'],
+        };
+      }
+      if (modelId === 'model-hunyuan') {
+        return { ...UNKNOWN, state: 'no-template' as const };
+      }
+      return UNKNOWN;
+    });
+
+    render(
+      <>
+        <ModeToggle />
+        <CreatePage />
+      </>,
+    );
+    await screen.findByRole('radio', { name: /SDXL Base/i });
+    await user.click(screen.getByRole('radio', { name: 'Video' }));
+
+    // Hunyuan has no workflow anywhere: gone. LTX has one and the machine is
+    // not set up for it: present, blocked, and it says what to do.
+    const ltx = await screen.findByRole('radio', { name: /LTX Video/i });
+    expect(ltx).toHaveAttribute('aria-disabled', 'true');
+    await waitFor(() =>
+      expect(screen.queryByRole('radio', { name: /Hunyuan/i })).not.toBeInTheDocument(),
+    );
+
+    await user.click(ltx);
+    expect(await screen.findByText(/T5 text encoder is not installed/i)).toBeInTheDocument();
+    expect(screen.getByText(/Move it into models\/checkpoints\./i)).toBeInTheDocument();
+  });
+
+  it('shows everything when readiness cannot be asked', async () => {
+    // Point 4: the GPU box has been down for days. An unreachable backend must
+    // never be the reason a model vanishes.
+    const { readinessApi, workflowsApi } = await import('../lib/api-jobs');
+    vi.mocked(readinessApi.get).mockResolvedValue(UNKNOWN);
+    // ...and with no live capability list either, nothing is evidence of
+    // absence, so even the unknown family is drawn rather than hidden.
+    vi.mocked(workflowsApi.capabilities).mockResolvedValueOnce({
+      byFamily: { sdxl: ['txt2img'] },
+      live: false,
+    });
+
+    render(<CreatePage />);
+    await screen.findByRole('radio', { name: /SDXL Base/i });
+    const mystery = await screen.findByRole('radio', { name: /Mystery Mix/i });
+    expect(mystery).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.queryByText(/hidden/i)).not.toBeInTheDocument();
+  });
+
+  it('explains an empty grid instead of drawing nothing', async () => {
+    const user = userEvent.setup();
+    const { workflowsApi } = await import('../lib/api-jobs');
+    vi.mocked(workflowsApi.capabilities).mockResolvedValueOnce({
+      byFamily: { sdxl: ['txt2img'] },
+      live: true,
+    });
+    render(
+      <>
+        <ModeToggle />
+        <CreatePage />
+      </>,
+    );
+    await screen.findByRole('radio', { name: /SDXL Base/i });
+    await user.click(screen.getByRole('radio', { name: 'Video' }));
+
+    expect(await screen.findByText(/No video models are installed/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /switch to image mode/i })).toBeInTheDocument();
+  });
+
+  it('never leaves a hidden model selected when the mode changes', async () => {
+    const user = userEvent.setup();
+    render(
+      <>
+        <ModeToggle />
+        <CreatePage />
+      </>,
+    );
+    const juggernaut = await screen.findByRole('radio', { name: /Juggernaut/i });
+    await user.click(juggernaut);
+    expect(juggernaut).toHaveAttribute('aria-checked', 'true');
+
+    await user.click(screen.getByRole('radio', { name: 'Video' }));
+
+    // The image model it was on is not in this list at all now, so the repair
+    // has to land on one of the tiles actually on screen — never on a hidden
+    // one, and never on nothing while a runnable tile exists.
+    const checked = await waitFor(() => {
+      const tiles = within(screen.getByRole('radiogroup', { name: 'Model' })).getAllByRole('radio');
+      const on = tiles.filter((tile) => tile.getAttribute('aria-checked') === 'true');
+      expect(on).toHaveLength(1);
+      return on[0]!;
+    });
+    expect(checked).toHaveAccessibleName(/Hunyuan|LTX/i);
+    expect(checked).toHaveAttribute('aria-disabled', 'false');
   });
 });
 

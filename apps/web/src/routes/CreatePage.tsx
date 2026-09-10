@@ -45,7 +45,8 @@ import { useCreateMode } from '../create/mode';
 import { useAdvancedOpen } from '../create/useAdvancedOpen';
 import { useJobStage } from '../create/useJobStage';
 import { useModels } from '../create/useModels';
-import { modelSupported } from '../lib/api-jobs';
+import { isRunnable, useReadiness } from '../create/useReadiness';
+import { partitionModels } from '../create/visibility';
 import { placeInQueue, refreshQueue, useQueue } from '../lib/api-queue';
 import { isTerminal } from '../create/jobProgress';
 import styles from './CreatePage.module.css';
@@ -88,20 +89,46 @@ export function CreatePage() {
   // all ask this same question.
   const kind = effectiveKind(form);
 
+  // Asked of the server, per model, for exactly this capability: it is the only
+  // thing that can tell "no workflow exists" from "the workflow exists and this
+  // machine is missing a file", which is the difference between a model worth
+  // hiding and one worth explaining.
+  const readiness = useReadiness(checkpoints, kind);
+
+  // The same split the picker draws, computed here too so selection can never
+  // land on a tile that is not on screen.
+  const partition = useMemo(
+    () => partitionModels(checkpoints, kind, capabilities, readiness),
+    [checkpoints, kind, capabilities, readiness],
+  );
+
+  // Never leave a hidden model selected. Readiness arrives after the first
+  // paint, so a model that was legitimately chosen a moment ago can become
+  // one the grid no longer shows; dropping it hands the preselect below the
+  // job of finding a replacement that is actually visible.
+  useEffect(() => {
+    if (!form.modelId) return;
+    if (!partition.listed.some((entry) => entry.model.id === form.modelId)) {
+      patch({ modelId: null });
+    }
+  }, [partition, form.modelId, patch]);
+
   // Preselect the first model we can actually generate with. A screen that
   // opens with nothing chosen makes the user do work the app could do, and
   // preselecting an *unrunnable* model would arm a disabled Generate for a
   // reason that is not the user's fault.
   useEffect(() => {
     if (form.modelId || checkpoints.length === 0) return;
-    const first = checkpoints.find((model) => modelSupported(model, kind, capabilities));
-    if (first) patch({ modelId: first.id });
-  }, [checkpoints, capabilities, form.modelId, kind, patch]);
+    const first = partition.runnable[0];
+    if (first) patch({ modelId: first.model.id });
+  }, [checkpoints, partition, form.modelId, patch]);
 
   const selectedModel: Model | null =
     checkpoints.find((model) => model.id === form.modelId) ?? null;
 
-  const supported = selectedModel ? modelSupported(selectedModel, kind, capabilities) : false;
+  const supported = selectedModel
+    ? isRunnable(selectedModel, kind, capabilities, readiness)
+    : false;
 
   const busy = Boolean(stage.job && !isTerminal(stage.job.status)) || stage.submitting;
   const submittable = useMemo(
@@ -164,6 +191,7 @@ export function CreatePage() {
               models={checkpoints}
               kind={kind}
               capabilities={capabilities}
+              readiness={readiness}
               loading={loading}
               error={error}
               value={form.modelId}
