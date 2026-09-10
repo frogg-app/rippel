@@ -52,9 +52,11 @@ import {
   familyLabel,
   filterCatalogue,
   filterInstalled,
+  kindCounts,
   latestByFilename,
   matchesRunFilter,
   MODEL_TYPES,
+  type KindFilter,
   type RunFilter,
 } from '../models/catalogue';
 import { useCatalogue } from '../models/useCatalogue';
@@ -202,6 +204,7 @@ export function ModelsPage({ api = modelsApi, storageApi: storage = storageApi }
   const [installedType, setInstalledType] = useState<ModelType | null>(null);
   const [installedFamily, setInstalledFamily] = useState<string | null>(null);
   const [installedQ, setInstalledQ] = useState('');
+  const [installedKind, setInstalledKind] = useState<KindFilter>('all');
 
   const installedFiltered = useMemo(
     () =>
@@ -209,9 +212,12 @@ export function ModelsPage({ api = modelsApi, storageApi: storage = storageApi }
         type: installedType,
         family: installedFamily,
         q: installedQ,
+        kind: installedKind,
       }),
-    [library.models, installedType, installedFamily, installedQ],
+    [library.models, installedType, installedFamily, installedQ, installedKind],
   );
+
+  const installedKindCounts = useMemo(() => kindCounts(library.models), [library.models]);
 
   const installedTypeCounts = useMemo(() => {
     const counts = new Map<ModelType, number>();
@@ -238,6 +244,7 @@ export function ModelsPage({ api = modelsApi, storageApi: storage = storageApi }
   const [catBase, setCatBase] = useState<string | null>(null);
   const [catQ, setCatQ] = useState('');
   const [catRun, setCatRun] = useState<RunFilter>('all');
+  const [catKind, setCatKind] = useState<KindFilter>('all');
 
   // Filters are per backend: "SDXL" may not be a family the next machine's
   // catalogue even has, and a stale chip would silently show nothing.
@@ -248,11 +255,17 @@ export function ModelsPage({ api = modelsApi, storageApi: storage = storageApi }
     // The verdict is per backend too — a model that runs on one machine may be
     // missing its text encoder on the next — so this resets with the rest.
     setCatRun('all');
+    setCatKind('all');
   }, [backendId]);
 
   const entries = catalogue.state.kind === 'ready' ? catalogue.state.entries : [];
   const catalogueFiltered = useMemo(
-    () => filterCatalogue(entries, { type: catType, base: catBase, q: catQ, run: catRun }),
+    () => filterCatalogue(entries, { type: catType, base: catBase, q: catQ, run: catRun, kind: catKind }),
+    [entries, catType, catBase, catQ, catRun, catKind],
+  );
+
+  const catKindCounts = useMemo(
+    () => kindCounts(filterCatalogue(entries, { type: catType, base: catBase, q: catQ, run: catRun })),
     [entries, catType, catBase, catQ, catRun],
   );
 
@@ -390,6 +403,9 @@ export function ModelsPage({ api = modelsApi, storageApi: storage = storageApi }
               onFamily={setInstalledFamily}
               shown={installedFiltered.length}
               total={library.models.length}
+              kind={installedKind}
+              onKind={setInstalledKind}
+              kindCounts={installedKindCounts}
             />
             <div className={styles.scroller}>
               <div className={panels.panelTools}>
@@ -431,6 +447,7 @@ export function ModelsPage({ api = modelsApi, storageApi: storage = storageApi }
                       setInstalledQ('');
                       setInstalledType(null);
                       setInstalledFamily(null);
+                      setInstalledKind('all');
                     },
                   }}
                 />
@@ -469,6 +486,9 @@ export function ModelsPage({ api = modelsApi, storageApi: storage = storageApi }
                 run={catRun}
                 onRun={setCatRun}
                 runCounts={runCounts}
+                kind={catKind}
+                onKind={setCatKind}
+                kindCounts={catKindCounts}
               />
             ) : null}
 
@@ -489,6 +509,7 @@ export function ModelsPage({ api = modelsApi, storageApi: storage = storageApi }
                   setCatType(null);
                   setCatBase(null);
                   setCatRun('all');
+                  setCatKind('all');
                 }}
               />
             </div>

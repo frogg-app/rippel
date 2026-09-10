@@ -24,12 +24,16 @@ import { useState } from 'react';
 import type { Model, ModelRunnability, Uuid } from '@comfy/shared';
 import { CloseIcon, WorkflowIcon } from './icons';
 import {
+  KIND_HEADINGS,
   RUNNABILITY_LABEL,
   RUNNABILITY_TONE,
+  SUPPORT_ROLES,
   TYPE_LABELS,
   basename,
+  generates,
   groupInstalled,
   runs,
+  splitByKind,
 } from './catalogue';
 import styles from './ModelsPanels.module.css';
 
@@ -55,17 +59,54 @@ export function InstalledList({
   onWorkflows,
   onRemove,
 }: InstalledListProps) {
-  const groups = groupInstalled(models);
+  const bands = splitByKind(groupInstalled(models), (group) => group.type);
 
   return (
-    <div className={styles.groups}>
-      {groups.map((group) => (
+    <div className={styles.bands}>
+      {bands.map((band) => {
+        const heading = KIND_HEADINGS[band.kind];
+        // The plain-words sentence about a type belongs once per type, not once
+        // per family: three SDXL LoRA groups do not need three copies of "a
+        // style you add on top of a model".
+        const seen = new Set<string>();
+        return (
+          <section
+            key={band.kind}
+            className={`${styles.band} ${band.kind === 'support' ? styles.bandSupport : ''}`}
+            aria-label={heading.title}
+          >
+            <header className={styles.bandHead}>
+              <h2 className={styles.bandTitle}>{heading.title}</h2>
+              <span className={`mono ${styles.bandCount}`}>
+                {band.items.reduce((total, group) => total + group.models.length, 0)}
+              </span>
+              <p className={styles.bandBlurb}>{heading.blurb}</p>
+            </header>
+            <div className={styles.groups}>
+              {band.items.map((group) => {
+                const role = SUPPORT_ROLES[group.type];
+                const firstOfType = !seen.has(group.type);
+                seen.add(group.type);
+                return (
         <section key={group.key} className={styles.group} aria-label={`${TYPE_LABELS[group.type]} · ${group.family}`}>
           <header className={styles.groupHead}>
-            <h3 className={styles.groupType}>{TYPE_LABELS[group.type]}</h3>
+            <h3 className={styles.groupType}>
+              {generates(group.type) ? TYPE_LABELS[group.type] : role.noun}
+            </h3>
             <span className={styles.groupFamily}>{group.family}</span>
+            {!generates(group.type) ? (
+              <span className={styles.groupJargon} title={`Known technically as a ${TYPE_LABELS[group.type]}`}>
+                {TYPE_LABELS[group.type]}
+              </span>
+            ) : null}
             <span className={`mono ${styles.groupCount}`}>{group.models.length}</span>
           </header>
+
+          {!generates(group.type) && firstOfType ? (
+            <p className={styles.groupRole}>
+              {role.what} <span className={styles.groupRoleWhere}>{role.where}</span>
+            </p>
+          ) : null}
 
           <ul className={styles.rows}>
             {group.models.map((model) => (
@@ -86,10 +127,17 @@ export function InstalledList({
                         type="button"
                         className={styles.rowAction}
                         onClick={() => onWorkflows(model)}
-                        aria-label={`Workflows for ${model.displayName}`}
+                        aria-label={
+                          generates(model.type)
+                            ? `Workflows for ${model.displayName}`
+                            : `What ${model.displayName} is for`
+                        }
                       >
                         <WorkflowIcon size={13} />
-                        Workflows
+                        {/* A support file has no workflow of its own, so the
+                            button does not offer one. It opens the same sheet,
+                            which now explains rather than presenting a choice. */}
+                        {generates(model.type) ? 'Workflows' : 'What is this?'}
                       </button>
                     ) : null}
                     {onRemove ? <RemoveButton model={model} onRemove={onRemove} /> : null}
@@ -119,7 +167,12 @@ export function InstalledList({
             ))}
           </ul>
         </section>
-      ))}
+                );
+              })}
+            </div>
+          </section>
+        );
+      })}
     </div>
   );
 }

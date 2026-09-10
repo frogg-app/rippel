@@ -736,6 +736,62 @@ describe('ModelsPage', () => {
       expect(await within(sheet).findByText('Chosen automatically')).toBeInTheDocument();
     });
 
+    /**
+     * The bug the owner hit: he assigned a workflow to `Hyper SD15 1step LoRA`,
+     * the sheet badged it PINNED, and the Create screen never listed it —
+     * because a LoRA is not a model you generate with and never could be. The
+     * sheet now explains instead of offering a choice that does nothing, and
+     * the row that opens it does not say "Workflows" either.
+     */
+    it('explains a support file instead of offering it a workflow', async () => {
+      const lora = makeModel({
+        id: 'hyper',
+        type: 'lora',
+        displayName: 'Hyper SD15 1step LoRA',
+        filename: 'Hyper-SD15-1step-lora.safetensors',
+        baseModel: 'sd1.5',
+      });
+      const api = makeStubApi({
+        installed: { models: [lora], families: ['sd1.5'], runnability: {} },
+        workflows: workflows(),
+      });
+      renderPage(api);
+      await ready();
+
+      // The row does not promise a workflow it cannot deliver.
+      expect(
+        screen.queryByRole('button', { name: 'Workflows for Hyper SD15 1step LoRA' }),
+      ).not.toBeInTheDocument();
+      await openTab(/What Hyper SD15 1step LoRA is for/);
+
+      const sheet = await screen.findByRole('dialog', { name: 'About Hyper SD15 1step LoRA' });
+      // Plain words about what it is and where it is used — not "LoRA" alone.
+      expect(within(sheet).getByText('Extra style')).toBeInTheDocument();
+      expect(within(sheet).getByText(/Extra styles, on the Create screen/)).toBeInTheDocument();
+      expect(within(sheet).getByText(/There is no workflow to choose here/)).toBeInTheDocument();
+      // No selectable list, and nothing was ever assigned.
+      expect(within(sheet).queryByRole('radio')).not.toBeInTheDocument();
+      expect(api.calls.filter((call) => call.startsWith('assign:'))).toEqual([]);
+      expect(api.calls.filter((call) => call.startsWith('workflows:'))).toEqual([]);
+    });
+
+    it('splits the installed list into what generates and what supports', async () => {
+      const lora = makeModel({ id: 'hyper', type: 'lora', displayName: 'Hyper SD15 1step LoRA', filename: 'h.safetensors', baseModel: 'sd1.5' });
+      const api = makeStubApi({
+        installed: { models: [ltx, lora], families: ['ltx-video', 'sd1.5'], runnability: {} },
+        workflows: workflows(),
+      });
+      renderPage(api);
+      await ready();
+
+      const generators = screen.getByRole('region', { name: 'Models you can generate with' });
+      const support = screen.getByRole('region', { name: 'Support files' });
+      expect(within(generators).getByText('LTX-Video 2B')).toBeInTheDocument();
+      expect(within(support).getByText('Hyper SD15 1step LoRA')).toBeInTheDocument();
+      // Nothing is hidden: both are still counted on the tab.
+      expect(screen.getByRole('button', { name: /Installed\s*2/ })).toBeInTheDocument();
+    });
+
     it('offers no pinning to a non-admin', async () => {
       const api = makeStubApi({ installed, workflows: workflows() });
       renderPage(api, { ...admin, role: 'user' });

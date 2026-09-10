@@ -1538,3 +1538,104 @@
 .removalNoteDismiss:hover {
   color: var(--text);
 }
+
+/* ------------------------------------------------- generators vs support
+
+   The two bands both tabs are now split into. The support band is set back —
+   a slightly sunken ground, a quieter heading — because it is the secondary
+   answer on this screen, not because it is less important to keep: the whole
+   point is that "not something you generate with" reads at a glance without
+   anything having been hidden. */
+
+.bands {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--models-group-gap) * 1.5);
+  padding-top: var(--gap-sm);
+}
+
+.band {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-sm);
+}
+
+.band + .band {
+  margin-top: var(--gap-sm);
+}
+
+.bandHead {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: baseline;
+  gap: 2px var(--gap-sm);
+  padding: var(--gap-xs) 4px var(--gap-xs);
+  border-bottom: 1px solid var(--line);
+}
+
+.bandTitle {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: 600;
+  color: var(--text-bright);
+  letter-spacing: -0.01em;
+}
+
+.bandCount {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.bandBlurb {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+.bandSupport .bandTitle {
+  color: var(--text);
+}
+
+.bandSupport {
+  border-radius: var(--models-card-radius, 12px);
+  background: var(--ground-sunken);
+  padding: var(--gap-sm) var(--gap-sm) var(--gap-md);
+}
+
+/* The technical word, kept but demoted: it is the answer to "what is this
+   called", never the answer to "what is this for". */
+.groupJargon {
+  margin-left: auto;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line-faint);
+  font-size: 10px;
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--text-4);
+}
+
+.groupJargon + .groupCount {
+  margin-left: 0;
+}
+
+.groupRole {
+  margin: 0 0 var(--gap-xs);
+  padding: 0 4px;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  line-height: 1.5;
+  max-width: 72ch;
+}
+
+.groupRoleWhere,
+.verdictWhere {
+  color: var(--text-4);
+}
+
+.cardTypeSupport {
+  background: var(--badge);
+  border-color: rgba(220, 238, 242, 0.16);
+}

@@ -21,7 +21,15 @@ import { createPortal } from 'react-dom';
 import type { JobKind, Model, ModelWorkflows, Uuid, WorkflowTemplateSummary } from '@comfy/shared';
 import { ApiRequestError } from '../lib/api';
 import type { ModelsApi } from '../lib/api-models';
-import { RUNNABILITY_LABEL, RUNNABILITY_TONE, familyLabel, foldFamily } from './catalogue';
+import {
+  RUNNABILITY_LABEL,
+  RUNNABILITY_TONE,
+  SUPPORT_ROLES,
+  TYPE_LABELS,
+  familyLabel,
+  foldFamily,
+  generates,
+} from './catalogue';
 import { CloseIcon, WorkflowIcon } from './icons';
 import styles from './ModelsPanels.module.css';
 
@@ -72,7 +80,12 @@ export function WorkflowSheet({ api, subject, backendId, isAdmin, onClose, onAss
 
   const title =
     subject.mode === 'model'
-      ? `Workflows for ${subject.model.displayName}`
+      ? // A support file has no workflow of its own, so the sheet does not claim
+        // to be offering one. It answers the question that is actually
+        // answerable about a LoRA: what is it, and where does it get used.
+        generates(subject.model.type)
+        ? `Workflows for ${subject.model.displayName}`
+        : `About ${subject.model.displayName}`
       : subject.family
         ? `Templates for ${familyLabel(foldFamily(subject.family))} models`
         : 'Workflow templates';
@@ -102,7 +115,9 @@ export function WorkflowSheet({ api, subject, backendId, isAdmin, onClose, onAss
           </button>
         </header>
         <div className={styles.sheetBody}>
-          {subject.mode === 'model' ? (
+          {subject.mode === 'model' && !generates(subject.model.type) ? (
+            <SupportFile model={subject.model} />
+          ) : subject.mode === 'model' ? (
             <ModelOptions
               api={api}
               model={subject.model}
@@ -117,6 +132,49 @@ export function WorkflowSheet({ api, subject, backendId, isAdmin, onClose, onAss
       </div>
     </div>,
     document.body,
+  );
+}
+
+// -------------------------------------------------------------- support mode
+
+/**
+ * A support file's panel: an explanation, and no choice.
+ *
+ * This replaces the bug the owner actually hit. The sheet used to render the
+ * full radio list for a LoRA, accept the click, badge the template PINNED and
+ * write the row — and then nothing happened, because a LoRA is never the thing
+ * a workflow is selected *for*. The truth was on the screen the whole time, in
+ * grey, underneath a control that contradicted it.
+ *
+ * So the control is gone. What is left is the answer to the question somebody
+ * opening this actually has — what is this file, and where does it get used —
+ * plus the one honest onward step: the workflows belong to the *checkpoint*,
+ * which is where a pin would have any effect.
+ */
+function SupportFile({ model }: { model: Model }) {
+  const role = SUPPORT_ROLES[model.type];
+  return (
+    <>
+      <p className={styles.sheetLede}>
+        <span className="mono">{model.filename}</span>
+        {model.baseModel ? <> · for {familyLabel(model.baseModel)} models</> : null}
+      </p>
+
+      <section className={styles.sheetSection} aria-label={`What ${model.displayName} is for`}>
+        <header className={styles.sheetSectionHead}>
+          <h3 className={styles.sheetSectionTitle}>{role.noun}</h3>
+          <span className={styles.sheetSectionNote}>{TYPE_LABELS[model.type]}</span>
+        </header>
+        <p className={styles.sheetOptionDesc}>{role.what}</p>
+        <p className={styles.sheetOptionDesc}>{role.where}</p>
+      </section>
+
+      <p className={styles.sheetFoot}>
+        There is no workflow to choose here. A workflow is picked for the model you generate
+        with — a checkpoint — and this file is loaded by that workflow when it needs it. To pin a
+        template, open the Workflows sheet on a checkpoint instead.
+      </p>
+    </>
   );
 }
 

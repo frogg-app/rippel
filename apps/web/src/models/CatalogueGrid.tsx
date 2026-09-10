@@ -14,7 +14,7 @@
 import { useEffect, useState } from 'react';
 import type { ModelCatalogEntry, ModelInstall } from '@comfy/shared';
 import { CatalogueCard } from './CatalogueCard';
-import { basename } from './catalogue';
+import { KIND_HEADINGS, basename, splitByKind } from './catalogue';
 import styles from './ModelsPanels.module.css';
 
 /** Two viewports of a four-column grid, so the first scroll is already there. */
@@ -48,27 +48,48 @@ export function CatalogueGrid({
   // limit of 300 across a new search would defeat the point of paging.
   useEffect(() => setLimit(PAGE_SIZE), [entries]);
 
-  const shown = entries.slice(0, limit);
-  const remaining = entries.length - shown.length;
+  // Ordered by kind *before* the slice, so the first page is the things you can
+  // actually generate with and the paging still means what it says. The split
+  // happens after it, so a section's cards are exactly the ones on screen.
+  const ordered = splitByKind(entries, (entry) => entry.type).flatMap((section) => section.items);
+  const shown = ordered.slice(0, limit);
+  const remaining = ordered.length - shown.length;
+  const sections = splitByKind(shown, (entry) => entry.type);
 
   return (
     <>
-      <div className={styles.grid}>
-        {shown.map((entry, index) => (
-          <CatalogueCard
-            key={entry.ref}
-            index={Math.min(index, 14)}
-            entry={entry}
-            onWorkflows={onWorkflows}
-            install={installByFile.get(basename(entry.filename)) ?? null}
-            starting={starting.has(entry.ref)}
-            canInstall={canInstall}
-            onInstall={onInstall}
-            failure={failure?.ref === entry.ref ? failure.message : null}
-            now={now}
-          />
-        ))}
-      </div>
+      {sections.map((section) => {
+        const heading = KIND_HEADINGS[section.kind];
+        return (
+          <section
+            key={section.kind}
+            className={`${styles.band} ${section.kind === 'support' ? styles.bandSupport : ''}`}
+            aria-label={heading.title}
+          >
+            <header className={styles.bandHead}>
+              <h2 className={styles.bandTitle}>{heading.title}</h2>
+              <span className={`mono ${styles.bandCount}`}>{section.items.length}</span>
+              <p className={styles.bandBlurb}>{heading.blurb}</p>
+            </header>
+            <div className={styles.grid}>
+              {section.items.map((entry, index) => (
+                <CatalogueCard
+                  key={entry.ref}
+                  index={Math.min(index, 14)}
+                  entry={entry}
+                  onWorkflows={onWorkflows}
+                  install={installByFile.get(basename(entry.filename)) ?? null}
+                  starting={starting.has(entry.ref)}
+                  canInstall={canInstall}
+                  onInstall={onInstall}
+                  failure={failure?.ref === entry.ref ? failure.message : null}
+                  now={now}
+                />
+              ))}
+            </div>
+          </section>
+        );
+      })}
 
       {remaining > 0 ? (
         <div className={styles.more}>

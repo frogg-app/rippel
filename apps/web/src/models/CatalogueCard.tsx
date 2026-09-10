@@ -44,9 +44,11 @@ import type { ModelCatalogEntry, ModelInstall } from '@comfy/shared';
 import {
   RUNNABILITY_LABEL,
   RUNNABILITY_TONE,
+  SUPPORT_ROLES,
   TYPE_LABELS,
   familyHue,
   formatCount,
+  generates,
   isLive,
 } from './catalogue';
 import { CheckIcon, DownloadCountIcon, ExpandIcon, InstallIcon, LinkIcon, WorkflowIcon } from './icons';
@@ -100,6 +102,11 @@ export function CatalogueCard({
 
   const verdict = entry.runnability;
   const info = entry.info;
+  // Derived from the type, not from the verdict: the verdict is per backend and
+  // is absent when one is offline, and "what this file is for" is not a fact
+  // about a backend.
+  const isSupport = !generates(entry.type);
+  const role = SUPPORT_ROLES[entry.type];
 
   const art = (
     <>
@@ -121,7 +128,15 @@ export function CatalogueCard({
           <Mark size={34} />
         </span>
       )}
-      <span className={styles.cardType}>{TYPE_LABELS[entry.type].toUpperCase()}</span>
+      {/* The plain-words role, not the jargon: "EXTRA STYLE" rather than
+          "LORA". The technical word stays as the tooltip for anyone who wants
+          it. */}
+      <span
+        className={`${styles.cardType} ${isSupport ? styles.cardTypeSupport : ''}`}
+        title={TYPE_LABELS[entry.type]}
+      >
+        {(isSupport ? SUPPORT_ROLES[entry.type].noun : TYPE_LABELS[entry.type]).toUpperCase()}
+      </span>
       {done ? (
         <span className={styles.cardInstalled}>
           <CheckIcon size={10} /> Installed
@@ -195,7 +210,16 @@ export function CatalogueCard({
           </p>
         </div>
 
-        {verdict ? (
+        {isSupport ? (
+          // Never "Support file" on its own, and never the type word on its
+          // own. What it does to a model, and where in rippel it turns up.
+          <p className={`${styles.verdict} ${styles.verdict_muted}`} title={`${role.what} ${role.where}`}>
+            <span className={styles.verdictChip}>{role.noun}</span>
+            <span className={styles.verdictText}>
+              {role.what} <span className={styles.verdictWhere}>{role.where}</span>
+            </span>
+          </p>
+        ) : verdict ? (
           <p
             className={`${styles.verdict} ${styles[`verdict_${RUNNABILITY_TONE[verdict.status]}`]}`}
             // The detail is the API's sentence, and it names the missing file or

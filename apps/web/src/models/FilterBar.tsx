@@ -18,7 +18,13 @@
  */
 import { useId } from 'react';
 import type { ModelType } from '@comfy/shared';
-import { RUN_FILTER_LABELS, TYPE_LABELS, type RunFilter } from './catalogue';
+import {
+  KIND_FILTER_LABELS,
+  RUN_FILTER_LABELS,
+  TYPE_LABELS,
+  type KindFilter,
+  type RunFilter,
+} from './catalogue';
 import { ChevronIcon, SearchIcon } from './icons';
 import styles from './ModelsPanels.module.css';
 
@@ -44,9 +50,18 @@ export interface FilterBarProps {
   run?: RunFilter;
   onRun?: (run: RunFilter) => void;
   runCounts?: Record<RunFilter, number>;
+  /**
+   * "Can generate" vs "support files" — the distinction both tabs are now
+   * grouped by, offered as a filter as well so the sections can be narrowed to
+   * one. Passed by both tabs.
+   */
+  kind?: KindFilter;
+  onKind?: (kind: KindFilter) => void;
+  kindCounts?: Record<KindFilter, number>;
 }
 
 const RUN_ORDER: RunFilter[] = ['all', 'runs', 'blocked'];
+const KIND_ORDER: KindFilter[] = ['all', 'generator', 'support'];
 
 export function FilterBar({
   q,
@@ -65,6 +80,9 @@ export function FilterBar({
   run,
   onRun,
   runCounts,
+  kind,
+  onKind,
+  kindCounts,
 }: FilterBarProps) {
   const searchId = useId();
   const familyId = useId();
@@ -109,6 +127,23 @@ export function FilterBar({
           {shown === total ? total : `${shown} / ${total}`}
         </span>
       </div>
+
+      {kind && onKind ? (
+        <div className={styles.runFilter} role="group" aria-label="Filter by what the file does">
+          {KIND_ORDER.map((option) => (
+            <button
+              key={option}
+              type="button"
+              className={`${styles.segment} ${kind === option ? styles.segmentOn : ''}`}
+              aria-pressed={kind === option}
+              onClick={() => onKind(option)}
+            >
+              {KIND_FILTER_LABELS[option]}
+              {kindCounts ? <span className={`mono ${styles.chipCount}`}>{kindCounts[option]}</span> : null}
+            </button>
+          ))}
+        </div>
+      ) : null}
 
       {run && onRun ? (
         <div className={styles.runFilter} role="group" aria-label="Filter by whether it will run">

@@ -37,6 +37,157 @@ export const TYPE_LABELS: Record<ModelType, string> = {
   video: 'Video',
 };
 
+// ------------------------------------------------------- generators vs support
+
+/**
+ * The one distinction this screen is built around.
+ *
+ * A checkpoint is a model you *generate with*: it is what the Create screen's
+ * picker lists. Everything else — a LoRA, a VAE, a ControlNet, an upscaler, a
+ * text encoder — is a file some workflow loads *alongside* a checkpoint. The
+ * owner assigned a workflow to a LoRA, went to Create, and could not find it,
+ * because there was never anywhere for it to go.
+ *
+ * This is the same line the API draws in `runnabilityFor` — everything that is
+ * not a checkpoint comes back with status `support` — so it is derived from
+ * `type` here rather than round-tripped through a verdict that may be absent
+ * (an offline backend returns none, and the grouping must not collapse then).
+ */
+export function generates(type: ModelType): boolean {
+  return type === 'checkpoint';
+}
+
+export type ModelKind = 'generator' | 'support';
+
+export function kindOf(type: ModelType): ModelKind {
+  return generates(type) ? 'generator' : 'support';
+}
+
+/** The two headings, and the sentence under each. */
+export const KIND_HEADINGS: Record<ModelKind, { title: string; blurb: string }> = {
+  generator: {
+    title: 'Models you can generate with',
+    blurb: 'These are what the Create screen lets you pick.',
+  },
+  support: {
+    title: 'Support files',
+    blurb: 'Add-ons a model uses. You cannot generate with one on its own.',
+  },
+};
+
+/**
+ * What a support file is *for*, without the jargon.
+ *
+ * Two sentences, deliberately: what it does to a model, and where in rippel it
+ * gets used. "LoRA" tells somebody who already knows what a LoRA is nothing
+ * they did not know, and tells everybody else nothing at all — so the type word
+ * is never printed on its own next to one of these.
+ */
+export interface SupportRole {
+  /** A plain-words name for the row, e.g. "Extra style". */
+  noun: string;
+  /** What it does. */
+  what: string;
+  /** Where it is used in rippel. */
+  where: string;
+}
+
+export const SUPPORT_ROLES: Record<ModelType, SupportRole> = {
+  checkpoint: {
+    noun: 'Model',
+    what: 'Generates images or video on its own.',
+    where: 'Pick it on the Create screen.',
+  },
+  lora: {
+    noun: 'Extra style',
+    what: 'A style or subject you add on top of a model — it cannot generate by itself.',
+    where: 'Extra styles, on the Create screen.',
+  },
+  vae: {
+    noun: 'Image decoder',
+    what: 'Turns what a model produces into a picture, in place of the decoder built into it.',
+    where: 'Loaded automatically by the workflows that ask for one.',
+  },
+  controlnet: {
+    noun: 'Reference guide',
+    what: 'Steers a model using a reference image — a pose, an outline, a depth map.',
+    where: 'Used by the workflows built around a reference image.',
+  },
+  upscaler: {
+    noun: 'Enlarger',
+    what: 'Enlarges a finished picture. It does not make one.',
+    where: 'Used by the Upscale workflow.',
+  },
+  clip: {
+    noun: 'Prompt reader',
+    what: 'Reads your prompt, for the model families that keep that part in a separate file.',
+    where: 'Loaded automatically alongside those models.',
+  },
+  video: {
+    noun: 'Video part',
+    what: 'A piece a video workflow loads, rather than a model you pick yourself.',
+    where: 'Used by the video workflows.',
+  },
+};
+
+/** One line for a chip or a card: "Extra style · a style you add on top…". */
+export function supportLine(type: ModelType): string {
+  const role = SUPPORT_ROLES[type];
+  return `${role.noun} · ${role.what}`;
+}
+
+/**
+ * The kind filter, offered on both tabs.
+ *
+ * `all` is the default and stays the default: hiding support files by default
+ * would trade one confusion for a worse one — somebody looking for a LoRA
+ * finding an empty screen.
+ */
+export type KindFilter = 'all' | ModelKind;
+
+export const KIND_FILTER_LABELS: Record<KindFilter, string> = {
+  // "All files", not "Everything": the runnability segments sit directly below
+  // with their own "Everything", and two identical words on two rows that mean
+  // different things is worse than no filter at all.
+  all: 'All files',
+  generator: 'Can generate',
+  support: 'Support files',
+};
+
+export function matchesKind(type: ModelType, filter: KindFilter): boolean {
+  return filter === 'all' || kindOf(type) === filter;
+}
+
+/**
+ * How many of each kind, for the segments.
+ *
+ * Taken over the unfiltered-by-kind set, so a segment states how many rows it
+ * would leave rather than how many it is currently leaving.
+ */
+export function kindCounts(types: { type: ModelType }[]): Record<KindFilter, number> {
+  let generator = 0;
+  for (const item of types) if (generates(item.type)) generator += 1;
+  return { all: types.length, generator, support: types.length - generator };
+}
+
+/**
+ * Split anything typed into the two kinds, generators first, dropping an empty
+ * half. The order is the claim: what you can generate with comes first because
+ * that is what most people are here for, and the support half is not hidden
+ * behind a click because sometimes they are here for a LoRA.
+ */
+export function splitByKind<T>(
+  items: T[],
+  typeOf: (item: T) => ModelType,
+): { kind: ModelKind; items: T[] }[] {
+  const generator = items.filter((item) => generates(typeOf(item)));
+  const support = items.filter((item) => !generates(typeOf(item)));
+  return [
+    { kind: 'generator' as const, items: generator },
+    { kind: 'support' as const, items: support },
+  ].filter((section) => section.items.length > 0);
+}
+
 /**
  * Fold a family name to a comparable key.
  *
@@ -76,11 +227,14 @@ export interface InstalledFilters {
   /** A folded family key, or null for all. */
   family: string | null;
   q: string;
+  /** Generators, support files, or both. Absent means both. */
+  kind?: KindFilter;
 }
 
 export function filterInstalled(models: Model[], filters: InstalledFilters): Model[] {
   const q = filters.q.trim().toLowerCase();
   return models.filter((model) => {
+    if (!matchesKind(model.type, filters.kind ?? 'all')) return false;
     if (filters.type && model.type !== filters.type) return false;
     if (filters.family && foldFamily(model.baseModel ?? '') !== filters.family) return false;
     if (
@@ -216,6 +370,8 @@ export interface CatalogueFilters {
   q: string;
   /** "Show me what will actually work" — the query people came here with. */
   run: RunFilter;
+  /** Generators, support files, or both. Absent means both. */
+  kind?: KindFilter;
 }
 
 export const EMPTY_CATALOGUE_FILTERS: CatalogueFilters = {
@@ -223,10 +379,17 @@ export const EMPTY_CATALOGUE_FILTERS: CatalogueFilters = {
   base: null,
   q: '',
   run: 'all',
+  kind: 'all',
 };
 
 export function hasCatalogueFilter(filters: CatalogueFilters): boolean {
-  return Boolean(filters.type || filters.base || filters.q.trim() || filters.run !== 'all');
+  return Boolean(
+    filters.type ||
+      filters.base ||
+      filters.q.trim() ||
+      filters.run !== 'all' ||
+      (filters.kind ?? 'all') !== 'all',
+  );
 }
 
 /**
@@ -242,6 +405,7 @@ export function filterCatalogue(
 ): ModelCatalogEntry[] {
   const q = filters.q.trim().toLowerCase();
   return entries.filter((entry) => {
+    if (!matchesKind(entry.type, filters.kind ?? 'all')) return false;
     if (filters.type && entry.type !== filters.type) return false;
     if (filters.base && entry.base !== filters.base) return false;
     if (!matchesRunFilter(entry.runnability, filters.run)) return false;
