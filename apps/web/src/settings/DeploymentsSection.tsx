@@ -576,6 +576,31 @@ function fileSize(bytes: number): string {
   return bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.round(bytes / 1024)} KB`;
 }
 
+/**
+ * The install command carries the agent token in its query string, and the
+ * agent then checks in to that same address forever. Over a LAN in plaintext
+ * that is how everyone runs this; to a public host it means the token crosses
+ * the internet in clear text, which is worth saying out loud rather than
+ * leaving for someone to notice.
+ */
+function plaintextToPublicHost(url: string): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return false;
+  }
+  if (parsed.protocol !== 'http:') return false;
+  const host = parsed.hostname.replace(/^\[|\]$/g, '').toLowerCase();
+  if (host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local')) return false;
+  if (host === '::1' || host.startsWith('fc') || host.startsWith('fd')) return false;
+  if (/^127\./.test(host) || /^10\./.test(host) || /^192\.168\./.test(host)) return false;
+  if (/^172\.(1[6-9]|2\d|3[01])\./.test(host)) return false;
+  if (/^169\.254\./.test(host)) return false;
+  if (!host.includes('.') && !host.includes(':')) return false;
+  return true;
+}
+
 function InstallInstructionsPanel({ api, deployment }: { api: DeploymentsApi; deployment: Deployment }) {
   const [data, setData] = useState<InstallInstructions | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
@@ -638,6 +663,21 @@ function InstallInstructionsPanel({ api, deployment }: { api: DeploymentsApi; de
       </p>
 
       <CopyField label="Install command" value={data.commands[platform === 'darwin' ? 'darwin' : platform === 'win32' ? 'win32' : 'linux']} />
+
+      <p className={shared.blurb}>
+        The command points that machine at <code className="mono">{data.serverUrl}</code> — the
+        address you are reaching rippel on right now. The agent checks in there from then on, so it
+        has to be an address <strong>{deployment.name}</strong> can reach too. If it cannot, set
+        <code className="mono"> AGENT_SERVER_URL</code> on the rippel server to the address it
+        should use and copy the command again.
+      </p>
+      {plaintextToPublicHost(data.serverUrl) ? (
+        <p className={styles.warn}>
+          That address is plain <code className="mono">http</code> on a public host, and this
+          command carries the agent token in its URL. Anything on the path between the two machines
+          can read it. Reach rippel over https before running this, or install over SSH instead.
+        </p>
+      ) : null}
 
       <details className={styles.details}>
         <summary>Set it up by hand instead</summary>

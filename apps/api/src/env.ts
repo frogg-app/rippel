@@ -126,15 +126,19 @@ export const env = {
 
   deploy: {
     /**
-     * The address a remote agent should check in to.
+     * Force the address a remote agent checks in to, instead of deriving it.
      *
-     * `PUBLIC_URL` is where a *browser* reaches rippel, which behind a reverse
-     * proxy is often a name only the browser's network resolves. An agent on
-     * the GPU box needs the address *it* can reach, and on a home LAN those are
-     * routinely different. So this is its own setting, falling back to
-     * PUBLIC_URL because on a simple install they are the same.
+     * Empty by default, and empty is the right answer almost always: the
+     * install command is built from the origin the request arrived on, so the
+     * operator looking at rippel on the LAN gets the LAN address and the one
+     * looking at it through a public name gets that name. A single static
+     * value cannot be right for both, and being wrong bakes an unreachable
+     * address into an agent's config.
+     *
+     * Set this only when agents genuinely must use an address no browser does
+     * — an internal name behind the same proxy, say. See `deploy/origin.ts`.
      */
-    serverUrl: optional('AGENT_SERVER_URL', optional('PUBLIC_URL', 'http://localhost:3000')),
+    serverUrlOverride: optional('AGENT_SERVER_URL', ''),
     /** GitHub repo the agent's releases are published from, as owner/name. */
     releaseRepo: optional('AGENT_RELEASE_REPO', 'frogg-app/rippel'),
     /** Default port a newly installed agent listens on. */

@@ -204,6 +204,47 @@ describe('DeploymentsSection', () => {
     expect(release).toHaveAttribute('href', 'https://example.test/win.zip');
   });
 
+  /**
+   * The command bakes in an address the agent then uses forever, and it is now
+   * derived from how rippel was opened rather than configured once. So the
+   * panel has to say which address that is before anyone runs it — and say
+   * something louder when the token would cross the internet in the clear.
+   */
+  it('says which address the agent will check in to, and warns about plaintext to a public host', async () => {
+    const { api } = fakeApi([]);
+    const { unmount } = render(<DeploymentsSection api={api} />);
+    await userEvent.click(await screen.findByRole('button', { name: /Install by hand/ }));
+    await userEvent.type(screen.getByPlaceholderText('studio-4090'), 'garage-box');
+    await userEvent.type(screen.getByPlaceholderText('192.168.1.50'), '10.0.0.7');
+    await userEvent.click(screen.getByRole('button', { name: /Register and show the command/ }));
+
+    const line = await screen.findByText(/the address you are reaching rippel on right now/);
+    expect(line).toHaveTextContent('http://192.168.1.9:4000');
+    // A LAN address in plaintext is how everyone runs this; no warning.
+    expect(screen.queryByText(/carries the agent token in its URL/)).not.toBeInTheDocument();
+    unmount();
+
+    const publicUrl = 'http://dev.rippel.app';
+    const { api: api2 } = fakeApi([], {
+      instructions: vi.fn(async () => ({
+        ...instructions,
+        serverUrl: publicUrl,
+        commands: {
+          linux: `curl -fsSL '${publicUrl}/api/deployments/d1/install.sh?token=tok-secret' | bash`,
+          darwin: `curl -fsSL '${publicUrl}/api/deployments/d1/install.sh?token=tok-secret' | bash`,
+          win32: `powershell -Command "irm '${publicUrl}/api/deployments/d1/install.ps1?token=tok-secret' | iex"`,
+        },
+      })),
+    });
+    render(<DeploymentsSection api={api2} />);
+    await userEvent.click(await screen.findByRole('button', { name: /Install by hand/ }));
+    await userEvent.type(screen.getByPlaceholderText('studio-4090'), 'garage-box');
+    await userEvent.type(screen.getByPlaceholderText('192.168.1.50'), '10.0.0.7');
+    await userEvent.click(screen.getByRole('button', { name: /Register and show the command/ }));
+
+    expect(await screen.findByText(/carries the agent token in its URL/)).toBeInTheDocument();
+  });
+
   it('runs a managed install and streams the log', async () => {
     const run = {
       id: 'r1',

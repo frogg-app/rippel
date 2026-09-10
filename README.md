@@ -63,9 +63,12 @@ Once ComfyUI is installed there, **Add as backend** registers it — the address
 built from what the agent reported rather than typed, so there is no fourth
 place to make a typo.
 
-Set `AGENT_SERVER_URL` to the address the *agent* can reach rippel on. That is
-not always `PUBLIC_URL`: behind a reverse proxy, the name a browser resolves and
-the one a GPU box on the LAN resolves are routinely different.
+The install command carries the address the agent will check in to, and that
+address is the one you are reaching rippel on when you copy the command — open
+rippel on the LAN and it is the LAN address, open it at a public name and it is
+that name. The panel says which address it used before you run anything. Set
+`AGENT_SERVER_URL` only if agents must use some third address that no browser
+does.
 
 See `apps/agent/README.md` for what the agent does to a machine and its API.
 

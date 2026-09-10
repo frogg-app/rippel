@@ -16,6 +16,8 @@ import type { AgentTask, ComfyState } from '@comfy/shared';
 import { makeDeploymentRoutes, normaliseHost, type DeployDb } from './routes.js';
 import { bashInstaller, oneLiner, powershellInstaller } from './scripts.js';
 import { clearReleaseCache, latestAgentRelease } from './releases.js';
+import { agentServerUrl, isPlaintextToPublicHost, requestOrigin } from './origin.js';
+import { env } from '../env.js';
 import type { AgentClient } from './agent-client.js';
 import { AgentError } from './agent-client.js';
 
@@ -191,7 +193,9 @@ async function server(
     fetchImpl?: typeof fetch;
   } = {},
 ) {
-  const app = Fastify();
+  // trustProxy matches index.ts: it is what folds X-Forwarded-* into req.host
+  // and req.protocol, which is where the install address now comes from.
+  const app = Fastify({ trustProxy: true });
   app.decorateRequest('user', null);
   app.addHook('onRequest', async (req) => {
     (req as FastifyRequest & { user: unknown }).user = user;
@@ -320,6 +324,90 @@ describe('who may call what', () => {
     const ps1 = await app.inject({ method: 'GET', url: `/deployments/${D1}/install.ps1?token=tok-secret` });
     expect(ps1.statusCode).toBe(200);
     expect(ps1.body).toContain('Register-ScheduledTask');
+  });
+});
+
+/**
+ * A single configured address cannot be right for both a browser on the LAN
+ * and a GPU box on the internet. Someone reaching rippel at dev.rippel.app was
+ * handed an install command pointing at 192.168.1.9, which nothing outside the
+ * house can reach; these are the tests that stop that coming back.
+ */
+describe('the address baked into an install', () => {
+  it('uses the host the request actually arrived on', async () => {
+    const app = await server(ADMIN, { rows: [row()] });
+    const res = await app.inject({
+      method: 'GET',
+      url: `/deployments/${D1}/install`,
+      headers: { host: 'dev.rippel.app', 'x-forwarded-proto': 'https' },
+    });
+    const body = res.json() as { serverUrl: string; commands: Record<string, string> };
+    expect(body.serverUrl).toBe('https://dev.rippel.app');
+    expect(body.commands.linux).toContain('https://dev.rippel.app/api/deployments/');
+    expect(body.commands.win32).toContain('https://dev.rippel.app/api/deployments/');
+    expect(body.commands.linux).not.toContain('192.168.1.9');
+  });
+
+  it('uses the LAN address when that is how rippel was opened', async () => {
+    const app = await server(ADMIN, { rows: [row()] });
+    const res = await app.inject({
+      method: 'GET',
+      url: `/deployments/${D1}/install`,
+      headers: { host: '192.168.1.9:4000' },
+    });
+    const body = res.json() as { serverUrl: string; commands: Record<string, string> };
+    expect(body.serverUrl).toBe('http://192.168.1.9:4000');
+    expect(body.commands.darwin).toContain("http://192.168.1.9:4000/api/deployments/");
+  });
+
+  it('writes that same address into the generated script', async () => {
+    const app = await server(null, { rows: [row()] });
+    const sh = await app.inject({
+      method: 'GET',
+      url: `/deployments/${D1}/install.sh?token=tok-secret`,
+      headers: { host: 'dev.rippel.app', 'x-forwarded-proto': 'https' },
+    });
+    expect(sh.body).toContain("SERVER='https://dev.rippel.app'");
+
+    const ps1 = await app.inject({
+      method: 'GET',
+      url: `/deployments/${D1}/install.ps1?token=tok-secret`,
+      headers: { host: '192.168.1.9:4000' },
+    });
+    expect(ps1.body).toContain("$Server     = 'http://192.168.1.9:4000'");
+  });
+
+  it('honours a forwarded host, since that is the name the browser used', () => {
+    expect(requestOrigin({ headers: { 'x-forwarded-host': 'dev.rippel.app', 'x-forwarded-proto': 'https' } })).toBe(
+      'https://dev.rippel.app',
+    );
+    // A proxy chain sends a list; the client-facing entry is the first.
+    expect(requestOrigin({ headers: { 'x-forwarded-host': 'dev.rippel.app, inner' } })).toBe('http://dev.rippel.app');
+  });
+
+  it('refuses a host that is not a host, rather than building a URL from it', () => {
+    expect(requestOrigin({ headers: { host: 'evil.example/../x' } })).toBeNull();
+    expect(requestOrigin({ headers: { host: 'a b' } })).toBeNull();
+    expect(requestOrigin({ headers: {} })).toBeNull();
+  });
+
+  it('lets AGENT_SERVER_URL override it, for agents that need an internal address', () => {
+    const deploy = env.deploy as { serverUrlOverride: string };
+    const before = deploy.serverUrlOverride;
+    deploy.serverUrlOverride = 'http://inside.lan:4000/';
+    try {
+      expect(agentServerUrl({ host: 'dev.rippel.app', protocol: 'https' })).toBe('http://inside.lan:4000');
+    } finally {
+      deploy.serverUrlOverride = before;
+    }
+  });
+
+  it('warns about plaintext only when the host is actually public', () => {
+    expect(isPlaintextToPublicHost('http://dev.rippel.app')).toBe(true);
+    expect(isPlaintextToPublicHost('https://dev.rippel.app')).toBe(false);
+    for (const lan of ['http://192.168.1.9:4000', 'http://10.0.0.4', 'http://127.0.0.1:3000', 'http://localhost:5173', 'http://studio:4000', 'http://172.16.4.4']) {
+      expect(isPlaintextToPublicHost(lan)).toBe(false);
+    }
   });
 });
 

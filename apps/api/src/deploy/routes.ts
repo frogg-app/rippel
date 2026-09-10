@@ -31,6 +31,7 @@ import { query as defaultQuery, queryOne as defaultQueryOne } from '../db.js';
 import { env } from '../env.js';
 import { pollBackendNow } from '../lib/backend-poller.js';
 import { AgentError, agentClient as defaultAgentClient, type AgentClient, type AgentTarget } from './agent-client.js';
+import { agentServerUrl, type OriginRequest } from './origin.js';
 import { latestAgentRelease } from './releases.js';
 import { installerFor, oneLiner, type ScriptParams } from './scripts.js';
 import { agentFile, agentFiles, helperFiles } from './sources.js';
@@ -174,9 +175,16 @@ export function makeDeploymentRoutes(deps: DeployDeps = {}) {
     throw cause;
   }
 
-  function scriptParams(row: DeploymentRow, comfyPort = 8188): ScriptParams {
+  /**
+   * The install parameters, for this request.
+   *
+   * The request matters because the address the agent will check in to is
+   * derived from it — see `origin.ts`. Every caller therefore has to pass the
+   * request it is serving rather than reading a global.
+   */
+  function scriptParams(req: OriginRequest, row: DeploymentRow, comfyPort = 8188): ScriptParams {
     return {
-      serverUrl: env.deploy.serverUrl.replace(/\/+$/, ''),
+      serverUrl: agentServerUrl(req),
       deploymentId: row.id,
       token: row.token,
       agentPort: row.agent_port,
@@ -303,7 +311,7 @@ export function makeDeploymentRoutes(deps: DeployDeps = {}) {
               .type('text/plain; charset=utf-8')
               .send('# That token is not this deployment. Copy the command from rippel again.\n');
           }
-          const { body, contentType } = installerFor(platform as AgentPlatform, scriptParams(row));
+          const { body, contentType } = installerFor(platform as AgentPlatform, scriptParams(req, row));
           return reply.type(contentType).send(body);
         },
       );
@@ -391,7 +399,7 @@ export function makeDeploymentRoutes(deps: DeployDeps = {}) {
       async (req, reply) => {
         const row = await loadOr404(req, reply);
         if (!row) return;
-        const params = scriptParams(row);
+        const params = scriptParams(req, row);
         return {
           serverUrl: params.serverUrl,
           token: row.token,
@@ -672,7 +680,7 @@ export function makeDeploymentRoutes(deps: DeployDeps = {}) {
         const platform = (parsed.data.platform ?? 'linux') as AgentPlatform;
         const { body: script } = installerFor(
           platform,
-          scriptParams(row!, parsed.data.comfyPort ?? 8188),
+          scriptParams(req, row!, parsed.data.comfyPort ?? 8188),
         );
         const input: SshInstallInput = { ...parsed.data, host };
         const run = startSshInstall({
