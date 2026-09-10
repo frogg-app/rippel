@@ -143,6 +143,10 @@
 }
 
 .backendSelect {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
   background: none;
   border: none;
   font-size: var(--text-sm);
@@ -151,13 +155,25 @@
   max-width: 200px;
 }
 
+/* As on the family pill: the ring belongs on the pill, not around the text. */
 .backendSelect:focus-visible {
+  outline: none;
   box-shadow: none;
 }
 
-.backendSelect option {
-  background: var(--panel);
-  color: var(--text-2);
+.backendPicker:has(.backendSelect:focus-visible) {
+  border-color: var(--focus-line);
+  box-shadow: var(--focus-ring);
+}
+
+.backendChevron {
+  flex-shrink: 0;
+  color: var(--text-4);
+  transition: transform var(--dur-slow) var(--ease-spring);
+}
+
+.backendSelect[aria-expanded='true'] .backendChevron {
+  transform: rotate(180deg);
 }
 
 /* -------------------------------------------------- body */

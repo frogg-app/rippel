@@ -81,7 +81,7 @@
   align-items: center;
   gap: 7px;
   height: 40px;
-  padding: 0 30px 0 14px;
+  padding: 0 14px;
   border-radius: 999px;
   border: 1px solid var(--line-strong);
   background: var(--surface-2);
@@ -100,6 +100,10 @@
 }
 
 .familySelect {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 0;
   background: none;
   border: none;
   outline: none;
@@ -110,24 +114,26 @@
   appearance: none;
 }
 
+/* The trigger fills the pill, so the focus ring goes on the pill. Left on the
+   button it draws a small box around the value text, inside the border — which
+   is what the generic :focus-visible outline does to any button. */
 .familySelect:focus-visible {
+  outline: none;
   box-shadow: none;
 }
 
-.familySelect option {
-  background: var(--panel);
-  color: var(--text-2);
+.familyPicker:has(.familySelect:focus-visible) {
+  border-color: var(--focus-line);
+  box-shadow: var(--focus-ring);
 }
 
 .familyChevron {
-  position: absolute;
-  right: 12px;
+  flex-shrink: 0;
   color: var(--text-4);
-  pointer-events: none;
   transition: transform var(--dur-slow) var(--ease-spring);
 }
 
-.familyPicker:focus-within .familyChevron {
+.familySelect[aria-expanded='true'] .familyChevron {
   transform: rotate(180deg);
 }
 

@@ -828,4 +828,55 @@ describe('ModelsPage', () => {
       expect(within(sheet).getByText('T5 text encoder, LTX-Video VAE')).toBeInTheDocument();
     });
   });
+
+  describe('the pickers that used to be native selects', () => {
+    it('switches backend from the header picker, by keyboard alone', async () => {
+      const api = makeStubApi({
+        backends: [
+          makeBackend(),
+          makeBackend({ id: 'backend-2', name: 'studio-4090', status: 'offline' }),
+        ],
+      });
+      renderPage(api);
+      await ready();
+
+      const picker = screen.getByRole('combobox', { name: /installing to|highlighting|files on/i });
+      expect(picker).toHaveTextContent('desktop-6900xt');
+
+      picker.focus();
+      const user = userEvent.setup();
+      await user.keyboard('{Enter}');
+      // The offline one is still offered, and still says so.
+      expect(screen.getByRole('option', { name: /studio-4090 \(offline\)/ })).toBeInTheDocument();
+
+      await user.keyboard('{ArrowDown}{Enter}');
+      expect(picker).toHaveTextContent('studio-4090');
+      expect(picker).toHaveFocus();
+    });
+
+    it('filters the catalogue by family, and gives "All" back again', async () => {
+      const api = makeStubApi();
+      renderPage(api);
+      await ready();
+      const user = await openTab(/Discover/);
+
+      const family = screen.getByRole('combobox', { name: /base/i });
+      expect(family).toHaveTextContent('All');
+
+      await user.click(family);
+      const options = screen.getAllByRole('option');
+      // "All" is a real option, not a blank first row.
+      expect(options[0]).toHaveTextContent('All');
+      expect(options.length).toBeGreaterThan(1);
+
+      await user.click(options[1]!);
+      expect(family).not.toHaveTextContent('All');
+
+      // And back: the empty value still reaches the parent as "no filter".
+      await user.click(family);
+      await user.click(screen.getByRole('option', { name: 'All' }));
+      expect(family).toHaveTextContent('All');
+    });
+  });
+
 });

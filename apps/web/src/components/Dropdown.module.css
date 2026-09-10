@@ -41,10 +41,8 @@
   overflow-y: auto;
   overscroll-behavior: contain;
   border-radius: var(--dropdown-radius);
-  border: 1px solid var(--glass-line);
+  border: 1px solid var(--line-strong);
   background: var(--dropdown-bg);
-  backdrop-filter: var(--glass-blur);
-  -webkit-backdrop-filter: var(--glass-blur);
   box-shadow: var(--shadow-pop);
   animation: dropdownIn var(--dur-fast) var(--ease-out);
 }

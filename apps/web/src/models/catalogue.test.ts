@@ -12,17 +12,18 @@ import {
   catalogueBases,
   catalogueTypes,
   elapsed,
+  familyLabel,
   filterCatalogue,
   filterInstalled,
   foldFamily,
+  formatBytes,
   formatCount,
   groupInstalled,
   latestByFilename,
   matchesRunFilter,
-  runs,
-  formatBytes,
   percentComplete,
   remaining,
+  runs,
   transferRate,
 } from './catalogue';
 import { makeEntry, makeInstall, makeModel, makeRunnability } from './testing';
@@ -70,6 +71,38 @@ describe('filterInstalled', () => {
   });
 });
 
+describe('familyLabel', () => {
+  it('spells the families we know the way they are written', () => {
+    // The reported spellings — "Sd1.5", "Ltx Video", "Sdxl" — came from a
+    // plain title-case, which is the wrong tool for acronyms and versions.
+    expect(familyLabel('sd1.5')).toBe('SD 1.5');
+    expect(familyLabel('ltx-video')).toBe('LTX-Video');
+    expect(familyLabel('sdxl')).toBe('SDXL');
+    expect(familyLabel('svd')).toBe('SVD');
+    expect(familyLabel('hunyuan-video')).toBe('Hunyuan Video');
+    expect(familyLabel('hunyuan-dit')).toBe('Hunyuan DiT');
+  });
+
+  it('reaches one answer whatever spelling it is handed', () => {
+    // `/api/models` folds, the catalogue does not, and `WorkflowSheet` passes
+    // already-folded keys. All three must land on the same label.
+    for (const spelling of ['ltx-video', 'LTXV', 'ltxvideo', 'LTX Video']) {
+      expect(familyLabel(spelling)).toBe('LTX-Video');
+    }
+    expect(familyLabel(foldFamily('SD 1.5'))).toBe('SD 1.5');
+  });
+
+  it('still improves on title-case for a family it has never heard of', () => {
+    expect(familyLabel('some-new-vae')).toBe('Some New VAE');
+    expect(familyLabel('acme3.2')).toBe('Acme3.2');
+    expect(familyLabel('unclassified')).toBe('Unclassified');
+  });
+
+  it('does not invent a separator that the name already has', () => {
+    expect(familyLabel('flux.1')).toBe('FLUX.1');
+  });
+});
+
 describe('groupInstalled', () => {
   it('orders by type, then family, with the unclassified last', () => {
     const groups = groupInstalled([
@@ -77,10 +110,12 @@ describe('groupInstalled', () => {
       makeModel({ id: 'b', type: 'checkpoint', baseModel: null }),
       makeModel({ id: 'c', type: 'checkpoint', baseModel: 'flux.1' }),
     ]);
+    // Families are spelled the way they are written, not title-cased: see
+    // `familyLabel`. Ordering is still alphabetical on those labels.
     expect(groups.map((group) => `${group.type}/${group.family}`)).toEqual([
-      'checkpoint/Flux.1',
+      'checkpoint/FLUX.1',
       'checkpoint/Unclassified',
-      'lora/Sdxl',
+      'lora/SDXL',
     ]);
   });
 });

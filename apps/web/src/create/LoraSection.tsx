@@ -33,7 +33,7 @@ import { Hint, Slider } from './Controls';
 import { CloseIcon } from './icons';
 import { loraReading } from './form';
 import { familyLabel } from '../models/catalogue';
-import { tileArt } from './ModelPicker';
+import { familyInitials, familyWash } from './modelArt';
 import { type LoraEntry, matchesQuery, partitionLoras } from './loras';
 import styles from './loraSection.module.css';
 
@@ -225,17 +225,23 @@ function ChosenLora({
   );
 }
 
-/** The preview picture, or the family wash the model tiles fall back to. */
+/**
+ * The preview picture where there is one, and a quiet family mark where there
+ * is not — which, on a machine whose LoRAs were all discovered locally, is
+ * every row. See `modelArt.ts` for why this is not the tile's wash.
+ */
 function Thumb({ model, name }: { model: Model | null; name: string }) {
   return (
     <span
       className={styles.thumb}
-      style={model ? tileArt(model) : undefined}
+      style={model ? familyWash(model) : undefined}
       aria-hidden
       title={name}
     >
       {model?.previewUrl ? (
         <img className={styles.thumbArt} src={model.previewUrl} alt="" loading="lazy" />
+      ) : model ? (
+        <span className={styles.thumbInitials}>{familyInitials(model)}</span>
       ) : null}
     </span>
   );
@@ -381,12 +387,11 @@ function LoraPickerPopup({
 
       {/* Said once, at the foot of the list, rather than on every row: when the
           checkpoint itself has no recorded family there is nothing to compare
-          against, and that is a fact about the model, not about these files. */}
+          against, and that is a fact about the model, not about these files.
+          Kept short — by this point the interface has already said "family
+          unknown" on the model tile and in the section below. */}
       {checkpointFamily === null && rows.length > 0 ? (
-        <p className={styles.popupNote}>
-          Nothing recorded which family this model belongs to, so none of these were checked for
-          fit.
-        </p>
+        <p className={styles.popupFoot}>This model&rsquo;s family isn&rsquo;t recorded — none were checked for fit.</p>
       ) : null}
 
       {rows.length === 0 ? (
@@ -398,7 +403,7 @@ function LoraPickerPopup({
       {/* The honest count, as the model grid does it: hiding a file the user
           installed is fine, not saying so is not. */}
       {partition.hidden.length > 0 ? (
-        <p className={styles.popupNote}>
+        <p className={styles.popupFoot}>
           {partition.hidden.length} trained for another model.{' '}
           <button
             type="button"

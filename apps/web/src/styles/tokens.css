@@ -280,3 +280,30 @@
   --ambient: radial-gradient(60% 50% at 18% 0%, rgba(49, 116, 143, 0.16), transparent 70%),
     radial-gradient(45% 45% at 100% 100%, rgba(156, 207, 216, 0.07), transparent 70%);
 }
+
+/* -------------------------------------------------- dropdown
+   The listbox that replaces the OS select popup (components/Dropdown.tsx).
+   It is one of the things that float over the page, so it borrows the glass
+   panel and the pop shadow rather than inventing an elevation; only its own
+   geometry and the keyboard cursor's tint are new here.
+
+   The menu is portalled to <body>, above the modal ground but below nothing
+   else the app draws — hence a z-index in this file rather than a component's. */
+:root {
+  /* Opaque, not glass. A menu is a *layer*, and the app's other raised things
+     — the library detail drawer, the lightbox — are opaque for the same
+     reason: at 88% over a dark panel the content behind stays legible through
+     it, and a panel you can read through reads as broken layout rather than as
+     something in front. A step above --panel so the edge is visible even where
+     the shadow falls on an equally dark ground. */
+  --dropdown-bg: #171e23;
+  --dropdown-radius: var(--radius-md);
+  --dropdown-pad: 5px;
+  --dropdown-option-height: 30px;
+  --dropdown-option-pad: 9px;
+  --dropdown-option-radius: var(--radius-sm);
+  /* The keyboard cursor. A step above --surface-hover so it reads as a
+     position, not a hover, on a ground that is already translucent. */
+  --dropdown-active: var(--accent-tint);
+  --dropdown-z: 1200;
+}

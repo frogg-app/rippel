@@ -31,6 +31,7 @@ import type { CreateMode } from './mode';
 import { modeOfKind } from './form';
 import type { ReadinessMap } from './useReadiness';
 import { type ModelEntry, type Partition, partitionModels } from './visibility';
+import { modelWash } from './modelArt';
 import styles from './modelPicker.module.css';
 
 export function ModelPicker({
@@ -199,7 +200,7 @@ export function ModelPicker({
                 ]
                   .filter(Boolean)
                   .join(' ')}
-                style={{ ...tileArt(model), '--i': index } as React.CSSProperties}
+                style={{ ...modelWash(model), '--i': index } as React.CSSProperties}
                 onClick={() => {
                   if (supported) {
                     setExplainedId(null);
@@ -450,24 +451,4 @@ function listNames(models: Model[]): string {
   const rest = models.length - names.length;
   if (rest > 0) return `${names.join(', ')} and ${rest} more`;
   return names.length === 2 ? `${names[0]} and ${names[1]}` : (names[0] ?? '');
-}
-
-/**
- * A deterministic wash for a model with no preview image.
- *
- * Exported because the extra-styles picker needs the same fallback: one path
- * for "this file has no picture", not two that disagree.
- *
- * Every discovered local model has `previewUrl: null` — nothing has downloaded
- * a Civitai card for it — so this is the *normal* case, not a fallback. The hue
- * is derived from the id so a given checkpoint keeps its colour between
- * sessions and becomes recognisable by it.
- */
-export function tileArt(model: Model): React.CSSProperties {
-  let hash = 0;
-  for (const char of model.id) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
-  const hue = hash % 360;
-  return {
-    background: `radial-gradient(120% 100% at 30% 20%, hsl(${hue} 85% 62%) 0%, hsl(${(hue + 40) % 360} 55% 32%) 55%, hsl(${(hue + 220) % 360} 45% 9%) 100%)`,
-  };
 }

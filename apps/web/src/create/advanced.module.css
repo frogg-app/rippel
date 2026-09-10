@@ -319,16 +319,14 @@
 .add {
   appearance: none;
   -webkit-appearance: none;
+  display: flex;
+  align-items: center;
+  padding: 0;
   background: transparent;
   border: none;
   font-size: 11.5px;
   color: var(--text-3);
   max-width: 130px;
-}
-
-.add option {
-  background: var(--panel);
-  color: var(--text);
 }
 
 .add:disabled {

@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest';
 import type { Model } from '@comfy/shared';
 import type { CapabilityMap, ModelReadiness } from '../lib/api-jobs';
 import type { ReadinessMap } from './useReadiness';
-import { classify } from './visibility';
+import { classify, partitionModels } from './visibility';
 
 function model(id: string, baseModel: string | null): Model {
   return {
@@ -40,6 +40,50 @@ function map(
     );
   return { here: build(here), other: build(other), loading: false };
 }
+
+/** The same, with the first probe still outstanding. */
+function pendingMap(here: Record<string, ModelReadiness['state']> = {}): ReadinessMap {
+  return { ...map(here), loading: true };
+}
+
+describe('while the probe is still in flight', () => {
+  it('draws no verdict at all rather than the fallback map\'s guess', () => {
+    // The guessed map knows only SDXL, so consulting it here would badge this
+    // model "No template" and then take it back — the load flash.
+    const entry = classify(model('a', 'hunyuan-video'), 'txt2img', guessed, pendingMap());
+    expect(entry.pending).toBe(true);
+    expect(entry.hidden).toBeNull();
+    expect(entry.blocked).toBeNull();
+    expect(entry.runnable).toBe(false);
+  });
+
+  it('hides nothing and counts nothing hidden', () => {
+    const models = [model('a', 'sdxl'), model('b', 'hunyuan-video'), model('c', null)];
+    const partition = partitionModels(models, 'txt2img', guessed, pendingMap());
+    expect(partition.listed).toHaveLength(3);
+    expect(partition.hidden).toHaveLength(0);
+    expect(partition.hiddenNoTemplate).toHaveLength(0);
+    expect(partition.pending).toBe(true);
+  });
+
+  it('still uses an answer that has already arrived for one model', () => {
+    // A cached answer is a real answer, whatever the rest of the pass is doing.
+    const entry = classify(model('a', 'sdxl'), 'txt2img', guessed, pendingMap({ a: 'ready' }));
+    expect(entry.pending).toBe(false);
+    expect(entry.runnable).toBe(true);
+  });
+
+  it('goes back to deciding once the answers land', () => {
+    const partition = partitionModels(
+      [model('a', 'sdxl'), model('b', 'hunyuan-video')],
+      'txt2img',
+      live,
+      map({ a: 'ready', b: 'no-template' }),
+    );
+    expect(partition.pending).toBe(false);
+    expect(partition.hiddenNoTemplate.map((entry) => entry.model.id)).toEqual(['b']);
+  });
+});
 
 describe('classify', () => {
   it('hides a family with no workflow anywhere', () => {

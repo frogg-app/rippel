@@ -212,11 +212,80 @@ export function basename(path: string): string {
   return cut === -1 ? path : path.slice(cut + 1);
 }
 
-/** Title-cased family, for a chip label built from a folded API family. */
+/**
+ * How a family is spelled to a person.
+ *
+ * A plain title-case gets these wrong in a way that looks careless — "Sd1.5",
+ * "Ltx Video", "Sdxl" — because family names are mostly acronyms and version
+ * numbers, which title-case is exactly the wrong tool for. The API has the
+ * same problem with *file* names and solves it with a cased-token map in
+ * `prettyModelName`; this is the same idea, for families.
+ *
+ * Two layers, in order:
+ *
+ *  1. A canonical name for each family we actually know, keyed by `foldFamily`
+ *     so every spelling of one — "ltx-video", "LTXV", "ltxvideo" — arrives at
+ *     the same answer. These are proper nouns: no rule derives "SD 1.5" from
+ *     "sd1.5", there is only a decision about how it is written.
+ *  2. For anything else, per-token casing plus the acronym-and-version split,
+ *     so a family nobody has named here still reads better than title-case.
+ */
+const FAMILY_NAMES: Record<string, string> = {
+  sdxl: 'SDXL',
+  sd15: 'SD 1.5',
+  sd14: 'SD 1.4',
+  sd21: 'SD 2.1',
+  sd3: 'SD 3',
+  sd35: 'SD 3.5',
+  ltxvideo: 'LTX-Video',
+  ltxv: 'LTX-Video',
+  hunyuanvideo: 'Hunyuan Video',
+  hunyuandit: 'Hunyuan DiT',
+  svd: 'SVD',
+  flux: 'FLUX',
+  flux1d: 'FLUX.1 D',
+  flux1s: 'FLUX.1 S',
+  pony: 'Pony',
+  illustrious: 'Illustrious',
+  stablecascade: 'Stable Cascade',
+  cascade: 'Stable Cascade',
+  wan: 'Wan',
+  auraflow: 'AuraFlow',
+  kolors: 'Kolors',
+  pixart: 'PixArt',
+};
+
+/** Tokens that are acronyms rather than words. Mirrors the API's `CASED_TOKENS`. */
+const CASED_TOKENS: Record<string, string> = {
+  sd: 'SD', sdxl: 'SDXL', xl: 'XL', vae: 'VAE', clip: 'CLIP', unet: 'UNet',
+  lora: 'LoRA', loras: 'LoRAs', ltx: 'LTX', ltxv: 'LTXV', t5: 'T5',
+  fp8: 'FP8', fp16: 'FP16', fp32: 'FP32', bf16: 'BF16', gguf: 'GGUF',
+  esrgan: 'ESRGAN', ip: 'IP', ai: 'AI', nsfw: 'NSFW', hd: 'HD', '3d': '3D',
+  controlnet: 'ControlNet', comfyui: 'ComfyUI', flux: 'FLUX', dit: 'DiT',
+  svd: 'SVD', xt: 'XT',
+};
+
 export function familyLabel(family: string): string {
+  const canonical = FAMILY_NAMES[foldFamily(family)];
+  if (canonical) return canonical;
+
   return family
-    .split('-')
-    .map((part) => (/^[a-z]/.test(part) ? part[0]!.toUpperCase() + part.slice(1) : part))
+    .split(/[-\s_]+/)
+    .filter(Boolean)
+    .map((part) => {
+      const known = CASED_TOKENS[part.toLowerCase()];
+      if (known) return known;
+      // "sd15", "ltx09" — a version glued to an acronym, split the way the
+      // API's own `prettyModelName` splits it.
+      const versioned = /^([a-z]+)([\d.].*)$/i.exec(part);
+      if (versioned) {
+        const head = CASED_TOKENS[versioned[1]!.toLowerCase()];
+        // "sd15" wants the space ("SD 1.5"); "flux.1" already has its
+        // separator and must not gain another ("FLUX .1").
+        if (head) return versioned[2]!.startsWith('.') ? head + versioned[2] : `${head} ${versioned[2]}`;
+      }
+      return /^[a-z]/.test(part) ? part[0]!.toUpperCase() + part.slice(1) : part;
+    })
     .join(' ');
 }
 

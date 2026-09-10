@@ -39,6 +39,8 @@ export interface AnchorOptions {
 }
 
 const VIEWPORT_MARGIN = 8;
+/** How much roomier the far side must be before the panel flips to it. */
+const FLIP_MARGIN = 48;
 
 export function useAnchoredPosition(
   anchorRef: RefObject<HTMLElement | null>,
@@ -70,9 +72,16 @@ export function useAnchoredPosition(
 
     const below = viewportH - rect.bottom - VIEWPORT_MARGIN - config.offset;
     const above = rect.top - VIEWPORT_MARGIN - config.offset;
-    // Flip only when below cannot hold a usable panel *and* above is roomier.
-    // Flipping for a few pixels' gain is more jarring than a scrollbar.
-    const up = below < config.minHeight && above > below;
+    // Which side to open on.
+    //
+    // Below, unless below cannot show the whole panel and above can show
+    // meaningfully more of it. The first version only flipped when below was
+    // unusable, which left a trigger low in a long panel opening downward into
+    // a 240px slot — scrolling a four-row list — while 600px sat unused
+    // overhead. The 48px margin is hysteresis: flipping for a few pixels'
+    // gain is more jarring than a scrollbar.
+    const cramped = below < config.maxHeightCap;
+    const up = (below < config.minHeight || cramped) && above > below + FLIP_MARGIN;
     const space = Math.max(up ? above : below, config.minHeight);
     const maxHeight = Math.min(config.maxHeightCap, space);
 

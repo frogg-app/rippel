@@ -282,6 +282,44 @@ describe('DeploymentsSection', () => {
     expect(await screen.findByText(/rippel: done\./, undefined, { timeout: 5000 })).toBeInTheDocument();
   });
 
+  it('sends the operating system chosen in the picker', async () => {
+    // The platform control is the app's own listbox now, not a native select.
+    // What must survive the swap is the value that reaches the API.
+    const run = {
+      id: 'r1',
+      deploymentId: 'd-new',
+      host: '10.0.0.7',
+      status: 'done' as const,
+      startedAt: '',
+      finishedAt: null,
+      log: ['rippel: done.'],
+      error: null,
+    };
+    const { api } = fakeApi([], {
+      sshInstall: vi.fn(async () => ({ run, deployment: { ...online, id: 'd-new', name: 'mac-mini' } })),
+      run: vi.fn(async () => ({ run, logOffset: 1 })),
+    });
+    render(<DeploymentsSection api={api} />);
+
+    await userEvent.click(await screen.findByRole('button', { name: /Deploy over SSH/ }));
+
+    const platform = screen.getByRole('combobox', { name: 'Operating system' });
+    expect(platform).toHaveTextContent('Linux');
+    await userEvent.click(platform);
+    await userEvent.click(screen.getByRole('option', { name: 'macOS' }));
+    expect(platform).toHaveTextContent('macOS');
+
+    await userEvent.type(screen.getByPlaceholderText('studio-4090'), 'mac-mini');
+    await userEvent.type(screen.getByPlaceholderText('192.168.1.50'), '10.0.0.7');
+    await userEvent.type(screen.getByPlaceholderText('steve'), 'steve');
+    await userEvent.type(screen.getByLabelText('Password'), 'hunter2');
+    await userEvent.click(screen.getByRole('button', { name: 'Install the agent' }));
+
+    await waitFor(() =>
+      expect(api.sshInstall).toHaveBeenCalledWith(expect.objectContaining({ platform: 'darwin' })),
+    );
+  });
+
   it('takes a private key instead of a password', async () => {
     const { api } = fakeApi([]);
     render(<DeploymentsSection api={api} />);

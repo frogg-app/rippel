@@ -153,3 +153,19 @@
 .link:hover {
   color: var(--text);
 }
+
+/* The grid's height is held for one transition when verdicts land and a row
+   disappears, so the controls below slide instead of jumping. */
+.gridHold {
+  transition: height var(--dur) var(--ease-out);
+}
+
+/* One line of note reserved at all times. The captions under the grid come and
+   go as answers arrive; an empty region that suddenly gains a sentence shoves
+   the whole panel, which reads as the flash it is meant to have fixed. */
+.notes {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 17px;
+}

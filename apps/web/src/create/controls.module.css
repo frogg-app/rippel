@@ -166,7 +166,15 @@
   height: 16px;
   background: transparent;
   cursor: pointer;
-  --slider-fill: var(--text-4);
+  /* The rail is a background *colour* and the filled part a background
+     *image*, kept apart on purpose. They used to be one gradient with
+     `--slider-fill` substituted into a colour stop — which works for a colour
+     and silently voids the whole declaration when the value is itself a
+     gradient, as the accent variant's is. The result was that every accent
+     slider (image count, LoRA weight, guidance) drew no rail at all: just a
+     thumb floating on the panel, which reads as a stray radio button. */
+  --slider-rail: rgba(220, 238, 242, 0.16);
+  --slider-fill: linear-gradient(90deg, var(--text-4), var(--text-4));
   --slider-thumb: var(--text-bright);
   --slider-halo: rgba(220, 238, 242, 0.14);
 }
@@ -174,21 +182,19 @@
 .range::-webkit-slider-runnable-track {
   height: 4px;
   border-radius: 2px;
-  background: linear-gradient(
-    90deg,
-    var(--slider-fill) 0 var(--fill, 0%),
-    rgba(220, 238, 242, 0.16) var(--fill, 0%) 100%
-  );
+  background-color: var(--slider-rail);
+  background-image: var(--slider-fill);
+  background-size: var(--fill, 0%) 100%;
+  background-repeat: no-repeat;
 }
 
 .range::-moz-range-track {
   height: 4px;
   border-radius: 2px;
-  background: linear-gradient(
-    90deg,
-    var(--slider-fill) 0 var(--fill, 0%),
-    rgba(220, 238, 242, 0.16) var(--fill, 0%) 100%
-  );
+  background-color: var(--slider-rail);
+  background-image: var(--slider-fill);
+  background-size: var(--fill, 0%) 100%;
+  background-repeat: no-repeat;
 }
 
 .range::-webkit-slider-thumb {
@@ -233,6 +239,8 @@
 /* The accent slider — image count, influence, LoRA weight — gets the foam
    ramp: it changes the *image*, not the sampler. */
 .rangeAccent {
+  /* A ramp across the filled portion — legal now that it is a background
+     image rather than a colour stop. */
   --slider-fill: linear-gradient(90deg, var(--accent-deep), var(--accent));
   --slider-thumb: var(--accent-hover);
   --slider-halo: rgba(156, 207, 216, 0.22);
@@ -293,6 +301,8 @@
 .select {
   appearance: none;
   -webkit-appearance: none;
+  display: flex;
+  align-items: center;
   background: transparent;
   border: none;
   outline: none;
@@ -303,14 +313,10 @@
   cursor: pointer;
 }
 
+/* `.selectWrap:focus-within` already draws the ring around the whole pill. */
 .select:focus-visible {
   outline: none;
   box-shadow: none;
-}
-
-.select option {
-  background: var(--panel);
-  color: var(--text);
 }
 
 .selectChevron {
