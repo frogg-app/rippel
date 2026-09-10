@@ -79,6 +79,7 @@ import type {
   JobKind,
   Model,
   ModelCatalogEntry,
+  ModelCatalogInfo,
   ModelInstall,
   ModelRemoval,
   ModelRunnability,
@@ -144,6 +145,14 @@ export interface InstalledModels {
    * both mean the same thing to the list.
    */
   runnability: Record<Uuid, ModelRunnability>;
+  /**
+   * What the catalogue already knows about each installed file — its picture,
+   * its licence, its download count — found by matching the filename against
+   * the backend's catalogue. Keyed by model id and empty for anything that did
+   * not match, which is the hand-dropped file the card falls back to family
+   * art for.
+   */
+  previews?: Record<Uuid, ModelCatalogInfo>;
 }
 
 export interface CatalogueResult {
@@ -194,11 +203,13 @@ export const modelsApi: ModelsApi = {
       models: Model[];
       families: string[];
       runnability?: Record<Uuid, ModelRunnability>;
-    }>('/models?runnability=1', { signal });
+      previews?: Record<Uuid, ModelCatalogInfo>;
+    }>('/models?runnability=1&previews=1', { signal });
     return {
       models: body.models ?? [],
       families: body.families ?? [],
       runnability: body.runnability ?? {},
+      previews: body.previews ?? {},
     };
   },
 

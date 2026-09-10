@@ -53,11 +53,9 @@ import {
   familyLabel,
   filterCatalogue,
   filterInstalled,
-  kindCounts,
   latestByFilename,
   matchesRunFilter,
   MODEL_TYPES,
-  type KindFilter,
   type RunFilter,
 } from '../models/catalogue';
 import { useCatalogue } from '../models/useCatalogue';
@@ -74,6 +72,16 @@ const TABS: readonly Tab[] = ['installed', 'discover', 'downloads', 'storage'];
 
 /** The default, and the one spelling that is left out of the URL entirely. */
 const DEFAULT_TAB: Tab = 'installed';
+
+/**
+ * Which type both tabs open on.
+ *
+ * A checkpoint is the thing you can actually generate with, and it is what
+ * somebody arriving here is looking for; on the live catalogue it is 145 rows
+ * of 372 rather than all of them. "All types" is still one click away, at the
+ * far end of the chip row.
+ */
+const DEFAULT_TYPE: ModelType = 'checkpoint';
 
 function tabFromParams(params: URLSearchParams): Tab {
   const asked = params.get('tab');
@@ -202,32 +210,38 @@ export function ModelsPage({ api = modelsApi, storageApi: storage = storageApi }
 
   // ------------------------------------------------------------- installed
 
-  const [installedType, setInstalledType] = useState<ModelType | null>(null);
+  // Checkpoints first, on both tabs: they are what somebody comes to this
+  // screen for, and the add-ons are the long tail. Installed matches Discover
+  // rather than diverging — ten models do all fit on one screen, but a filter
+  // row that means one thing on one tab and another on the next is a worse
+  // trade than one extra click, and "All types" is one click away at the end
+  // of the row.
+  const [installedType, setInstalledType] = useState<ModelType | null>(DEFAULT_TYPE);
   const [installedFamily, setInstalledFamily] = useState<string | null>(null);
   const [installedQ, setInstalledQ] = useState('');
-  const [installedKind, setInstalledKind] = useState<KindFilter>('all');
 
-  const installedFiltered = useMemo(
-    () =>
-      filterInstalled(library.models, {
-        type: installedType,
-        family: installedFamily,
-        q: installedQ,
-        kind: installedKind,
-      }),
-    [library.models, installedType, installedFamily, installedQ, installedKind],
+  // Everything except the type filter — the population every type chip counts
+  // against, so a chip states what clicking it would leave.
+  const installedBeforeType = useMemo(
+    () => filterInstalled(library.models, { type: null, family: installedFamily, q: installedQ }),
+    [library.models, installedFamily, installedQ],
   );
 
-  const installedKindCounts = useMemo(() => kindCounts(library.models), [library.models]);
+  const installedFiltered = useMemo(
+    () => installedBeforeType.filter((model) => !installedType || model.type === installedType),
+    [installedBeforeType, installedType],
+  );
 
   const installedTypeCounts = useMemo(() => {
     const counts = new Map<ModelType, number>();
-    for (const model of library.models) counts.set(model.type, (counts.get(model.type) ?? 0) + 1);
+    for (const model of installedBeforeType) {
+      counts.set(model.type, (counts.get(model.type) ?? 0) + 1);
+    }
     return MODEL_TYPES.filter((type) => counts.has(type)).map((type) => ({
       type,
       count: counts.get(type)!,
     }));
-  }, [library.models]);
+  }, [installedBeforeType]);
 
   const backendOrder = useMemo(
     () =>
@@ -241,33 +255,38 @@ export function ModelsPage({ api = modelsApi, storageApi: storage = storageApi }
 
   // ------------------------------------------------------------- catalogue
 
-  const [catType, setCatType] = useState<ModelType | null>(null);
+  const [catType, setCatType] = useState<ModelType | null>(DEFAULT_TYPE);
   const [catBase, setCatBase] = useState<string | null>(null);
   const [catQ, setCatQ] = useState('');
   const [catRun, setCatRun] = useState<RunFilter>('all');
-  const [catKind, setCatKind] = useState<KindFilter>('all');
 
   // Filters are per backend: "SDXL" may not be a family the next machine's
   // catalogue even has, and a stale chip would silently show nothing.
   useEffect(() => {
-    setCatType(null);
+    setCatType(DEFAULT_TYPE);
     setCatBase(null);
     setCatQ('');
     // The verdict is per backend too — a model that runs on one machine may be
     // missing its text encoder on the next — so this resets with the rest.
     setCatRun('all');
-    setCatKind('all');
   }, [backendId]);
 
   const entries = catalogue.state.kind === 'ready' ? catalogue.state.entries : [];
-  const catalogueFiltered = useMemo(
-    () => filterCatalogue(entries, { type: catType, base: catBase, q: catQ, run: catRun, kind: catKind }),
-    [entries, catType, catBase, catQ, catRun, catKind],
+  // Everything except the type filter, for the same reason as above: this is
+  // the population the type chips count against.
+  const catalogueBeforeType = useMemo(
+    () => filterCatalogue(entries, { type: null, base: catBase, q: catQ, run: catRun }),
+    [entries, catBase, catQ, catRun],
   );
 
-  const catKindCounts = useMemo(
-    () => kindCounts(filterCatalogue(entries, { type: catType, base: catBase, q: catQ, run: catRun })),
-    [entries, catType, catBase, catQ, catRun],
+  const catalogueFiltered = useMemo(
+    () => catalogueBeforeType.filter((entry) => !catType || entry.type === catType),
+    [catalogueBeforeType, catType],
+  );
+
+  const catalogueTypeCounts = useMemo(
+    () => catalogueTypes(catalogueBeforeType),
+    [catalogueBeforeType],
   );
 
   // Counts for the runnability segments, taken *under the other filters* and
@@ -393,6 +412,7 @@ export function ModelsPage({ api = modelsApi, storageApi: storage = storageApi }
               searchLabel="Search installed models"
               searchPlaceholder="Search installed models"
               types={installedTypeCounts}
+              allCount={installedBeforeType.length}
               activeType={installedType}
               onType={setInstalledType}
               familyOptions={library.families.map((family) => ({
@@ -404,9 +424,6 @@ export function ModelsPage({ api = modelsApi, storageApi: storage = storageApi }
               onFamily={setInstalledFamily}
               shown={installedFiltered.length}
               total={library.models.length}
-              kind={installedKind}
-              onKind={setInstalledKind}
-              kindCounts={installedKindCounts}
             />
             <div className={styles.scroller}>
               <div className={panels.panelTools}>
@@ -446,9 +463,8 @@ export function ModelsPage({ api = modelsApi, storageApi: storage = storageApi }
                     label: 'Clear filters',
                     onClick: () => {
                       setInstalledQ('');
-                      setInstalledType(null);
+                      setInstalledType(DEFAULT_TYPE);
                       setInstalledFamily(null);
-                      setInstalledKind('all');
                     },
                   }}
                 />
@@ -458,6 +474,7 @@ export function ModelsPage({ api = modelsApi, storageApi: storage = storageApi }
                   backendOrder={backendOrder}
                   selectedBackendId={backendId}
                   runnability={library.runnability}
+                  previews={library.previews}
                   onWorkflows={openModelWorkflows}
                   onRemove={isAdmin ? (model) => void removeModel(model) : undefined}
                 />
@@ -472,7 +489,8 @@ export function ModelsPage({ api = modelsApi, storageApi: storage = storageApi }
                 onQ={setCatQ}
                 searchLabel="Search the catalogue"
                 searchPlaceholder={`Search what ${backend?.name ?? 'this backend'} can install`}
-                types={catalogueTypes(catalogue.state.entries)}
+                types={catalogueTypeCounts}
+                allCount={catalogueBeforeType.length}
                 activeType={catType}
                 onType={setCatType}
                 familyOptions={catalogueBases(catalogue.state.entries).map((base) => ({
@@ -487,9 +505,6 @@ export function ModelsPage({ api = modelsApi, storageApi: storage = storageApi }
                 run={catRun}
                 onRun={setCatRun}
                 runCounts={runCounts}
-                kind={catKind}
-                onKind={setCatKind}
-                kindCounts={catKindCounts}
               />
             ) : null}
 
@@ -507,10 +522,9 @@ export function ModelsPage({ api = modelsApi, storageApi: storage = storageApi }
                 onWorkflows={openTemplates}
                 onClearFilters={() => {
                   setCatQ('');
-                  setCatType(null);
+                  setCatType(DEFAULT_TYPE);
                   setCatBase(null);
                   setCatRun('all');
-                  setCatKind('all');
                 }}
               />
             </div>

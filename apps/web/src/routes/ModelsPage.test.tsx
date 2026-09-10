@@ -190,6 +190,8 @@ describe('ModelsPage', () => {
       await ready();
       const user = await openTab(/Discover/);
 
+      // The screen opens on Checkpoint; this entry is a LoRA.
+      await user.click(screen.getByRole('button', { name: /All types/ }));
       // Narrow to the one entry we mean; the grid is 100 cards.
       await user.type(screen.getByLabelText('Search the catalogue'), 'Cinematic');
       const card = await screen.findByRole('article', { name: 'Cinematic Film Look' });
@@ -255,8 +257,11 @@ describe('ModelsPage', () => {
       const user = await openTab(/Discover/);
 
       const search = await screen.findByLabelText('Search the catalogue');
+      // Widen past the Checkpoint default: this test is about paging the whole
+      // catalogue, and there is a test of the default just below.
+      await user.click(screen.getByRole('button', { name: /All types/ }));
       // 100 entries, but the grid pages rather than painting them all at once.
-      expect(screen.getByText('48 of 100')).toBeInTheDocument();
+      await waitFor(() => expect(screen.getByText('48 of 100')).toBeInTheDocument());
       expect(screen.getByRole('button', { name: 'Show 48 more' })).toBeInTheDocument();
 
       await user.type(search, 'halation');
@@ -454,9 +459,92 @@ describe('ModelsPage', () => {
       await ready();
 
       expect(await screen.findByText('Sd Xl Base 1.0')).toBeInTheDocument();
-      // No badge on a healthy row: with one on every row the two that matter
-      // would have nowhere to stand out.
-      expect(screen.queryByText('Will run')).not.toBeInTheDocument();
+      // The verdict is stated either way now that this is a card rather than a
+      // dense row. The old rule — badge only the broken ones, so they stand
+      // out — was a rule about a text list with no room; a card has the space,
+      // Discover's cards have always said "Will run", and the two tabs saying
+      // different things about the same model was the confusing half.
+      expect(await screen.findByText('Will run')).toBeInTheDocument();
+    });
+  });
+
+  describe('the type filter', () => {
+    /**
+     * The screen opens on the thing you can generate with. On the live
+     * catalogue that is 145 rows of 372 rather than all of them, and the
+     * add-ons are the long tail nobody arrives looking for.
+     */
+    it('opens on Checkpoint, with All types at the end of the row', async () => {
+      const api = makeStubApi();
+      renderPage(api);
+      await ready();
+      await openTab(/Discover/);
+
+      const checkpoint = await screen.findByRole('button', { name: /^Checkpoint/ });
+      expect(checkpoint).toHaveAttribute('aria-pressed', 'true');
+      const all = screen.getByRole('button', { name: /All types/ });
+      expect(all).toHaveAttribute('aria-pressed', 'false');
+
+      // Last in the row, not first: it stopped being the default, so it stops
+      // being the first thing the eye lands on.
+      const chips = within(
+        screen.getByRole('group', { name: 'Filter by model type' }),
+      ).getAllByRole('button');
+      expect(chips[chips.length - 1]).toBe(all);
+    });
+
+    /**
+     * The bug: the kind row counted *after* the type filter and the type row
+     * counted before it, so with Checkpoint selected one row said there were no
+     * support files while the row under it simultaneously offered 197 of them.
+     * The kind row is gone, and every remaining count obeys one rule — how many
+     * you would get if you clicked it, given everything else selected.
+     */
+    it('counts each chip against everything except the type filter', async () => {
+      const api = makeStubApi();
+      renderPage(api);
+      await ready();
+      const user = await openTab(/Discover/);
+
+      const row = screen.getByRole('group', { name: 'Filter by model type' });
+      const countOf = (name: RegExp) =>
+        Number(within(row).getByRole('button', { name }).textContent!.replace(/[^0-9]+/g, ''));
+
+      // Checkpoint is selected, and the other chips still report real numbers
+      // rather than collapsing to zero.
+      const loras = countOf(/^LoRA/);
+      expect(loras).toBeGreaterThan(0);
+      expect(countOf(/All types/)).toBe(100);
+
+      // Selecting a different type changes no chip's count: they are all
+      // measured against the same population.
+      await user.click(within(row).getByRole('button', { name: /^LoRA/ }));
+      expect(countOf(/^LoRA/)).toBe(loras);
+      expect(countOf(/All types/)).toBe(100);
+
+      // A search narrows every chip together, so they stay in agreement.
+      await user.type(screen.getByLabelText('Search the catalogue'), 'halation');
+      await waitFor(() => expect(countOf(/All types/)).toBe(1));
+    });
+
+    /** The badge says what the file is for, to a pointer and to a keyboard. */
+    it('explains the type badge on a card', async () => {
+      const api = makeStubApi();
+      renderPage(api);
+      await ready();
+      const user = await openTab(/Discover/);
+      await user.click(screen.getByRole('button', { name: /All types/ }));
+      await user.type(screen.getByLabelText('Search the catalogue'), 'Cinematic');
+
+      const card = await screen.findByRole('article', { name: 'Cinematic Film Look' });
+      // Plain words on the badge, and the jargon nowhere near it.
+      const badge = within(card).getByRole('button', { name: 'EXTRA STYLE' });
+      // The sentence is a real element the badge points at, so a screen reader
+      // reads it with the badge rather than it being a mouse-only `title`.
+      const description = document.getElementById(badge.getAttribute('aria-describedby')!);
+      expect(description).toHaveTextContent(/You cannot generate with this on its own/);
+      expect(description).toHaveTextContent(/Extra styles, on the Create screen/);
+      expect(description).toHaveTextContent(/Technically a LoRA/);
     });
   });
 
@@ -757,8 +845,10 @@ describe('ModelsPage', () => {
       });
       renderPage(api);
       await ready();
+      // The screen opens on Checkpoint; a LoRA lives behind "All types".
+      await openTab(/All types/);
 
-      // The row does not promise a workflow it cannot deliver.
+      // The card does not promise a workflow it cannot deliver.
       expect(
         screen.queryByRole('button', { name: 'Workflows for Hyper SD15 1step LoRA' }),
       ).not.toBeInTheDocument();
@@ -783,6 +873,7 @@ describe('ModelsPage', () => {
       });
       renderPage(api);
       await ready();
+      await openTab(/All types/);
 
       const generators = screen.getByRole('region', { name: 'Models you can generate with' });
       const support = screen.getByRole('region', { name: 'Support files' });

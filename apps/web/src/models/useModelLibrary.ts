@@ -11,7 +11,7 @@
  * file on a machine, and the installed list is stale until it is re-read.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { Backend, Model, ModelRunnability, Uuid } from '@comfy/shared';
+import type { Backend, Model, ModelCatalogInfo, ModelRunnability, Uuid } from '@comfy/shared';
 import type { ModelsApi } from '../lib/api-models';
 
 export interface ModelLibraryState {
@@ -25,6 +25,12 @@ export interface ModelLibraryState {
    * the list renders as no badge rather than as a bad one.
    */
   runnability: Record<Uuid, ModelRunnability>;
+  /**
+   * Picture, licence and download count per model id, matched from the
+   * catalogue. Absent ids simply get the family art — see the note on
+   * `catalogueFacts` in the API's models route.
+   */
+  previews: Record<Uuid, ModelCatalogInfo>;
   loading: boolean;
   error: string | null;
   refresh: () => void;
@@ -39,6 +45,7 @@ export function useModelLibrary(api: ModelsApi): ModelLibraryState {
   const [models, setModels] = useState<Model[]>([]);
   const [families, setFamilies] = useState<string[]>([]);
   const [runnability, setRunnability] = useState<Record<Uuid, ModelRunnability>>({});
+  const [previews, setPreviews] = useState<Record<Uuid, ModelCatalogInfo>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [nonce, setNonce] = useState(0);
@@ -63,6 +70,7 @@ export function useModelLibrary(api: ModelsApi): ModelLibraryState {
         setModels(installed.models);
         setFamilies(installed.families);
         setRunnability(installed.runnability);
+        setPreviews(installed.previews ?? {});
         setError(null);
       } catch {
         if (!stopped) setError('Could not load your backends and their models.');
@@ -87,5 +95,16 @@ export function useModelLibrary(api: ModelsApi): ModelLibraryState {
     [],
   );
 
-  return { backends, models, families, runnability, loading, error, refresh, backendName, remove };
+  return {
+    backends,
+    models,
+    families,
+    runnability,
+    previews,
+    loading,
+    error,
+    refresh,
+    backendName,
+    remove,
+  };
 }

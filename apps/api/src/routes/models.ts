@@ -5,7 +5,17 @@ import { folderOfInstalled } from '../workflows/folders.js';
 import { runnabilityFor } from '../models/runnability.js';
 import { objectInfoFor } from '../orchestrator/preflight.js';
 import { normalizeBaseModel } from '../workflows/registry.js';
-import type { ModelRunnability, RunnabilityStatus, Model, ModelType, Uuid } from '@comfy/shared';
+import { requireTransport } from '../models/installs.js';
+import { withCatalogueInfo } from '../models/metadata.js';
+import type {
+  ModelCatalogEntry,
+  ModelCatalogInfo,
+  ModelRunnability,
+  RunnabilityStatus,
+  Model,
+  ModelType,
+  Uuid,
+} from '@comfy/shared';
 
 interface ModelRow {
   id: string;
@@ -42,6 +52,16 @@ const listQuery = z.object({
    * load and must not pay for it; the Models screen asks once and wants it.
    */
   runnability: z.coerce.boolean().optional(),
+  /**
+   * Also match each installed file against the backend's catalogue, so the
+   * Models screen can show the picture, licence and download count we already
+   * hold for it.
+   *
+   * Opt-in for the same reason `runnability` is: answering means asking each
+   * online backend's Manager for its catalogue. The Create screen calls this
+   * route on every load and must not pay for it.
+   */
+  previews: z.coerce.boolean().optional(),
 });
 
 /**
@@ -66,7 +86,7 @@ export default async function modelRoutes(app: FastifyInstance) {
     if (!parsed.success) {
       return reply.code(400).send({ error: 'invalid_input', message: 'Bad filter.' });
     }
-    const { type, availableOnly, baseModel, runnability } = parsed.data;
+    const { type, availableOnly, baseModel, runnability, previews } = parsed.data;
     // Normalised on the way in and in SQL on the way out, so a stored "sdxl"
     // matches a requested "SDXL 1.0" — the same fold the registry does when it
     // looks a template up, and the reason the two can never disagree.
@@ -122,8 +142,99 @@ export default async function modelRoutes(app: FastifyInstance) {
       models,
       families: familyRows.map((r) => r.base_model),
       runnability: runnability ? await verdicts(models) : undefined,
+      previews: previews ? await catalogueFacts(models, req.log) : undefined,
     };
   });
+}
+
+/**
+ * What we already know about an installed file, found by matching it to the
+ * catalogue entry of the same name.
+ *
+ * An installed model is a local file: rippel knows its filename, type and
+ * family, but not which HuggingFace repo it came from, so none of the cached
+ * facts in `model_catalogue_meta` — which is keyed by model *page* — can be
+ * reached from it directly. The bridge is the filename. ComfyUI-Manager's
+ * catalogue states a filename per entry, and `sd_xl_base_1.0.safetensors` on
+ * disk is the same file as `checkpoints/SDXL/sd_xl_base_1.0.safetensors` in
+ * the catalogue; matching on the basename is exactly the comparison
+ * `runnability.ts` already makes between the two sides, for the same reason
+ * (the install path adds a subfolder the catalogue row does not carry).
+ *
+ * Measured on the live box before this was written: 9 of the 10 installed
+ * models match a catalogue entry and 7 already have a cached picture. The one
+ * that does not — a Hunyuan Video checkpoint somebody dropped in by hand — is
+ * the ordinary case this must degrade well for, and it does: no match means no
+ * `info`, and the card falls back to the same family art a catalogue card with
+ * no picture uses.
+ *
+ * **Nothing here fetches anything new.** It reads the catalogue the backend
+ * already serves and joins it to metadata we already hold. A local file has no
+ * reliable source URL, so there is no honest way to go and look one up, and a
+ * screen that started making outbound requests per local file would be a
+ * different and much worse thing than this.
+ */
+async function catalogueFacts(
+  models: Model[],
+  log: { info: (message: string) => void },
+): Promise<Record<Uuid, ModelCatalogInfo>> {
+  const backendIds = [...new Set(models.flatMap((model) => model.backendIds))];
+  if (backendIds.length === 0) return {};
+
+  const backends = await query<{ id: string; base_url: string }>(
+    `SELECT id, base_url FROM backends WHERE id = ANY($1::uuid[]) AND status = 'online'`,
+    [backendIds],
+  );
+
+  const out: Record<Uuid, ModelCatalogInfo> = {};
+  for (const backend of backends) {
+    let entries: ModelCatalogEntry[];
+    try {
+      const transport = await requireTransport(backend.base_url);
+      // `withCatalogueInfo` merges the cache and kicks off a background sweep
+      // for anything stale — the same call the Discover tab makes, so the two
+      // screens can never disagree about a picture.
+      ({ entries } = await withCatalogueInfo(await transport.catalogue(), (message) =>
+        log.info(message),
+      ));
+    } catch (err) {
+      // A backend with no Manager, or one that has gone away since the model
+      // rows were written. Fail open: no pictures is the status quo — but say
+      // so in the log, because "the cards lost their pictures" is otherwise
+      // indistinguishable from "nothing matched".
+      log.info(`installed previews: no catalogue from backend ${backend.id} (${String(err)})`);
+      continue;
+    }
+
+    const byFile = new Map<string, ModelCatalogEntry>();
+    for (const entry of entries) {
+      const key = basename(entry.filename).toLowerCase();
+      const held = byFile.get(key);
+      // Two catalogue rows can name the same file — a repo and a mirror of it.
+      // Prefer whichever one actually has a picture; otherwise first wins.
+      if (!held || (!held.info?.previewUrl && entry.info?.previewUrl)) byFile.set(key, entry);
+    }
+
+    let matched = 0;
+    for (const model of models) {
+      if (out[model.id] || !model.backendIds.includes(backend.id)) continue;
+      const hit = byFile.get(basename(model.filename).toLowerCase());
+      if (hit) matched += 1;
+      if (hit?.info) out[model.id] = hit.info;
+    }
+    // Cheap, once per Models-screen load, and the only way to tell "this box's
+    // files are unusual" from "the join is broken" without a debugger.
+    log.info(
+      `installed previews: ${matched}/${models.length} matched a catalogue entry, ` +
+        `${Object.keys(out).length} with cached facts, from ${byFile.size} catalogue filenames`,
+    );
+  }
+  return out;
+}
+
+/** Last path segment, either separator: a backend may be a Windows box. */
+function basename(path: string): string {
+  return path.split(/[\\/]/).pop() ?? path;
 }
 
 /**

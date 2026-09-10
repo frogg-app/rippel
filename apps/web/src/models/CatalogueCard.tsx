@@ -45,7 +45,6 @@ import {
   RUNNABILITY_LABEL,
   RUNNABILITY_TONE,
   SUPPORT_ROLES,
-  TYPE_LABELS,
   familyHue,
   formatCount,
   generates,
@@ -53,6 +52,7 @@ import {
 } from './catalogue';
 import { CheckIcon, DownloadCountIcon, ExpandIcon, InstallIcon, LinkIcon, WorkflowIcon } from './icons';
 import { InstallProgress } from './InstallProgress';
+import { TypeBadge } from './TypeBadge';
 import { PreviewLightbox } from './PreviewLightbox';
 import { Mark } from '../components/Mark';
 import styles from './ModelsPanels.module.css';
@@ -128,15 +128,6 @@ export function CatalogueCard({
           <Mark size={34} />
         </span>
       )}
-      {/* The plain-words role, not the jargon: "EXTRA STYLE" rather than
-          "LORA". The technical word stays as the tooltip for anyone who wants
-          it. */}
-      <span
-        className={`${styles.cardType} ${isSupport ? styles.cardTypeSupport : ''}`}
-        title={TYPE_LABELS[entry.type]}
-      >
-        {(isSupport ? SUPPORT_ROLES[entry.type].noun : TYPE_LABELS[entry.type]).toUpperCase()}
-      </span>
       {done ? (
         <span className={styles.cardInstalled}>
           <CheckIcon size={10} /> Installed
@@ -166,20 +157,25 @@ export function CatalogueCard({
       style={{ '--i': index } as CSSProperties}
       aria-label={entry.name}
     >
-      {full ? (
-        <button
-          type="button"
-          className={`${artClass} ${styles.cardArtButton}`}
-          onClick={() => setEnlarged(true)}
-          aria-label={`See the full-size preview of ${entry.name}`}
-        >
-          {art}
-        </button>
-      ) : (
-        <div className={artClass} style={artStyle}>
-          {art}
-        </div>
-      )}
+      <div className={styles.cardArtHolder}>
+        {full ? (
+          <button
+            type="button"
+            className={`${artClass} ${styles.cardArtButton}`}
+            onClick={() => setEnlarged(true)}
+            aria-label={`See the full-size preview of ${entry.name}`}
+          >
+            {art}
+          </button>
+        ) : (
+          <div className={artClass} style={artStyle}>
+            {art}
+          </div>
+        )}
+        {/* The badge sits beside the art rather than inside it: it explains
+            itself on focus, and a button cannot be nested in a button. */}
+        <TypeBadge type={entry.type} className={styles.cardTypeSlot} />
+      </div>
 
       <div className={styles.cardBody}>
         <div className={styles.cardHead}>

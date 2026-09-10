@@ -15,16 +15,29 @@
  * is the one filter here that is not about *what a file is* but about whether
  * it would work, which is the question people arrive with — "show me what will
  * actually run" — and it sits first in the row for that reason.
+ *
+ * There was briefly a second segment row above that one — "All files / Can
+ * generate / Support files". It was removed rather than repaired. Type and kind
+ * are the same axis at two resolutions (a checkpoint *is* the generator half),
+ * so the two rows could never agree on a count: with Checkpoint selected the
+ * kind row said "Support files 0" while the type row below it simultaneously
+ * offered "LoRA 87". Now the type row defaults to Checkpoint and the two bands
+ * under the grid carry the generator/support labelling, which is where that
+ * distinction was always doing its real work. To put it back, restore the
+ * `kind`/`onKind`/`kindCounts` props and their segment block from the previous
+ * revision of this file — `KindFilter`, `KIND_FILTER_LABELS` and `matchesKind`
+ * are all still in catalogue.ts, and `filterInstalled` and `filterCatalogue`
+ * both still accept a `kind`.
+ *
+ * Every count here obeys one rule: **a count says how many rows you would get
+ * if you clicked it, given everything else currently selected.** So the type
+ * counts are taken over the search, the family and the runnability filter but
+ * *not* over the type filter itself — otherwise the selected chip would report
+ * its own result and every other chip would report nothing.
  */
 import { useId } from 'react';
 import type { ModelType } from '@comfy/shared';
-import {
-  KIND_FILTER_LABELS,
-  RUN_FILTER_LABELS,
-  TYPE_LABELS,
-  type KindFilter,
-  type RunFilter,
-} from './catalogue';
+import { RUN_FILTER_LABELS, TYPE_LABELS, type RunFilter } from './catalogue';
 import { ChevronIcon, SearchIcon } from './icons';
 import { Dropdown } from '../components/Dropdown';
 import styles from './ModelsPanels.module.css';
@@ -35,6 +48,8 @@ export interface FilterBarProps {
   searchLabel: string;
   searchPlaceholder: string;
   types: { type: ModelType; count: number }[];
+  /** How many rows "All types" would leave, under every other active filter. */
+  allCount?: number;
   activeType: ModelType | null;
   onType: (type: ModelType | null) => void;
   familyOptions: { value: string; label: string }[];
@@ -51,18 +66,9 @@ export interface FilterBarProps {
   run?: RunFilter;
   onRun?: (run: RunFilter) => void;
   runCounts?: Record<RunFilter, number>;
-  /**
-   * "Can generate" vs "support files" — the distinction both tabs are now
-   * grouped by, offered as a filter as well so the sections can be narrowed to
-   * one. Passed by both tabs.
-   */
-  kind?: KindFilter;
-  onKind?: (kind: KindFilter) => void;
-  kindCounts?: Record<KindFilter, number>;
 }
 
 const RUN_ORDER: RunFilter[] = ['all', 'runs', 'blocked'];
-const KIND_ORDER: KindFilter[] = ['all', 'generator', 'support'];
 
 export function FilterBar({
   q,
@@ -70,6 +76,7 @@ export function FilterBar({
   searchLabel,
   searchPlaceholder,
   types,
+  allCount,
   activeType,
   onType,
   familyOptions,
@@ -81,9 +88,6 @@ export function FilterBar({
   run,
   onRun,
   runCounts,
-  kind,
-  onKind,
-  kindCounts,
 }: FilterBarProps) {
   const searchId = useId();
   const familyId = useId();
@@ -126,23 +130,6 @@ export function FilterBar({
         </span>
       </div>
 
-      {kind && onKind ? (
-        <div className={styles.runFilter} role="group" aria-label="Filter by what the file does">
-          {KIND_ORDER.map((option) => (
-            <button
-              key={option}
-              type="button"
-              className={`${styles.segment} ${kind === option ? styles.segmentOn : ''}`}
-              aria-pressed={kind === option}
-              onClick={() => onKind(option)}
-            >
-              {KIND_FILTER_LABELS[option]}
-              {kindCounts ? <span className={`mono ${styles.chipCount}`}>{kindCounts[option]}</span> : null}
-            </button>
-          ))}
-        </div>
-      ) : null}
-
       {run && onRun ? (
         <div className={styles.runFilter} role="group" aria-label="Filter by whether it will run">
           {RUN_ORDER.map((option) => (
@@ -161,14 +148,6 @@ export function FilterBar({
       ) : null}
 
       <div className={styles.chips} role="group" aria-label="Filter by model type">
-        <button
-          type="button"
-          className={`${styles.chip} ${activeType === null ? styles.chipOn : ''}`}
-          aria-pressed={activeType === null}
-          onClick={() => onType(null)}
-        >
-          All types
-        </button>
         {types.map(({ type, count }) => (
           <button
             key={type}
@@ -181,6 +160,20 @@ export function FilterBar({
             <span className={`mono ${styles.chipCount}`}>{count}</span>
           </button>
         ))}
+        {/* Last, and pushed to the far end. It stopped being the default — the
+            screen opens on Checkpoint — so it stops being the first thing the
+            eye lands on. It is the escape hatch, not the starting point. */}
+        <button
+          type="button"
+          className={`${styles.chip} ${styles.chipAll} ${activeType === null ? styles.chipOn : ''}`}
+          aria-pressed={activeType === null}
+          onClick={() => onType(null)}
+        >
+          All types
+          {allCount === undefined ? null : (
+            <span className={`mono ${styles.chipCount}`}>{allCount}</span>
+          )}
+        </button>
       </div>
     </div>
   );
