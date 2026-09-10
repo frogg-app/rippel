@@ -1,18 +1,18 @@
 /**
- * The two bodies of code rippel hands to a remote machine: the agent itself,
- * and the ComfyUI storage helper.
+ * The ComfyUI storage helper, as rippel hands it to a remote machine.
  *
- * Both are read from this repository at request time rather than fetched from
- * a release, and that is the important decision. An agent installed from
- * GitHub's "latest" is whatever was latest when the machine was set up; an
- * agent installed from the rippel that will drive it is, by construction, the
- * matching pair. Version skew between a helper and the rippel calling it is
- * precisely the failure the storage panel spends its error states explaining,
- * and this removes it.
+ * It is read from this repository at request time rather than fetched from a
+ * release, and that is the important decision. A helper installed from GitHub's
+ * "latest" is whatever was latest when the machine was set up; a helper
+ * installed by the rippel that will call it is, by construction, the matching
+ * pair. Version skew between a helper and the rippel calling it is precisely
+ * the failure the storage panel spends its error states explaining, and this
+ * removes it.
  *
- * The GitHub release links in the UI are for the other case — a machine that
- * cannot reach this rippel yet, or an operator who wants to read the code
- * before running it.
+ * The agent used to be served from here too, as a list of `.mjs` files that an
+ * install script downloaded one at a time. It is a compiled binary now, served
+ * by `binaries.ts` — but the same argument still holds, which is why the
+ * download comes from this rippel rather than from GitHub.
  */
 
 import { readFile, readdir } from 'node:fs/promises';
@@ -55,7 +55,6 @@ async function readDir(dir: string, extensions: string[]): Promise<SourceFile[]>
 }
 
 let helperDir: Promise<string> | null = null;
-let agentDir: Promise<string> | null = null;
 
 /** `tools/comfyui-rippel-storage`, wherever it landed. */
 export function helperSourceDir(): Promise<string> {
@@ -69,38 +68,8 @@ export function helperSourceDir(): Promise<string> {
   return helperDir;
 }
 
-/** `apps/agent/src`, wherever it landed. */
-export function agentSourceDir(): Promise<string> {
-  agentDir ??= locate(
-    [
-      // In the image the Dockerfile copies it beside dist/.
-      resolve(here, '..', 'agent-source'),
-      // In a checkout, `src/deploy` and `dist/deploy` are the same depth below
-      // `apps/`, so one candidate covers both tsx and a local `node dist`.
-      resolve(here, '..', '..', '..', 'agent', 'src'),
-    ],
-    'main.mjs',
-  );
-  return agentDir;
-}
-
 /** The helper's Python files, ready to POST to an agent. */
 export async function helperFiles(): Promise<SourceFile[]> {
   return readDir(await helperSourceDir(), ['.py']);
 }
 
-/** The agent's modules, in the order they should be written. */
-export async function agentFiles(): Promise<SourceFile[]> {
-  return readDir(await agentSourceDir(), ['.mjs']);
-}
-
-/**
- * One agent file by name, for the install scripts, which fetch them one at a
- * time rather than carrying an archive format into bash and PowerShell.
- *
- * The name is matched against the real listing instead of being joined onto a
- * path, so nothing a request can say reaches the filesystem as a path at all.
- */
-export async function agentFile(name: string): Promise<SourceFile | null> {
-  return (await agentFiles()).find((file) => file.name === name) ?? null;
-}

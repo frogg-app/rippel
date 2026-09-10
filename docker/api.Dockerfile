@@ -30,10 +30,17 @@ COPY --from=build /app/apps/api/dist apps/api/dist
 # Migrations are read from disk at boot, so they ship as files rather than
 # being compiled in.
 COPY apps/api/src/migrations apps/api/dist/migrations
-# The agent's source and the ComfyUI storage helper are *served*, not executed
+# The agent binaries and the ComfyUI storage helper are *served*, not executed
 # here: rippel hands them to a remote machine on request. Shipping them beside
-# dist/ is what makes an agent install always match the rippel driving it.
-COPY apps/agent/src apps/api/dist/agent-source
+# dist/ is what makes an install always match the rippel driving it.
+#
+# The binaries are built outside this image, by `npm run build:release -w
+# @comfy/agent`, because building them needs a Go toolchain and this is a Node
+# image — adding one would multiply the build's size for four files that cross
+# compile from anywhere in seconds. Build them first, then build this image.
+# If apps/agent/dist is empty the image is still valid: the Deployment screen
+# says the downloads are missing rather than offering links that 404.
+COPY apps/agent/dist apps/api/dist/agent-bin
 COPY tools/comfyui-rippel-storage apps/api/dist/helper-source
 
 # Run unprivileged. The node image already provides uid/gid 1000.

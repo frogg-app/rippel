@@ -9,35 +9,49 @@ rippel can act on. This is the second one. They are separate: a ComfyUI you
 started by hand is a backend with no agent, and a freshly installed agent is a
 deployment with no ComfyUI yet.
 
-It has **no dependencies**. Node.js 20 or newer, and the files in `src/`. That
-is deliberate — a release is a folder, and installing it is copying it.
-
-The published releases go one step further and carry the Node runtime itself, so
-a machine with nothing but the Python ComfyUI brought along can still install.
-See [The bundled runtime](#the-bundled-runtime), which is also where the
-obligation that comes with shipping someone a runtime is written down.
+**It is one file.** Not a folder, not an archive, not source alongside a
+runtime — a single static executable, about 7 MB, with nothing beside it.
+Downloading it is the download; opening it is the install.
 
 ## Installing it
 
-Almost always: rippel → Settings → **Deployment**, then either
+Almost always: rippel → Settings → **Deployment**, then send whoever is at the
+machine its **setup link**. It looks like this:
+
+```
+http://192.168.1.9:4000/api/deployments/setup/vT7kQ2...
+```
+
+They open it, click the button for their computer, and open the file that
+downloads. That is the whole install — no terminal, no unzipping, nothing to
+paste.
+
+The trick that makes it one click is the **filename**. rippel already knows the
+deployment's address and token when someone clicks Download, so it serves the
+file as `rippel-agent-setup-<code>.exe`, where the code carries both. The agent
+reads its own name on startup and needs nothing else. If a browser or a tidy
+user renames the file, nothing breaks — it falls back to asking, which always
+works. See `setup.go` for the three ways in, in the order they are tried.
+
+For a machine nobody is sitting at, the Deployment screen also gives:
 
 - **Deploy over SSH** — rippel connects once, runs the installer, streams the
   output back. The credential is used for that connection and never stored.
-- **Install by hand** — rippel gives you a one-line command carrying this
-  machine's address and token, to paste on the target. Use this for Windows, for
-  a box rippel cannot SSH to, or when you would rather read the script first
-  (fetch the URL without `| bash` and it prints).
+- **A one-line command** to paste. It downloads the binary and runs
+  `rippel-agent install <setup link>`, which is exactly what a double-click
+  does.
 
-Both install exactly the same thing. The installer:
+Both install the same thing the same way, because both end up inside the same
+binary.
 
-- finds a runtime: the `node/` folder in the unpacked release first, a system
-  Node 20+ second, and copies whichever it used into `~/.rippel-agent/node/` so
-  the service does not depend on a Downloads folder surviving
+The agent, once run:
+
+- checks with rippel that the token is real **before writing anything**, so a
+  wrong or expired link is a sentence on screen rather than a service that
+  installs perfectly and never appears
 - warns if `git` or `python3` are missing (ComfyUI needs those, the agent does
   not)
-- downloads `src/` from the rippel that will drive it — so the agent and the
-  helper always match the server, which is the one version skew this whole
-  panel exists to prevent
+- copies itself to `~/.rippel-agent/`, so the Downloads folder can be deleted
 - writes `~/.rippel-agent/config.json`, mode 0600, holding the token
 - registers a user service — systemd `--user` with lingering on Linux, a
   LaunchAgent on macOS, a Scheduled Task on Windows
@@ -46,68 +60,64 @@ Nothing needs root. The agent installs into its own home directory and runs as
 whoever owns the ComfyUI checkout, which is what you want — a ComfyUI installed
 by root is one you cannot maintain as yourself later.
 
-Re-running the installer upgrades in place: files replaced, config kept, service
-restarted.
+Re-running it upgrades in place: the binary is replaced, the config kept, the
+service restarted.
 
-## The bundled runtime
+## Why Go
 
-Each release asset contains an official Node.js build, taken unmodified from
-`https://nodejs.org/dist/` and verified against that release's
-`SHASUMS256.txt` at package time. Only the `node` binary ships — npm, the
-headers and the docs are not part of what the agent runs.
+The previous agent was `.mjs` source shipped next to an 89 MB `node.exe`, with
+250 lines of bash and PowerShell whose only job was to locate a runtime, fetch
+six files one at a time and register a service. It failed twice on a Windows
+machine, which is the machine this feature exists for.
 
-| Asset | Runtime inside | Built for | Roughly |
-| --- | --- | --- | --- |
-| `rippel-agent-windows.zip` | `node\node.exe` | win-x64 | 34 MB |
-| `rippel-agent-macos.tar.gz` | `node/bin/node-arm64`, `node/bin/node-x64` | osx-arm64 and osx-x64 | 76 MB |
-| `rippel-agent-linux.tar.gz` | `node/bin/node` | linux-x64 | 43 MB |
+Go cross-compiles to all four targets from any one of them with `GOOS` and
+`GOARCH` alone — no C toolchain, no cgo, nothing installed with root — and
+produces one static binary per target with no runtime beside it. That removes
+the runtime, the archive, the unpacking step and most of the installer, which
+between them were every step a non-technical person could fail.
 
-macOS carries both architectures because Macs are genuinely still split and the
-installer cannot know which one it will be unpacked on; it picks by `uname -m`
-and copies only that one into `~/.rippel-agent`. Windows and Linux are x64 only:
-a ComfyUI machine is an x64 box with a discrete GPU essentially without
-exception, and on anything else the installer falls back to a system Node rather
-than the release carrying runtimes nobody runs.
-
-Build them from any machine — this is packaging, not compiling:
+## Building it
 
 ```bash
-npm run build:release -w @comfy/agent          # all three, into apps/agent/dist
-node apps/agent/scripts/build-release.mjs --only linux --node v24.21.0
+npm run build:release -w @comfy/agent      # all four, into apps/agent/dist
+node scripts/build-release.mjs --only windows
+GO=/opt/go/bin/go npm run build:release -w @comfy/agent
 ```
 
-### Keeping it patched
+| Asset | For | Roughly |
+| --- | --- | --- |
+| `rippel-agent-windows-amd64.exe` | Windows x86-64 | 7.2 MB |
+| `rippel-agent-macos-arm64` | Macs since 2020 | 6.6 MB |
+| `rippel-agent-macos-amd64` | Intel Macs | 7.2 MB |
+| `rippel-agent-linux-amd64` | Linux x86-64 | 7.0 MB |
 
-**Releases currently bundle Node v24.21.0** (the LTS line, Krypton).
+macOS gets both architectures because Macs are genuinely still split, and the
+install script picks by `uname -m`. Windows and Linux are x86-64 only: a ComfyUI
+machine is an x86-64 box with a discrete GPU essentially without exception.
 
-Shipping a runtime means we are the ones responsible for the version on those
-machines: nothing on a deployed box updates it, and the agent has no
-auto-update. A Node security release is therefore a trigger to act here.
-
-To act on one: bump `DEFAULT_NODE_VERSION` in
-`apps/agent/scripts/build-release.mjs`, update the version in this section,
-rebuild the assets, and cut a release. Existing deployments pick it up when the
-operator re-runs the installer from the newly unpacked release — re-running is
-already the documented upgrade path, and it overwrites
-`~/.rippel-agent/node/bin/node` along with `src/`. An operator who installed
-using a system Node is unaffected, because there is no bundled runtime on that
-machine to patch.
-
-Watch <https://nodejs.org/en/blog/vulnerability> for the announcements, and stay
-on an LTS line — a runtime we ship should still be getting fixes for longer than
-a deployment lives.
+**The API serves these from `apps/agent/dist`**, so build them before building
+the API image — `docker/api.Dockerfile` copies that directory in. A rippel with
+no binaries on disk says so on the Deployment screen rather than offering links
+that 404.
 
 ## Running it by hand
 
-```bash
-node src/main.mjs
 ```
+rippel-agent                     Set it up. This is what double-clicking does.
+rippel-agent install <link>      Set it up with the link from rippel, no questions.
+rippel-agent run                 Run in the foreground. This is what the service runs.
+rippel-agent status              Say whether it is installed, and what it can see.
+rippel-agent uninstall           Remove the service and the program. Keeps ComfyUI.
+```
+
+`status` is the one to reach for when somebody says "is it working?" — it
+answers in sentences.
 
 Settings come from `~/.rippel-agent/config.json`, and every one of them can be
 overridden by an environment variable, which wins. That split is not decoration:
-the installer writes the file (so a service unit needs no env block and the token
-never lands in a shell history), while someone debugging overrides one value on
-the command line.
+the installer writes the file (so a service unit needs no env block and the
+token never lands in a shell history), while someone debugging overrides one
+value on the command line.
 
 | config.json | Environment | Default | What it is |
 | --- | --- | --- | --- |
@@ -121,6 +131,9 @@ the command line.
 | `comfyArgs` | `RIPPEL_COMFY_ARGS` | — | Extra arguments for ComfyUI's command line. |
 | `storageToken` | `RIPPEL_STORAGE_TOKEN` | — | Passed to ComfyUI's environment so the helper can read it. Set by rippel when it installs the helper. |
 | `heartbeatSeconds` | `RIPPEL_HEARTBEAT_SECONDS` | `20` | Check-in interval. |
+
+`RIPPEL_AGENT_HOME` moves the whole directory, which is how the tests keep off
+a real machine's `~`.
 
 ## What it does to a machine
 
@@ -147,6 +160,9 @@ Windows). If ComfyUI is answering on its port but the agent did not start it,
 the agent refuses to stop it and says so.
 
 ## The HTTP API
+
+Unchanged from the previous agent — the wire format is a contract with
+`apps/api/src/deploy` and was not part of this rewrite.
 
 Every route needs `X-Rippel-Agent-Token`, including the ping. There is no
 harmless route here — knowing an agent is listening is already worth something
@@ -175,8 +191,10 @@ laptop lid all disagree about how long is too long.
 ## The token
 
 It lets whoever holds it install software on the machine and read its ComfyUI.
-Treat it like an SSH key. If one leaks, remove the deployment in rippel — the
-agent's next check-in fails, and re-running the installer issues a new one.
+Treat it like an SSH key. The setup link contains it, so the link is a
+credential too — that is why the setup page says so in as many words. If one
+leaks, remove the deployment in rippel: the agent's next check-in fails, and
+re-installing issues a new one.
 
 Both the agent and the ComfyUI it manages are LAN software. ComfyUI has no
 authentication of its own; keep both off the open internet.
@@ -184,8 +202,11 @@ authentication of its own; keep both off the open internet.
 ## Tests
 
 ```bash
-npm test -w @comfy/agent
+npm test -w @comfy/agent        # go test, wrapped so npm --workspaces finds it
 ```
 
-Plain `node --test`, because the agent's whole claim is that it runs on a bare
-Node install — a suite that needed a runner from npm would quietly undermine it.
+There is a second suite on the API side, `apps/api/src/deploy/oneclick.test.ts`,
+which downloads a binary through the real route and *executes it*. It guards the
+one thing two languages have to agree on: the setup code rippel writes into a
+filename and the agent reads back out. Nothing else in either suite would notice
+if that drifted.

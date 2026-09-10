@@ -16,8 +16,7 @@ import type { AgentTask, ComfyState } from '@comfy/shared';
 import { makeDeploymentRoutes, normaliseHost, type DeployDb } from './routes.js';
 import { bashInstaller, oneLiner, powershellInstaller } from './scripts.js';
 import { clearReleaseCache, latestAgentRelease } from './releases.js';
-import { agentServerUrl, isPlaintextToPublicHost, requestOrigin } from './origin.js';
-import { env } from '../env.js';
+import { AGENT_BINARIES, availableBinaries, downloadFileName, encodeSetup, setupLink } from './binaries.js';
 import type { AgentClient } from './agent-client.js';
 import { AgentError } from './agent-client.js';
 
@@ -193,9 +192,7 @@ async function server(
     fetchImpl?: typeof fetch;
   } = {},
 ) {
-  // trustProxy matches index.ts: it is what folds X-Forwarded-* into req.host
-  // and req.protocol, which is where the install address now comes from.
-  const app = Fastify({ trustProxy: true });
+  const app = Fastify();
   app.decorateRequest('user', null);
   app.addHook('onRequest', async (req) => {
     (req as FastifyRequest & { user: unknown }).user = user;
@@ -283,29 +280,66 @@ describe('who may call what', () => {
     expect(wrong.statusCode).toBe(401);
   });
 
-  it('serves the agent source only to a token holder', async () => {
+  it('serves the agent binary only to that deployment’s token', async () => {
+    const app = await server(null, {
+      rows: [row(), row({ id: 'other', name: 'other', token: 'tok-other' })],
+    });
+    const url = `/deployments/${D1}/agent/linux-amd64`;
+
+    expect((await app.inject({ method: 'GET', url })).statusCode).toBe(401);
+    // A real token, but for another machine: the download is branded with a
+    // deployment's credentials, so handing one over would enrol the wrong box.
+    expect((await app.inject({ method: 'GET', url: `${url}?token=tok-other` })).statusCode).toBe(401);
+
+    const res = await app.inject({ method: 'GET', url: `${url}?token=tok-secret` });
+    // 404 when this rippel has not built its binaries, which is a normal state
+    // for a checkout — but never 401, and never a silent empty file.
+    const built = await availableBinaries();
+    if (built.some((b) => b.target === 'linux-amd64')) {
+      expect(res.statusCode).toBe(200);
+      // The filename is the credential: the agent reads its own name and needs
+      // nothing typed. Losing this header is losing the one-click install, so
+      // the blob is decoded rather than string-matched — what matters is that
+      // the token comes back out, not how this rippel spells its own address.
+      const disposition = String(res.headers['content-disposition']);
+      const blob = /rippel-agent-setup-([A-Za-z0-9_-]+)/.exec(disposition)?.[1];
+      expect(blob).toBeTruthy();
+      const carried = JSON.parse(Buffer.from(blob!, 'base64url').toString('utf8'));
+      expect(carried.t).toBe('tok-secret');
+      expect(carried.s).toMatch(/^https?:\/\//);
+      // ELF, because that is what a Linux download has to be.
+      expect(res.rawPayload.subarray(0, 4).toString('latin1')).toBe('\x7fELF');
+    } else {
+      expect(res.statusCode).toBe(404);
+      expect(res.json().message).toContain('build:release');
+    }
+  });
+
+  it('refuses a platform it has never heard of, and says which it knows', async () => {
     const app = await server(null, { rows: [row()] });
-    expect((await app.inject({ method: 'GET', url: '/deployments/agent/manifest' })).statusCode).toBe(401);
-    const ok = await app.inject({
+    const res = await app.inject({
       method: 'GET',
-      url: '/deployments/agent/manifest',
-      headers: { 'x-rippel-agent-token': 'tok-secret' },
+      url: `/deployments/${D1}/agent/solaris-sparc?token=tok-secret`,
     });
+    expect(res.statusCode).toBe(404);
+    expect(res.json().message).toContain('windows-amd64');
+  });
+
+  it('shows the setup page to whoever holds the link, and nobody else', async () => {
+    const app = await server(null, { rows: [row()] });
+
+    const ok = await app.inject({ method: 'GET', url: '/deployments/setup/tok-secret' });
     expect(ok.statusCode).toBe(200);
-    expect(ok.body).toContain('main.mjs');
+    expect(ok.headers['content-type']).toContain('text/html');
+    // The person opening this is not the administrator — it has to name the
+    // machine and say what the link is worth.
+    expect(ok.body).toContain('studio-4090');
+    expect(ok.body).toContain('This link is a password');
 
-    const file = await app.inject({
-      method: 'GET',
-      url: '/deployments/agent/file/main.mjs?token=tok-secret',
-    });
-    expect(file.statusCode).toBe(200);
-    expect(file.body).toContain('rippel agent');
-
-    const missing = await app.inject({
-      method: 'GET',
-      url: '/deployments/agent/file/nope.mjs?token=tok-secret',
-    });
-    expect(missing.statusCode).toBe(404);
+    // A token from a deleted deployment must not 500, and must say what to do.
+    const gone = await app.inject({ method: 'GET', url: '/deployments/setup/tok-nope' });
+    expect(gone.statusCode).toBe(404);
+    expect(gone.body).toContain('not valid any more');
   });
 
   it('will not hand one deployment’s script to another’s token', async () => {
@@ -319,95 +353,11 @@ describe('who may call what', () => {
     const sh = await app.inject({ method: 'GET', url: `/deployments/${D1}/install.sh?token=tok-secret` });
     expect(sh.statusCode).toBe(200);
     expect(sh.body).toContain('TOKEN=');
-    expect(sh.body).toContain('rippel-agent.service');
+    expect(sh.body).toContain('/api/deployments/setup/');
 
     const ps1 = await app.inject({ method: 'GET', url: `/deployments/${D1}/install.ps1?token=tok-secret` });
     expect(ps1.statusCode).toBe(200);
-    expect(ps1.body).toContain('Register-ScheduledTask');
-  });
-});
-
-/**
- * A single configured address cannot be right for both a browser on the LAN
- * and a GPU box on the internet. Someone reaching rippel at dev.rippel.app was
- * handed an install command pointing at 192.168.1.9, which nothing outside the
- * house can reach; these are the tests that stop that coming back.
- */
-describe('the address baked into an install', () => {
-  it('uses the host the request actually arrived on', async () => {
-    const app = await server(ADMIN, { rows: [row()] });
-    const res = await app.inject({
-      method: 'GET',
-      url: `/deployments/${D1}/install`,
-      headers: { host: 'dev.rippel.app', 'x-forwarded-proto': 'https' },
-    });
-    const body = res.json() as { serverUrl: string; commands: Record<string, string> };
-    expect(body.serverUrl).toBe('https://dev.rippel.app');
-    expect(body.commands.linux).toContain('https://dev.rippel.app/api/deployments/');
-    expect(body.commands.win32).toContain('https://dev.rippel.app/api/deployments/');
-    expect(body.commands.linux).not.toContain('192.168.1.9');
-  });
-
-  it('uses the LAN address when that is how rippel was opened', async () => {
-    const app = await server(ADMIN, { rows: [row()] });
-    const res = await app.inject({
-      method: 'GET',
-      url: `/deployments/${D1}/install`,
-      headers: { host: '192.168.1.9:4000' },
-    });
-    const body = res.json() as { serverUrl: string; commands: Record<string, string> };
-    expect(body.serverUrl).toBe('http://192.168.1.9:4000');
-    expect(body.commands.darwin).toContain("http://192.168.1.9:4000/api/deployments/");
-  });
-
-  it('writes that same address into the generated script', async () => {
-    const app = await server(null, { rows: [row()] });
-    const sh = await app.inject({
-      method: 'GET',
-      url: `/deployments/${D1}/install.sh?token=tok-secret`,
-      headers: { host: 'dev.rippel.app', 'x-forwarded-proto': 'https' },
-    });
-    expect(sh.body).toContain("SERVER='https://dev.rippel.app'");
-
-    const ps1 = await app.inject({
-      method: 'GET',
-      url: `/deployments/${D1}/install.ps1?token=tok-secret`,
-      headers: { host: '192.168.1.9:4000' },
-    });
-    expect(ps1.body).toContain("$Server     = 'http://192.168.1.9:4000'");
-  });
-
-  it('honours a forwarded host, since that is the name the browser used', () => {
-    expect(requestOrigin({ headers: { 'x-forwarded-host': 'dev.rippel.app', 'x-forwarded-proto': 'https' } })).toBe(
-      'https://dev.rippel.app',
-    );
-    // A proxy chain sends a list; the client-facing entry is the first.
-    expect(requestOrigin({ headers: { 'x-forwarded-host': 'dev.rippel.app, inner' } })).toBe('http://dev.rippel.app');
-  });
-
-  it('refuses a host that is not a host, rather than building a URL from it', () => {
-    expect(requestOrigin({ headers: { host: 'evil.example/../x' } })).toBeNull();
-    expect(requestOrigin({ headers: { host: 'a b' } })).toBeNull();
-    expect(requestOrigin({ headers: {} })).toBeNull();
-  });
-
-  it('lets AGENT_SERVER_URL override it, for agents that need an internal address', () => {
-    const deploy = env.deploy as { serverUrlOverride: string };
-    const before = deploy.serverUrlOverride;
-    deploy.serverUrlOverride = 'http://inside.lan:4000/';
-    try {
-      expect(agentServerUrl({ host: 'dev.rippel.app', protocol: 'https' })).toBe('http://inside.lan:4000');
-    } finally {
-      deploy.serverUrlOverride = before;
-    }
-  });
-
-  it('warns about plaintext only when the host is actually public', () => {
-    expect(isPlaintextToPublicHost('http://dev.rippel.app')).toBe(true);
-    expect(isPlaintextToPublicHost('https://dev.rippel.app')).toBe(false);
-    for (const lan of ['http://192.168.1.9:4000', 'http://10.0.0.4', 'http://127.0.0.1:3000', 'http://localhost:5173', 'http://studio:4000', 'http://172.16.4.4']) {
-      expect(isPlaintextToPublicHost(lan)).toBe(false);
-    }
+    expect(ps1.body).toContain('rippel-agent.exe');
   });
 });
 
@@ -578,43 +528,104 @@ describe('the generated installers', () => {
     expect(oneLiner('linux', params)).toContain(encodeURIComponent(params.token));
   });
 
-  it('refuses to run on an old Node rather than failing later', () => {
-    expect(bashInstaller(params)).toContain('NODE_MAJOR');
-    expect(powershellInstaller(params)).toContain('Node.js 20 or newer is required');
-  });
-
-  it('prefers the runtime bundled in the release over a system Node', () => {
-    const script = bashInstaller(params);
-    // The bundle is looked for first, and only then is $PATH consulted.
-    expect(script.indexOf('$base/node/bin/node')).toBeLessThan(script.indexOf('command -v node'));
-    expect(script).toContain('using the Node runtime bundled with this release');
-
-    const ps = powershellInstaller(params);
-    expect(ps.indexOf("'node\\node.exe'")).toBeLessThan(ps.indexOf('Get-Command node'));
-    expect(ps).toContain('using the Node runtime bundled with this release');
-  });
-
-  it('installs the bundled runtime beside the agent and points the service at it', () => {
-    const script = bashInstaller(params);
-    // Not $(command -v node): the unit must survive the unpacked folder being
-    // deleted, and must not silently switch runtime if one is installed later.
-    expect(script).toContain('ExecStart=$NODE_BIN $HOME_DIR/src/main.mjs');
-    expect(script).toContain('<string>$NODE_BIN</string>');
-    expect(script).toContain('cp -f "$BUNDLED_NODE" "$INSTALLED_NODE"');
-    expect(script).not.toContain('ExecStart=$(command -v node)');
-
-    const ps = powershellInstaller(params);
-    expect(ps).toContain('New-ScheduledTaskAction -Execute $nodeExe');
-    expect(ps).toContain('Copy-Item -LiteralPath $bundledNode -Destination $InstalledNode');
-    // A user folder with a space in it is the normal case on Windows.
-    expect(ps).toContain('-Argument "`"$HomeDir\\src\\main.mjs`""');
-  });
-
-  it('says how to get a runtime when there is neither a bundle nor a system Node', () => {
+  it('does nothing but download the binary and run it', () => {
+    // The whole point of the rewrite: the script no longer hunts for a Node
+    // runtime, downloads six source files or writes a service unit. If any of
+    // that comes back, it came back by accident.
     for (const script of [bashInstaller(params), powershellInstaller(params)]) {
-      expect(script).toContain('no bundled runtime was found');
-      expect(script).toContain('it carries its own runtime');
+      expect(script).not.toContain('node');
+      expect(script).not.toContain('.mjs');
+      expect(script).not.toContain('manifest');
     }
+    // A bootstrap this small is one a person can read before running it, which
+    // is the only defence a `curl | bash` line has.
+    expect(bashInstaller(params).split('\n').length).toBeLessThan(70);
+  });
+
+  it('hands the agent the setup link and lets it do the install', () => {
+    const bash = bashInstaller(params);
+    // exec, so the agent's own exit code is the script's, and its error
+    // messages are what an operator sees rather than a wrapper's.
+    expect(bash).toContain('exec "$BINARY" install "$SETUP_LINK"');
+    // The link is baked in, sh-quoted — the token here has an apostrophe in it
+    // precisely so a naive interpolation would show up as a broken script.
+    expect(bash).toContain('/api/deployments/setup/');
+    expect(bash).toContain(`SETUP_LINK='${setupLink(params.serverUrl, params.token).replace(/'/g, "'\\''")}'`);
+
+    const ps = powershellInstaller(params);
+    expect(ps).toContain('& $Binary install $SetupLink');
+  });
+
+  it('picks the right macOS binary, because a Mac is genuinely still split', () => {
+    const script = bashInstaller(params);
+    expect(script).toContain('uname -m');
+    expect(script).toContain('macos-arm64');
+    expect(script).toContain('macos-amd64');
+    // Everything else we ship is x86-64, so there is nothing to decide there.
+    expect(script).toContain('TARGET="linux-amd64"');
+  });
+
+  it('downloads into a temporary folder rather than wherever it was run', () => {
+    // This gets run from an SSH session's home directory, or from a read-only
+    // share; neither should end up with a stray 7 MB binary in it.
+    expect(bashInstaller(params)).toContain('mktemp -d');
+    expect(powershellInstaller(params)).toContain('GetTempPath()');
+  });
+
+  it('turns on TLS 1.2 before PowerShell 5 tries an https download', () => {
+    // Windows PowerShell 5 still defaults to TLS 1.0, which nothing accepts.
+    // A rippel behind https would otherwise fail with a closed connection.
+    expect(powershellInstaller(params)).toContain('Tls12');
+  });
+});
+
+// ---------------------------------------------------------------- downloads
+
+describe('the setup code carried in a download’s filename', () => {
+  const setup = { serverUrl: 'http://192.168.1.9:4000', token: 'tok-secret' };
+
+  it('round-trips through base64url, which is what a filename can hold', () => {
+    const blob = encodeSetup(setup);
+    // The agent decodes this with encoding/base64.RawURLEncoding, so no
+    // padding, and only characters that are legal in a filename everywhere.
+    expect(blob).toMatch(/^[A-Za-z0-9_-]+$/);
+    expect(JSON.parse(Buffer.from(blob, 'base64url').toString('utf8'))).toEqual({
+      s: setup.serverUrl,
+      t: setup.token,
+    });
+  });
+
+  it('leaves out ports that are already the agent’s defaults', () => {
+    // Every byte here is a byte of filename, and Windows still has a path limit.
+    const bare = JSON.parse(Buffer.from(encodeSetup({ ...setup, agentPort: 8189, comfyPort: 8188 }), 'base64url').toString());
+    expect(bare.p).toBeUndefined();
+    expect(bare.c).toBeUndefined();
+
+    const custom = JSON.parse(Buffer.from(encodeSetup({ ...setup, agentPort: 9000 }), 'base64url').toString());
+    expect(custom.p).toBe(9000);
+  });
+
+  it('keeps the .exe on Windows, because without it nothing runs at all', () => {
+    const windows = AGENT_BINARIES.find((b) => b.platform === 'win32')!;
+    const linux = AGENT_BINARIES.find((b) => b.platform === 'linux')!;
+    expect(downloadFileName(windows, setup)).toMatch(/^rippel-agent-setup-[A-Za-z0-9_-]+\.exe$/);
+    expect(downloadFileName(linux, setup)).toMatch(/^rippel-agent-setup-[A-Za-z0-9_-]+$/);
+  });
+
+  it('stays short enough to survive a Windows Downloads folder', () => {
+    // A real token is 32 bytes base64url — 43 characters. MAX_PATH is 260, and
+    // C:\\Users\\<name>\\Downloads\\ is most of a hundred of them.
+    const real = { serverUrl: 'http://192.168.100.200:4000', token: 'a'.repeat(43) };
+    const windows = AGENT_BINARIES.find((b) => b.platform === 'win32')!;
+    expect(downloadFileName(windows, real).length).toBeLessThan(150);
+  });
+
+  it('builds a setup link the agent can read the server address back out of', () => {
+    // The agent strips /api/deployments to recover the server URL; if this
+    // path ever changes, apiPrefixes in apps/agent/go/setup.go changes with it.
+    expect(setupLink('http://192.168.1.9:4000/', 'tok-secret')).toBe(
+      'http://192.168.1.9:4000/api/deployments/setup/tok-secret',
+    );
   });
 });
 
@@ -631,7 +642,9 @@ describe('the agent release lookup', () => {
     );
     expect(release.tag).toBeNull();
     expect(release.note).toContain('Could not reach GitHub');
-    expect(release.downloads).toHaveLength(3);
+    // Four now, not three: a Mac is genuinely split between Apple silicon and
+    // Intel, and one binary cannot serve both.
+    expect(release.downloads).toHaveLength(4);
     for (const download of release.downloads) {
       expect(download.url).toContain('/releases/latest/download/');
     }
@@ -649,9 +662,9 @@ describe('the agent release lookup', () => {
             html_url: 'https://github.com/frogg-app/rippel/releases/tag/agent-v0.1.0',
             assets: [
               {
-                name: 'rippel-agent-linux.tar.gz',
-                browser_download_url: 'https://example.test/linux.tar.gz',
-                size: 40_960,
+                name: 'rippel-agent-linux-amd64',
+                browser_download_url: 'https://example.test/rippel-agent-linux-amd64',
+                size: 7_372_960,
               },
             ],
           }),
@@ -661,8 +674,8 @@ describe('the agent release lookup', () => {
     );
     expect(release.tag).toBe('agent-v0.1.0');
     const linux = release.downloads.find((d) => d.platform === 'linux')!;
-    expect(linux.url).toBe('https://example.test/linux.tar.gz');
-    expect(linux.sizeBytes).toBe(40_960);
+    expect(linux.url).toBe('https://example.test/rippel-agent-linux-amd64');
+    expect(linux.sizeBytes).toBe(7_372_960);
     // Windows and macOS have no asset in this release, so they fall back to the
     // /latest/download link rather than disappearing from the page.
     expect(release.downloads.find((d) => d.platform === 'win32')!.url).toContain('/latest/download/');

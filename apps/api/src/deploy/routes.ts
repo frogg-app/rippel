@@ -32,9 +32,19 @@ import { env } from '../env.js';
 import { pollBackendNow } from '../lib/backend-poller.js';
 import { AgentError, agentClient as defaultAgentClient, type AgentClient, type AgentTarget } from './agent-client.js';
 import { agentServerUrl, type OriginRequest } from './origin.js';
+import {
+  AGENT_BINARIES,
+  availableBinaries,
+  binaryFor,
+  downloadFileName,
+  findBinary,
+  readBinary,
+  setupLink,
+} from './binaries.js';
 import { latestAgentRelease } from './releases.js';
 import { installerFor, oneLiner, type ScriptParams } from './scripts.js';
-import { agentFile, agentFiles, helperFiles } from './sources.js';
+import { setupPage } from './setup-page.js';
+import { helperFiles } from './sources.js';
 import { getRun, startSshInstall, type SshExec } from './ssh.js';
 
 export interface DeployDb {
@@ -274,25 +284,86 @@ export function makeDeploymentRoutes(deps: DeployDeps = {}) {
       return { ok: true, deploymentId: updated?.id ?? row.id };
     });
 
-    /** The agent's own file list, newline separated so a shell can read it. */
-    app.get('/deployments/agent/manifest', async (req, reply) => {
-      if (!(await byToken(req))) {
-        return reply.code(401).send({ error: 'unauthorized', message: 'A deployment token is required.' });
+    /**
+     * The setup page, which is the whole install for a person with a screen.
+     *
+     * Reached by opening the one link rippel shows for a deployment. It is
+     * authenticated by the token in its own path and nothing else, because the
+     * point is that it can be sent to somebody who has no rippel login — the
+     * person sitting at the GPU machine usually is not the administrator.
+     */
+    app.get<{ Params: { token: string } }>('/deployments/setup/:token', async (req, reply) => {
+      const row = await db.queryOne<DeploymentRow>(`${SELECT} WHERE d.token = $1`, [
+        req.params.token,
+      ]);
+      if (!row) {
+        return reply
+          .code(404)
+          .type('text/html; charset=utf-8')
+          .send(
+            '<!doctype html><meta charset="utf-8"><title>rippel</title>' +
+              '<p style="font:16px system-ui;padding:40px">This setup link is not valid any more. ' +
+              'Ask for a new one from rippel’s Deployment screen.</p>',
+          );
       }
-      const files = await agentFiles();
-      return reply.type('text/plain; charset=utf-8').send(`${files.map((f) => f.name).join('\n')}\n`);
+      const params = scriptParams(req, row);
+      return reply.type('text/html; charset=utf-8').send(
+        setupPage({
+          deploymentName: row.name,
+          deploymentId: row.id,
+          serverUrl: params.serverUrl,
+          token: row.token,
+          setup: { serverUrl: params.serverUrl, token: row.token, agentPort: row.agent_port },
+          available: await availableBinaries(),
+        }),
+      );
     });
 
-    app.get<{ Params: { name: string } }>('/deployments/agent/file/:name', async (req, reply) => {
-      if (!(await byToken(req))) {
-        return reply.code(401).send({ error: 'unauthorized', message: 'A deployment token is required.' });
-      }
-      const file = await agentFile(req.params.name);
-      if (!file) {
-        return reply.code(404).send({ error: 'not_found', message: 'The agent has no such file.' });
-      }
-      return reply.type('text/plain; charset=utf-8').send(file.content);
-    });
+    /**
+     * The agent binary itself.
+     *
+     * Served under a filename carrying this deployment's setup code, so the
+     * downloaded file already knows which rippel it belongs to and what its
+     * token is. That is what makes a double-click a complete install.
+     */
+    app.get<{ Params: { id: string; target: string }; Querystring: { token?: string } }>(
+      '/deployments/:id/agent/:target',
+      async (req, reply) => {
+        const row = await byToken(req);
+        // The id in the path is checked against the token's row, so a valid
+        // token cannot be used to fetch a download branded for another machine.
+        if (!row || row.id !== req.params.id) {
+          return reply
+            .code(401)
+            .send({ error: 'unauthorized', message: 'That token is not this deployment.' });
+        }
+        const binary = await findBinary(req.params.target);
+        if (!binary) {
+          const known = AGENT_BINARIES.map((b) => b.target).join(', ');
+          return reply.code(404).send({
+            error: 'not_found',
+            message: binaryFor(req.params.target)
+              ? `This rippel has no ${req.params.target} agent built. Run "npm run build:release -w @comfy/agent" where rippel is installed, or download the agent from its GitHub release instead.`
+              : `There is no agent for "${req.params.target}". Known ones: ${known}.`,
+          });
+        }
+
+        const params = scriptParams(req, row);
+        const filename = downloadFileName(binary, {
+          serverUrl: params.serverUrl,
+          token: row.token,
+          agentPort: row.agent_port,
+        });
+        return reply
+          .type('application/octet-stream')
+          .header('content-length', binary.sizeBytes)
+          .header('content-disposition', `attachment; filename="${filename}"`)
+          // The name is the credential, so it must not be shared between
+          // deployments by anything in the middle.
+          .header('cache-control', 'private, no-store')
+          .send(readBinary(binary));
+      },
+    );
 
     /** The generated installer, fetched by the one-liner an operator pasted. */
     for (const [suffix, platform] of [
@@ -399,10 +470,41 @@ export function makeDeploymentRoutes(deps: DeployDeps = {}) {
       async (req, reply) => {
         const row = await loadOr404(req, reply);
         if (!row) return;
+        // scriptParams takes the request so the install command names the
+        // address the operator is actually on, not a static configured one.
         const params = scriptParams(req, row);
+        const available = await availableBinaries();
         return {
           serverUrl: params.serverUrl,
           token: row.token,
+          /**
+           * The one link to hand to whoever is at the machine. It opens a page
+           * with a download button per platform, and the file it serves carries
+           * this deployment's setup code in its own name — so opening it is the
+           * entire install, with nothing typed.
+           */
+          setupLink: setupLink(params.serverUrl, row.token),
+          /**
+           * The same downloads, addressed directly, for a UI that would rather
+           * show the buttons itself than link to the page.
+           */
+          downloads: available.map((binary) => ({
+            target: binary.target,
+            platform: binary.platform,
+            arch: binary.arch,
+            label: binary.label,
+            sizeBytes: binary.sizeBytes,
+            url:
+              `${params.serverUrl}/api/deployments/${row.id}/agent/${binary.target}` +
+              `?token=${encodeURIComponent(row.token)}`,
+            fileName: downloadFileName(binary, {
+              serverUrl: params.serverUrl,
+              token: row.token,
+              agentPort: row.agent_port,
+            }),
+          })),
+          // Still generated, for a machine nobody is sitting at: the managed
+          // SSH install runs exactly this, and so does a headless box.
           commands: {
             linux: oneLiner('linux', params),
             darwin: oneLiner('darwin', params),

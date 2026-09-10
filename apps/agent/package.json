@@ -1,14 +1,11 @@
 {
   "name": "@comfy/agent",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
-  "description": "The rippel agent: installs and manages ComfyUI on one machine.",
-  "bin": { "rippel-agent": "src/main.mjs" },
+  "description": "The rippel agent: one binary that installs and manages ComfyUI on one machine.",
   "scripts": {
-    "start": "node src/main.mjs",
     "build:release": "node scripts/build-release.mjs",
-    "test": "node --test test/*.test.mjs"
-  },
-  "engines": { "node": ">=20" }
+    "test": "node scripts/go.mjs test ./..."
+  }
 }

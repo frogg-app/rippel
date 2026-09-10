@@ -12,8 +12,9 @@
  * about where the files would come from.
  */
 
-import type { AgentPlatform, AgentRelease } from '@comfy/shared';
+import type { AgentRelease } from '@comfy/shared';
 import { env } from '../env.js';
+import { AGENT_BINARIES } from './binaries.js';
 
 interface GithubAsset {
   name: string;
@@ -29,12 +30,17 @@ interface GithubRelease {
   assets?: GithubAsset[];
 }
 
-/** Asset name per platform, and how to say it in the UI. */
-const ASSETS: { platform: AgentPlatform; label: string; asset: string }[] = [
-  { platform: 'win32', label: 'Windows', asset: 'rippel-agent-windows.zip' },
-  { platform: 'darwin', label: 'macOS', asset: 'rippel-agent-macos.tar.gz' },
-  { platform: 'linux', label: 'Linux', asset: 'rippel-agent-linux.tar.gz' },
-];
+/**
+ * The assets, taken from the same list the build script and the download route
+ * use, so a renamed binary cannot end up with a working download here and a
+ * dead link there.
+ *
+ * They are plain executables now — no archives. A release used to carry a zip
+ * or a tarball because the agent was a folder of source plus a Node runtime;
+ * one static binary needs no container, and asking a non-technical person to
+ * unzip something was one of the steps that made this hard.
+ */
+const ASSETS = AGENT_BINARIES.map(({ platform, label, asset }) => ({ platform, label, asset }));
 
 const CACHE_MS = 10 * 60 * 1000;
 let cached: { at: number; value: AgentRelease } | null = null;
