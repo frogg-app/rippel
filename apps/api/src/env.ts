@@ -123,6 +123,33 @@ export const env = {
    * helper as unauthorised rather than sending an empty token.
    */
   comfyStorageToken: optional('COMFY_STORAGE_TOKEN', ''),
+
+  deploy: {
+    /**
+     * The address a remote agent should check in to.
+     *
+     * `PUBLIC_URL` is where a *browser* reaches rippel, which behind a reverse
+     * proxy is often a name only the browser's network resolves. An agent on
+     * the GPU box needs the address *it* can reach, and on a home LAN those are
+     * routinely different. So this is its own setting, falling back to
+     * PUBLIC_URL because on a simple install they are the same.
+     */
+    serverUrl: optional('AGENT_SERVER_URL', optional('PUBLIC_URL', 'http://localhost:3000')),
+    /** GitHub repo the agent's releases are published from, as owner/name. */
+    releaseRepo: optional('AGENT_RELEASE_REPO', 'frogg-app/rippel'),
+    /** Default port a newly installed agent listens on. */
+    agentPort: int('AGENT_PORT', 8189),
+    /** How long to wait for one call to an agent. */
+    timeoutMs: int('AGENT_TIMEOUT_MS', 15_000),
+    /**
+     * How long an agent may go without checking in before it is called
+     * offline. Three missed twenty-second beats, so one slow tick is not an
+     * outage.
+     */
+    offlineAfterMs: int('AGENT_OFFLINE_AFTER_MS', 70_000),
+    /** Longest a managed SSH install may run before it is given up on. */
+    sshTimeoutMs: int('SSH_TIMEOUT_MS', 15 * 60 * 1000),
+  },
   civitaiApiKey: optional('CIVITAI_API_KEY', ''),
   huggingfaceToken: optional('HUGGINGFACE_TOKEN', ''),
 } as const;

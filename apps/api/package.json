@@ -17,10 +17,12 @@
     "@fastify/cookie": "^11.0.2",
     "@fastify/multipart": "^9.0.3",
     "@fastify/websocket": "^11.0.2",
+    "@types/ssh2": "^1.15.6",
     "fastify": "^5.2.1",
     "fastify-plugin": "^5.0.1",
     "pg": "^8.13.1",
     "sharp": "^0.33.5",
+    "ssh2": "^1.17.0",
     "zod": "^3.24.1"
   },
   "devDependencies": {

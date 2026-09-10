@@ -38,6 +38,37 @@ Start ComfyUI with `--listen 0.0.0.0` so it accepts connections from off the box
 ComfyUI has no authentication of its own — keep it on your LAN. This app never
 connects the browser to it directly; every call goes through the API server.
 
+## Deploying a machine
+
+Pointing rippel at a ComfyUI someone already installed is the section above.
+Getting a ComfyUI onto a bare machine in the first place is **Settings →
+Deployment**, which installs the *rippel agent* — a dependency-free Node process
+that installs and updates ComfyUI, starts and stops it, and keeps the storage
+helper in place.
+
+Two ways in, installing exactly the same thing:
+
+- **Deploy over SSH.** rippel connects once, runs the installer, and streams the
+  output back. The credential is used for that connection and never stored.
+- **Install by hand.** rippel gives you a one-line command with the machine's
+  address and token already in it, to paste on the target — for Windows, for a
+  box rippel cannot SSH to, or when you would rather read the script first.
+  Download links for the agent's GitHub releases are on the same panel.
+
+Neither needs root: the agent installs into its own home directory and runs as a
+user service. The target needs Node.js 20 or newer, plus git and Python for
+ComfyUI itself.
+
+Once ComfyUI is installed there, **Add as backend** registers it — the address is
+built from what the agent reported rather than typed, so there is no fourth
+place to make a typo.
+
+Set `AGENT_SERVER_URL` to the address the *agent* can reach rippel on. That is
+not always `PUBLIC_URL`: behind a reverse proxy, the name a browser resolves and
+the one a GPU box on the LAN resolves are routinely different.
+
+See `apps/agent/README.md` for what the agent does to a machine and its API.
+
 ## How it avoids exposing node graphs
 
 The UI never sends a workflow. It sends a *capability* (what the user wants) and
@@ -73,6 +104,7 @@ only approach correct on every vendor.
 ```
 apps/api          Fastify + TypeScript. Auth, jobs, backend registry, model catalogue.
 apps/web          Vite + React front end.
+apps/agent        The rippel agent: installs and manages ComfyUI on one machine.
 packages/shared   Types shared by both. No runtime code.
 docker/           Dockerfiles and the Caddy front door.
 design/           The UI design canvas and its source artboards.

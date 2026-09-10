@@ -28,6 +28,12 @@ export default defineConfig({
     // machine, so a loopback-only dev server would be unreachable.
     host: '0.0.0.0',
     port: 5173,
+    // Vite refuses requests whose Host header it does not recognise, which is a
+    // sensible default and exactly what a tunnel trips over: cloudflared
+    // forwards the public hostname, not the LAN address. Listed explicitly
+    // rather than disabled wholesale, so only hostnames we published are
+    // accepted.
+    allowedHosts: ['dev.rippel.app', '.rippel.app'],
     proxy: {
       '/api': { target: apiTarget, changeOrigin: false, ws: true },
     },

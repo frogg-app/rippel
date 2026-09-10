@@ -14,6 +14,7 @@ import authRoutes from './routes/auth.js';
 import backendRoutes from './routes/backends.js';
 import backendStorageRoutes from './backends/storage.js';
 import backendAdminRoutes from './backends/admin.js';
+import deploymentRoutes from './deploy/routes.js';
 import healthRoutes from './routes/health.js';
 import modelRoutes from './routes/models.js';
 import assetRoutes from './storage/routes.js';
@@ -45,6 +46,7 @@ await app.register(
     await api.register(backendRoutes);
     await api.register(backendStorageRoutes);
     await api.register(backendAdminRoutes);
+    await api.register(deploymentRoutes);
     await api.register(modelRoutes);
     await api.register(assetRoutes);
     await api.register(modelInstallRoutes);
