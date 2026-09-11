@@ -15,6 +15,7 @@ import type {
   JobKind,
   LoraSelection,
   QualityPreset,
+  WorkflowVideoLimits,
 } from '@comfy/shared';
 import type { CreateMode } from './mode';
 
@@ -152,16 +153,35 @@ export const PRESET_DEFAULTS: Record<
 export const MIN_BATCH = 1;
 export const MAX_BATCH = 8;
 
-/**
- * Video length and rate. The bounds mirror the LTX-Video template's frame
- * budget (9 to 161 frames) at watchable rates: 25 fps is what the model was
- * trained at, so it is the default and the longest clip at that rate is 6.4s.
- */
-export const VIDEO_LENGTH_MIN = 1;
-export const VIDEO_LENGTH_MAX = 6;
-export const VIDEO_LENGTH_STEP = 0.5;
-export const VIDEO_FPS_OPTIONS = [12, 16, 24, 25] as const;
-export type VideoFps = (typeof VIDEO_FPS_OPTIONS)[number];
+/** Frame-aligned bounds avoid rounding past a template's frame budget. */
+export function videoFrameBounds(limits: WorkflowVideoLimits) {
+  const q = limits.frameQuantum;
+  return {
+    min: Math.ceil((limits.frames.min - 1) / q) * q + 1,
+    max: Math.floor((limits.frames.max - 1) / q) * q + 1,
+    step: q,
+  };
+}
+
+/** Reconcile the controls when the user changes model or frame rate.
+ * Request validation still rejects out-of-range values on the server. */
+export function fitVideoState(video: VideoState, limits: WorkflowVideoLimits): VideoState {
+  const rate = limits.fps;
+  const fps = Math.max(rate.min, Math.min(rate.max,
+    rate.min + Math.round((video.fps - rate.min) / rate.step) * rate.step));
+  const bounds = videoFrameBounds(limits);
+  const frames = Math.max(bounds.min, Math.min(bounds.max,
+    Math.ceil((Math.round(video.lengthSeconds * fps) - 1) / bounds.step) * bounds.step + 1));
+  return { fps, lengthSeconds: frames / fps };
+}
+
+export function videoFpsOptions(limits: WorkflowVideoLimits): number[] {
+  const { min, max, step } = limits.fps;
+  const common = [3, 6, 8, 12, 16, 24, 25, 30, 48, 60];
+  return [...new Set([min, ...common, max])]
+    .filter((fps) => fps >= min && fps <= max && Math.abs((fps - min) / step - Math.round((fps - min) / step)) < 1e-8)
+    .sort((a, b) => a - b);
+}
 
 export interface VideoState {
   lengthSeconds: number;

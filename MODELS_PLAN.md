@@ -303,6 +303,31 @@ it instead.
 - **Stop and report** if a task needs a model download over 20 GB, a new
   custom node, or a change to the agent's security model. Those need a person.
 
+## Progress — 2026-09-11 (Codex)
+
+- **Task 1 complete (local verification).** Existing authenticated
+  `/api/workflows/templates` and `/api/models/:id/workflows` endpoints now expose
+  manifest-derived frame, fps, quantum and motion limits. Create follows the
+  assigned or automatic workflow for the selected model and capability, bounds
+  duration and frame rate, and waits for the correct settings before submitting.
+  Failed settings requests have Retry. SVD defaults become 25 frames at 25 fps;
+  LTX supports up to 161 frames, with its 8n+1 spacing. Server rejection of
+  out-of-range requests is unchanged.
+- **Verification:** shared build passed; API `npm test`: 685 passed, 5 skipped;
+  web `npm test`: 263 passed. After adding retry coverage, affected web suites:
+  35 passed (including the new test); affected API suites: 20 passed.
+  Both prescribed TypeScript checks passed. Cross-layer tests compile form
+  values against every built-in video manifest, at every permitted integer fps,
+  for the default duration and both duration extremes.
+- **Environment:** `192.168.1.10:8188/system_stats` fails to connect from this
+  workspace. No real jobs ran; the historical hardware status table above has
+  not been re-verified. Tasks 2–4 still need their stated live prerequisites.
+- **Setup fix:** npm's lockfile lacked the existing agent workspace, causing
+  `npm ci` to fail. Added the missing workspace entries without changing package
+  versions.
+- **Next:** Task 2 (LTX companions); Task 22 is an independent option while LAN
+  access is unavailable. Tasks 2–23 are not marked complete by this run.
+
 ## Tasks
 
 Ordered by value. Tasks in the same run group can be done in one session.

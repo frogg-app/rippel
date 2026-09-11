@@ -24,6 +24,7 @@
 
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { z } from 'zod';
+import { videoLimitsFor } from '../workflows/video-limits.js';
 import type {
   JobKind,
   ModelRemoval,
@@ -78,6 +79,7 @@ export function describeTemplate(template: WorkflowTemplate): string {
 export function templateSummary(template: WorkflowTemplate): WorkflowTemplateSummary {
   const { manifest } = template;
   return {
+    videoLimits: videoLimitsFor(manifest),
     id: manifest.id,
     version: manifest.version,
     label: manifest.label,

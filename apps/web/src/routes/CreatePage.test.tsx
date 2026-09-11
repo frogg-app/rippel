@@ -179,6 +179,24 @@ const loras: Model[] = [
   },
 ];
 
+vi.mock('../lib/api-models', () => ({
+  modelsApi: {
+    modelWorkflows: vi.fn(async () => ({
+      options: [{
+        assigned: false, automatic: true,
+        template: {
+          capability: 'txt2vid',
+          videoLimits: {
+            frames: { min: 9, max: 129, step: 1 },
+            fps: { min: 1, max: 60, step: 1 },
+            frameQuantum: 4, motion: null,
+          },
+        },
+      }],
+    })),
+  },
+}));
+
 vi.mock('../lib/api-jobs', async () => {
   const actual = await vi.importActual<typeof import('../lib/api-jobs')>('../lib/api-jobs');
   return {
@@ -726,7 +744,7 @@ describe('mode toggle', () => {
 
     // And the controls follow: a clip has a length and a rate, not a count.
     expect(screen.queryByRole('slider', { name: /image count/i })).not.toBeInTheDocument();
-    expect(screen.getByRole('slider', { name: /duration/i })).toBeInTheDocument();
+    expect(await screen.findByRole('slider', { name: /duration/i })).toBeInTheDocument();
     expect(screen.getByRole('radiogroup', { name: /frame rate/i })).toBeInTheDocument();
 
     await user.click(screen.getByRole('radio', { name: /Hunyuan/i }));
@@ -736,7 +754,7 @@ describe('mode toggle', () => {
     expect(created[0]!.kind).toBe('txt2vid');
     expect(created[0]!.modelId).toBe('model-hunyuan');
     expect(created[0]!.batchSize).toBe(1);
-    expect(created[0]!.video).toMatchObject({ lengthSeconds: 4, fps: 25 });
+    expect(created[0]!.video).toMatchObject({ lengthSeconds: 101 / 25, fps: 25 });
   });
 
   it('offers the switch when nothing in this mode can run', async () => {

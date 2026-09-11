@@ -270,6 +270,14 @@ DELETE /api/models/:id                      requireAdmin
   backend that can (the rippel storage helper, once it grows a model mode).
 ```
 
+Template summaries (also returned by `GET /api/models/:id/workflows`) include
+`videoLimits`: `{ frames: { min, max, step }, fps: { min, max, step },
+frameQuantum, motion: { min, max, step } | null }`, or `null` for image workflows.
+These ranges come from the manifest. Frame counts lie on `frameQuantum * n + 1`;
+use the selected capability's assigned option, otherwise its automatic option.
+The Create form derives duration from frames / fps. API validation still rejects
+out-of-range requests.
+
 Model removal and the disk: `DELETE /api/models/:id` deletes the file on
 each backend through the helper's `DELETE /rippel/storage/models`
 `{ folder, filename }` when `COMFY_STORAGE_TOKEN` is set and the helper is

@@ -788,7 +788,22 @@ export interface WorkflowCapabilities {
  * families it serves, where it expects each file to live, and whether it is a
  * hand-authored graph or the generic guess.
  */
+/** Public video controls, projected from a workflow's manifest. */
+export interface VideoControlRange {
+  min: number;
+  max: number;
+  step: number;
+}
+
+export interface WorkflowVideoLimits {
+  frames: VideoControlRange;
+  fps: VideoControlRange;
+  frameQuantum: number;
+  motion: VideoControlRange | null;
+}
+
 export interface WorkflowTemplateSummary {
+  videoLimits?: WorkflowVideoLimits | null;
   id: string;
   version: number;
   label: string;

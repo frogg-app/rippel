@@ -29,10 +29,9 @@ import {
   modeOfKind,
   MAX_BATCH,
   MIN_BATCH,
-  VIDEO_FPS_OPTIONS,
-  VIDEO_LENGTH_MAX,
-  VIDEO_LENGTH_MIN,
-  VIDEO_LENGTH_STEP,
+  fitVideoState,
+  videoFrameBounds,
+  videoFpsOptions,
   QUALITY_LABELS,
   QUALITY_PRESETS,
   checkSubmittable,
@@ -45,6 +44,7 @@ import {
 import { useCreateMode } from '../create/mode';
 import { useAdvancedOpen } from '../create/useAdvancedOpen';
 import { useJobStage } from '../create/useJobStage';
+import { useVideoLimits } from '../create/useVideoLimits';
 import { useModels } from '../create/useModels';
 import { isRunnable, useReadiness } from '../create/useReadiness';
 import { partitionModels } from '../create/visibility';
@@ -138,10 +138,26 @@ export function CreatePage() {
     ? isRunnable(selectedModel, kind, capabilities, readiness)
     : false;
 
+  const videoSettings = useVideoLimits(form.modelId, kind);
+  const videoLimits = videoSettings.limits;
+  const videoBounds = videoLimits ? videoFrameBounds(videoLimits) : null;
+  const fittedVideo = videoLimits ? fitVideoState(form.video, videoLimits) : form.video;
+  const videoSettled = fittedVideo.fps === form.video.fps &&
+    fittedVideo.lengthSeconds === form.video.lengthSeconds;
+  useEffect(() => {
+    if (videoLimits && !videoSettled) patch({ video: fittedVideo });
+  }, [videoLimits, videoSettled, fittedVideo.fps, fittedVideo.lengthSeconds, patch]);
+
   const busy = Boolean(stage.job && !isTerminal(stage.job.status)) || stage.submitting;
   const submittable = useMemo(
-    () => checkSubmittable(form, { modelSupported: supported, busy }),
-    [form, supported, busy],
+    () => {
+      const basic = checkSubmittable(form, { modelSupported: supported, busy });
+      if (!basic.ok || modeOfKind(kind) !== 'video') return basic;
+      return videoLimits && videoSettled ? basic : {
+        ok: false, reason: videoSettings.error ?? 'Loading video settings…',
+      };
+    },
+    [form, supported, busy, kind, videoLimits, videoSettled, videoSettings.error],
   );
 
   const generate = useCallback(() => {
@@ -230,24 +246,28 @@ export function CreatePage() {
           {mode === 'video' ? (
             <div key="video" className={styles.modeBlock}>
               <Group label="Video">
-                <Slider
-                  label="Duration"
-                  accent
-                  min={VIDEO_LENGTH_MIN}
-                  max={VIDEO_LENGTH_MAX}
-                  step={VIDEO_LENGTH_STEP}
-                  value={form.video.lengthSeconds}
-                  display={`${form.video.lengthSeconds}s`}
-                  valueText={`${form.video.lengthSeconds} seconds`}
-                  hint="Longer clips cost more memory and time. About six seconds is the most a 16 GB card decodes."
-                  onChange={(lengthSeconds) => patch({ video: { ...form.video, lengthSeconds } })}
-                />
-                <Chips
-                  label="Frame rate"
-                  value={String(form.video.fps)}
-                  options={VIDEO_FPS_OPTIONS.map((fps) => ({ value: String(fps), label: `${fps} fps` }))}
-                  onChange={(fps) => patch({ video: { ...form.video, fps: Number(fps) } })}
-                />
+                {videoLimits && videoBounds ? <>
+                  <Slider
+                    label="Duration"
+                    accent
+                    min={videoBounds.min}
+                    max={videoBounds.max}
+                    step={videoBounds.step}
+                    value={Math.round(fittedVideo.lengthSeconds * fittedVideo.fps)}
+                    display={`${Number(fittedVideo.lengthSeconds.toFixed(2))}s`}
+                    valueText={`${Number(fittedVideo.lengthSeconds.toFixed(2))} seconds`}
+                    hint="Longer clips cost more memory and time. The maximum depends on your model and frame rate."
+                    onChange={(frames) => patch({ video: { ...fittedVideo, lengthSeconds: frames / fittedVideo.fps } })}
+                  />
+                  <Chips
+                    label="Frame rate"
+                    value={String(fittedVideo.fps)}
+                    options={[...new Set([...videoFpsOptions(videoLimits), fittedVideo.fps])].sort((a, b) => a - b).map((fps) => ({ value: String(fps), label: `${fps} fps` }))}
+                    onChange={(fps) => patch({ video: fitVideoState({ ...form.video, fps: Number(fps) }, videoLimits) })}
+                  />
+                </> : <p role="status">{videoSettings.error ?? (form.modelId ? 'Loading video settings…' : 'Select a model to load its video settings.')}
+                  {videoSettings.error && <button type="button" onClick={videoSettings.retry}>Retry</button>}
+                </p>}
               </Group>
             </div>
           ) : (

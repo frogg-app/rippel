@@ -12,7 +12,7 @@
 
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import { describe, expect, it } from 'vitest';
-import type { ModelRemoval, ModelWorkflows } from '@comfy/shared';
+import type { ModelRemoval, ModelWorkflows, WorkflowTemplateSummary } from '@comfy/shared';
 import type { ObjectInfo } from '../lib/comfy.js';
 import {
   BackendFileDeletionUnsupported,
@@ -178,7 +178,14 @@ describe('GET /workflows/templates', () => {
     const { app } = await server(user);
     const res = await app.inject({ method: 'GET', url: '/workflows/templates' });
     expect(res.statusCode).toBe(200);
-    const ids = (res.json() as { templates: { id: string }[] }).templates.map((t) => t.id);
+    const templates = (res.json() as { templates: WorkflowTemplateSummary[] }).templates;
+    const ids = templates.map((t) => t.id);
+    expect(templates.find((t) => t.id === 'img2vid-svd')?.videoLimits).toEqual({
+      frames: { min: 2, max: 25, step: 1 }, fps: { min: 3, max: 30, step: 1 },
+      frameQuantum: 1, motion: { min: 1, max: 1023, step: 1 },
+    });
+    expect(templates.find((t) => t.id === 'img2vid-ltxv')?.videoLimits?.frameQuantum).toBe(8);
+    expect(templates.find((t) => t.id === 'txt2img-sdxl')?.videoLimits).toBeNull();
     expect(ids).toEqual(expect.arrayContaining(['txt2img-sdxl', 'txt2vid-ltxv', 'txt2vid-ltxv-dm', 'img2vid-ltxv-dm', 'txt2vid-hunyuan']));
     const anon = await server(null);
     expect((await anon.app.inject({ method: 'GET', url: '/workflows/templates' })).statusCode).toBe(401);
