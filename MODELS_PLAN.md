@@ -376,6 +376,12 @@ it instead.
   registry entry. Retained its existing stable id and graph. The remaining work
   is the file move, companion installation and a real job on the target machine.
 
+- **Task 7 implemented.** Manifest mapping traces positive/negative conditioning,
+  uses catalogue IO for the first frame/output, preserves ambiguous controls,
+  derives ranges from node specs and records model file metadata/requirements.
+  Wan 5B mappings match the hand-authored control paths; bypassed first-frame
+  input is correctly reported unavailable. Three mapper tests and typecheck pass.
+
 ## Tasks
 
 Ordered by value. Tasks in the same run group can be done in one session.
