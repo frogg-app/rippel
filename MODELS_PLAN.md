@@ -348,6 +348,14 @@ it instead.
   14 open-source image-to-video entries. Tests and API typecheck passed.
   Agent race tests and a Windows cross-compile also passed for Task 13.
 
+- **Task 6 implemented; GPU acceptance pending.** Converter flattens subgraphs,
+  preserves exposed controls, handles seed behaviors, reroutes, bypass/mute,
+  dynamic combos and autogrow inputs, and reports ambiguous/missing bindings.
+  Five unmodified official fixtures convert against a local CPU-only ComfyUI
+  0.34.0 snapshot. Actual `/prompt` calls returned only missing model/sample
+  image errors; none completed. See `docs/WORKFLOW_VALIDATION_LOCAL.json`.
+  Converter tests: 11 passed; API typecheck passed.
+
 ## Tasks
 
 Ordered by value. Tasks in the same run group can be done in one session.

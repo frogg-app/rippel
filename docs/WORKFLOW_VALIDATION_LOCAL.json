@@ -1,0 +1,144 @@
+{
+  "backend": "Local CPU-only ComfyUI 0.34.0; no model weights installed",
+  "date": "2026-09-12",
+  "report": [
+    {
+      "name": "image_sdxl_simple",
+      "status": 400,
+      "errors": [
+        {
+          "node": "15",
+          "type": "value_not_in_list",
+          "message": "Value not in list",
+          "details": "ckpt_name: 'sd_xl_base_1.0.safetensors' not in []"
+        }
+      ]
+    },
+    {
+      "name": "ltxv_image_to_video",
+      "status": 400,
+      "errors": [
+        {
+          "node": "38",
+          "type": "value_not_in_list",
+          "message": "Value not in list",
+          "details": "clip_name: 't5xxl_fp16.safetensors' not in []"
+        },
+        {
+          "node": "44",
+          "type": "value_not_in_list",
+          "message": "Value not in list",
+          "details": "ckpt_name: 'ltx-video-2b-v0.9.5.safetensors' not in []"
+        },
+        {
+          "node": "78",
+          "type": "custom_validation_failed",
+          "message": "Custom validation failed for node",
+          "details": "image - Invalid image file: ltxv_image_to_video_input_image.jpg"
+        }
+      ]
+    },
+    {
+      "name": "hunyuan_video_text_to_video",
+      "status": 400,
+      "errors": [
+        {
+          "node": "10",
+          "type": "value_not_in_list",
+          "message": "Value not in list",
+          "details": "vae_name: 'hunyuan_video_vae_bf16.safetensors' not in ['pixel_space']"
+        },
+        {
+          "node": "11",
+          "type": "value_not_in_list",
+          "message": "Value not in list",
+          "details": "clip_name2: 'llava_llama3_fp8_scaled.safetensors' not in []"
+        },
+        {
+          "node": "11",
+          "type": "value_not_in_list",
+          "message": "Value not in list",
+          "details": "clip_name1: 'clip_l.safetensors' not in []"
+        },
+        {
+          "node": "12",
+          "type": "value_not_in_list",
+          "message": "Value not in list",
+          "details": "unet_name: 'hunyuan_video_t2v_720p_bf16.safetensors' not in []"
+        }
+      ]
+    },
+    {
+      "name": "video_wan2_2_5B_ti2v",
+      "status": 400,
+      "errors": [
+        {
+          "node": "37",
+          "type": "value_not_in_list",
+          "message": "Value not in list",
+          "details": "unet_name: 'wan2.2_ti2v_5B_fp16.safetensors' not in []"
+        },
+        {
+          "node": "38",
+          "type": "value_not_in_list",
+          "message": "Value not in list",
+          "details": "clip_name: 'umt5_xxl_fp8_e4m3fn_scaled.safetensors' not in []"
+        },
+        {
+          "node": "39",
+          "type": "value_not_in_list",
+          "message": "Value not in list",
+          "details": "vae_name: 'wan2.2_vae.safetensors' not in ['pixel_space']"
+        }
+      ]
+    },
+    {
+      "name": "video_wan2_2_14B_i2v",
+      "status": 400,
+      "errors": [
+        {
+          "node": "97",
+          "type": "custom_validation_failed",
+          "message": "Custom validation failed for node",
+          "details": "image - Invalid image file: video_wan2_2_14B_i2v_input_image.jpg"
+        },
+        {
+          "node": "129_90",
+          "type": "value_not_in_list",
+          "message": "Value not in list",
+          "details": "vae_name: 'wan_2.1_vae.safetensors' not in ['pixel_space']"
+        },
+        {
+          "node": "129_84",
+          "type": "value_not_in_list",
+          "message": "Value not in list",
+          "details": "clip_name: 'umt5_xxl_fp8_e4m3fn_scaled.safetensors' not in []"
+        },
+        {
+          "node": "129_96",
+          "type": "value_not_in_list",
+          "message": "Value not in list",
+          "details": "unet_name: 'wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors' not in []"
+        },
+        {
+          "node": "129_102",
+          "type": "value_not_in_list",
+          "message": "Value not in list",
+          "details": "lora_name: 'wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise.safetensors' not in []"
+        },
+        {
+          "node": "129_95",
+          "type": "value_not_in_list",
+          "message": "Value not in list",
+          "details": "unet_name: 'wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors' not in []"
+        },
+        {
+          "node": "129_101",
+          "type": "value_not_in_list",
+          "message": "Value not in list",
+          "details": "lora_name: 'wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise.safetensors' not in []"
+        }
+      ]
+    }
+  ]
+}
