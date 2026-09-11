@@ -965,6 +965,8 @@ export interface AgentProbe {
 export type AgentTaskStatus = 'running' | 'done' | 'failed';
 
 export interface AgentTask {
+  bytesReceived?: number;
+  bytesTotal?: number;
   id: string;
   kind: string;
   status: AgentTaskStatus;

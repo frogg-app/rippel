@@ -43,7 +43,12 @@ export interface AgentTarget {
   token: string;
 }
 
+export interface ModelMoveRequest { from: string; to: string }
+export interface ModelDownloadRequest { url: string; path: string; sha256: string; sizeBytes?: number }
+
 export interface AgentClient {
+  moveModel(target: AgentTarget, body: ModelMoveRequest): Promise<AgentTask>;
+  downloadModel(target: AgentTarget, body: ModelDownloadRequest): Promise<AgentTask>;
   ping(target: AgentTarget): Promise<AgentPingResult>;
   status(target: AgentTarget): Promise<AgentStatusResult>;
   task(target: AgentTarget, id: string, since: number): Promise<{ task: AgentTask; logOffset: number }>;
@@ -119,6 +124,10 @@ export function makeAgentClient(opts: { fetchImpl?: typeof fetch; timeoutMs?: nu
   }
 
   return {
+    moveModel: async (target, body) =>
+      (await call<{ task: AgentTask }>(target, '/agent/models/move', { method: 'POST', body })).task,
+    downloadModel: async (target, body) =>
+      (await call<{ task: AgentTask }>(target, '/agent/models/download', { method: 'POST', body })).task,
     ping: (target) => call<AgentPingResult>(target, '/agent/ping'),
     status: (target) => call<AgentStatusResult>(target, '/agent/status'),
     task: (target, id, since) =>

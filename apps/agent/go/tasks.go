@@ -40,20 +40,24 @@ const keepFinished = time.Hour
 // json.Marshal would both race with the writer and copy a mutex. A view is
 // taken under the lock and is then nobody's but the caller's.
 type TaskView struct {
-	ID         string   `json:"id"`
-	Kind       string   `json:"kind"`
-	Status     string   `json:"status"`
-	StartedAt  string   `json:"startedAt"`
-	FinishedAt *string  `json:"finishedAt"`
-	Log        []string `json:"log"`
-	Error      *string  `json:"error"`
+	BytesReceived int64    `json:"bytesReceived"`
+	BytesTotal    int64    `json:"bytesTotal"`
+	ID            string   `json:"id"`
+	Kind          string   `json:"kind"`
+	Status        string   `json:"status"`
+	StartedAt     string   `json:"startedAt"`
+	FinishedAt    *string  `json:"finishedAt"`
+	Log           []string `json:"log"`
+	Error         *string  `json:"error"`
 }
 
 // Task is one piece of long-running work, as the agent holds it.
 type Task struct {
-	ID        string
-	Kind      string
-	StartedAt string
+	bytesReceived int64
+	bytesTotal    int64
+	ID            string
+	Kind          string
+	StartedAt     string
 
 	mu         sync.Mutex
 	status     string
@@ -73,6 +77,7 @@ func (t *Task) snapshot(logTail int) TaskView {
 		lines = lines[len(lines)-logTail:]
 	}
 	return TaskView{
+		BytesReceived: t.bytesReceived, BytesTotal: t.bytesTotal,
 		ID:         t.ID,
 		Kind:       t.Kind,
 		Status:     t.status,
@@ -294,4 +299,11 @@ func asExitError(err error, target **exec.ExitError) bool {
 		return true
 	}
 	return false
+}
+
+func (t *Task) setBytes(received, total int64) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.bytesReceived = received
+	t.bytesTotal = total
 }

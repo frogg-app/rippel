@@ -210,3 +210,16 @@ which downloads a binary through the real route and *executes it*. It guards the
 one thing two languages have to agree on: the setup code rippel writes into a
 filename and the agent reads back out. Nothing else in either suite would notice
 if that drifted.
+
+### Model-file operations
+
+The Go agent build requires Go 1.25 or newer. Authenticated
+`POST /agent/models/move` takes `{from, to}`; `POST /agent/models/download`
+takes `{url, path, sha256, sizeBytes?}`. Paths are relative to ComfyUI's `models/`
+folder. Both return 202 with a task; poll the existing task endpoint for the
+result and `bytesReceived` / `bytesTotal` (negative total means unknown).
+Existing destinations are always refused. Moves require the same filesystem.
+Downloads accept HTTPS Hugging Face or Civitai URLs; redirects are restricted
+to those origins and the explicitly listed Hugging Face CDN/Xet hosts. A Civitai
+redirect to a different CDN is refused until that host has been reviewed.
+No model operation restarts ComfyUI.

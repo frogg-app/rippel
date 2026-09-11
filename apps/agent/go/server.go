@@ -31,10 +31,11 @@ const maxBody = 1024 * 1024
 // Agent holds the mutable state the routes share: the config (which /agent/config
 // can change under a running server) and the task registry.
 type Agent struct {
-	mu       sync.RWMutex
-	cfg      *Config
-	tasks    *Tasks
-	onChange func()
+	taskStartMu sync.Mutex
+	mu          sync.RWMutex
+	cfg         *Config
+	tasks       *Tasks
+	onChange    func()
 }
 
 func NewAgent(cfg *Config, onChange func()) *Agent {
@@ -107,6 +108,8 @@ func readBody(r *http.Request, into any) error {
 
 // begin starts a background task, refusing a second of the same kind.
 func (a *Agent) begin(w http.ResponseWriter, kind string, work func(*Task) error) {
+	a.taskStartMu.Lock()
+	defer a.taskStartMu.Unlock()
 	if a.tasks.IsRunning(kind) {
 		writeError(w, http.StatusConflict, "busy",
 			fmt.Sprintf("A %s is already running on this machine.", kind))
@@ -192,6 +195,11 @@ func (a *Agent) route(w http.ResponseWriter, r *http.Request) {
 
 	if r.Method == http.MethodGet && path == "/agent/comfyui/log" {
 		writeJSON(w, http.StatusOK, map[string]any{"log": TailComfyLog(cfg, 500)})
+		return
+	}
+
+	if r.Method == http.MethodPost && (path == "/agent/models/move" || path == "/agent/models/download") {
+		a.modelOperation(w, r, path == "/agent/models/move")
 		return
 	}
 

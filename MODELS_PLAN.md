@@ -334,6 +334,14 @@ it instead.
   loader/folder table, including GGUF loaders. Wan/Hunyuan encoder types reuse
   the native CLIP loaders. Targeted API tests: 62 passed; typecheck passed.
 
+- **Task 13 implemented; remote verification pending.** Agent model move/download
+  tasks retain token auth, refuse path/symlink escapes and existing destinations,
+  require SHA-256, clean partial downloads and expose byte progress. Same-disk
+  moves use no-overwrite hard-link publication. API client methods are tested.
+  Go tests passed; API tests: 38 passed; typecheck passed. Go 1.25+ is now required
+  for directory-scoped link operations. Hugging Face's named HTTPS blob hosts
+  are accepted only as redirects; unknown CDN destinations are refused.
+
 ## Tasks
 
 Ordered by value. Tasks in the same run group can be done in one session.
