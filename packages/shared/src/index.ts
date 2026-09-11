@@ -1005,3 +1005,35 @@ export interface AgentRelease {
   /** Why the live lookup failed, when it did — the links then point at /latest. */
   note: string | null;
 }
+
+/**
+ * A one-time code that pairs a machine with a deployment.
+ *
+ * Eight characters from an alphabet with no `O`/`0` and no `I`/`1`/`L` in it, so
+ * it survives being read over a phone and typed back. Case-insensitive on
+ * redemption, single use, and good for minutes rather than days — it is a
+ * credential, and the machine redeeming it has no rippel login of its own.
+ *
+ * Issuing a new code for a deployment invalidates any outstanding one, so a code
+ * read aloud in a meeting cannot be used tomorrow.
+ */
+export interface PairingCode {
+  /** The code itself, uppercase and unseparated, e.g. "K7QM4XTB". */
+  code: string;
+  expiresAt: string;
+}
+
+/**
+ * What redeeming a pairing code gives the machine.
+ *
+ * The deployment id comes *back* from redemption and is never asked for: the
+ * only things a person has to get right are the address and the code, and
+ * anything else they would have had to copy correctly is a place setup fails.
+ */
+export interface PairResult {
+  deploymentId: Uuid;
+  /** The deployment's long-lived agent token. A credential — never log it. */
+  token: string;
+  /** The address the agent should check in to, as this rippel sees itself. */
+  serverUrl: string;
+}

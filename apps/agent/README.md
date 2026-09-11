@@ -13,55 +13,134 @@ deployment with no ComfyUI yet.
 runtime — a single static executable, about 7 MB, with nothing beside it.
 Downloading it is the download; opening it is the install.
 
+It is also the **same file for everybody**. There is no per-rippel or
+per-machine build: `rippel-agent-windows-amd64.exe` is the same bytes wherever
+it came from, which is what lets it be cached, mirrored, or copied onto a box on
+a USB stick.
+
 ## Installing it
 
-Almost always: rippel → Settings → **Deployment**, then send whoever is at the
-machine its **setup link**. It looks like this:
+Download the agent and open it. It asks two questions:
 
 ```
-http://192.168.1.9:4000/api/deployments/setup/vT7kQ2...
+  What is rippel's address? It looks like http://192.168.1.9:4000
+
+  Address: http://192.168.1.9:4000
+
+  What is the pairing code? It is 8 characters, like K7QM4XTB.
+  A code works once and expires after a few minutes.
+
+  Code: K7QM4XTB
 ```
 
-They open it, click the button for their computer, and open the file that
-downloads. That is the whole install — no terminal, no unzipping, nothing to
-paste.
+Both come from rippel: **Settings → Deployment**, then the machine being set up.
+Both prompts take a paste.
 
-The trick that makes it one click is the **filename**. rippel already knows the
-deployment's address and token when someone clicks Download, so it serves the
-file as `rippel-agent-setup-<code>.exe`, where the code carries both. The agent
-reads its own name on startup and needs nothing else. If a browser or a tidy
-user renames the file, nothing breaks — it falls back to asking, which always
-works. See `setup.go` for the three ways in, in the order they are tried.
+**It never asks for a deployment id.** The id comes back from redeeming the
+code, and is written into the config — anything a person has to copy correctly
+is a place the setup fails.
 
 For a machine nobody is sitting at, the Deployment screen also gives:
 
 - **Deploy over SSH** — rippel connects once, runs the installer, streams the
   output back. The credential is used for that connection and never stored.
 - **A one-line command** to paste. It downloads the binary and runs
-  `rippel-agent install <setup link>`, which is exactly what a double-click
-  does.
+  `rippel-agent install --server <url> --code <code>`, which is exactly what
+  answering the two questions does.
 
 Both install the same thing the same way, because both end up inside the same
 binary.
 
+### The pairing code
+
+Eight characters from an alphabet with **no `O` or `0`, and no `I`, `1` or `L`**
+— the pairs people actually confuse are simply not in it, in either direction,
+so there is nothing to get wrong when a code is read over a phone. Case does not
+matter, and dashes or spaces someone added are ignored.
+
+A code:
+
+- works **once**. A second machine trying the same code is refused.
+- lasts **minutes, not days**.
+- is **replaced** when a new one is issued for that machine, so a code read
+  aloud in a meeting cannot be used tomorrow.
+- is spent whether or not the install that follows it succeeds. If an install
+  fails, ask for a new code rather than retrying the old one.
+
+It is a credential while it lives: whoever has it can enrol a machine and
+receive that deployment's long-lived token. rippel stores only a hash of it, so
+nobody can recover a code after the fact — including whoever issued it.
+
 The agent, once run:
 
-- checks with rippel that the token is real **before writing anything**, so a
-  wrong or expired link is a sentence on screen rather than a service that
-  installs perfectly and never appears
+- redeems the code with rippel **before writing anything**, so a wrong address
+  or a stale code is a sentence on screen rather than a service that installs
+  perfectly and never appears
+- undoes what it created if a later step fails, so a failed install leaves the
+  machine as it found it rather than half-configured
 - warns if `git` or `python3` are missing (ComfyUI needs those, the agent does
   not)
 - copies itself to `~/.rippel-agent/`, so the Downloads folder can be deleted
 - writes `~/.rippel-agent/config.json`, mode 0600, holding the token
-- registers a user service — systemd `--user` with lingering on Linux, a
-  LaunchAgent on macOS, a Scheduled Task on Windows
+- registers a **per-user** startup entry — systemd `--user` with lingering on
+  Linux, a LaunchAgent on macOS, and on Windows the per-user `Run` key
 
-Nothing needs root. The agent installs into its own home directory and runs as
-whoever owns the ComfyUI checkout, which is what you want — a ComfyUI installed
-by root is one you cannot maintain as yourself later.
+Nothing needs root, and **nothing needs Administrator on Windows**. See below.
 
 Re-running it upgrades in place: the binary is replaced, the config kept, the
-service restarted.
+startup entry re-registered. Re-running on a machine that is already set up does
+not need a new pairing code — it already has its credentials.
+
+## Starting automatically, without Administrator
+
+This is the one part worth reading before changing.
+
+The agent used to register a **Scheduled Task** (`schtasks /Create`). On a real
+Windows machine that answered:
+
+```
+ERROR: Access is denied.
+```
+
+— *after* the agent had copied itself and written its config, so the install
+half succeeded, which is worse than failing outright. Creating a scheduled task
+can require elevation depending on how a machine is configured, and asking
+somebody setting up their own GPU box to find an elevated prompt is exactly the
+step this feature exists to remove.
+
+So on Windows the agent now writes a value under:
+
+```
+HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run
+```
+
+This is the per-user Run key. Microsoft documents both the `HKEY_CURRENT_USER`
+and `HKEY_LOCAL_MACHINE` variants ([Run and RunOnce Registry
+Keys](https://learn.microsoft.com/windows/win32/setupapi/run-and-runonce-registry-keys));
+the `HKLM` ones are machine-wide and need administrator rights, while the `HKCU`
+ones are the user's own registry hive and do not. `reg.exe` does the writing,
+for the same reason the old code used `schtasks.exe`: it is on every Windows, it
+needs no execution policy, and its failures are readable lines of text.
+
+If that fails, the agent falls back to a `rippel-agent.cmd` in the per-user
+**Startup folder** (`%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup`),
+which Explorer runs at logon — an ordinary file in the user's own roaming
+profile. A `.cmd` rather than a shortcut, because writing a `.lnk` means COM and
+`IShellLink`, and a text file needs neither.
+
+If **both** fail, the agent does not pretend otherwise. It prints what worked
+(paired, installed, configured — naming the paths), what did not, and the exact
+`reg add` line to run by hand, plus the `shell:startup` route for anyone who
+would rather drag a shortcut. The machine is left installed and usable, because
+deleting a working agent over a startup entry would be the wrong trade.
+
+Both mechanisms are removed by `rippel-agent uninstall`, along with a scheduled
+task left behind by an older version.
+
+Neither Windows branch can be executed on the Linux box this is built from. What
+is tested is the command line built for `reg.exe` — that it names `HKCU` and not
+`HKLM`, and that a path with a space in it stays quoted — and the text of the
+`.cmd`.
 
 ## Why Go
 
@@ -95,19 +174,23 @@ macOS gets both architectures because Macs are genuinely still split, and the
 install script picks by `uname -m`. Windows and Linux are x86-64 only: a ComfyUI
 machine is an x86-64 box with a discrete GPU essentially without exception.
 
-**The API serves these from `apps/agent/dist`**, so build them before building
-the API image — `docker/api.Dockerfile` copies that directory in. A rippel with
-no binaries on disk says so on the Deployment screen rather than offering links
-that 404.
+**The API serves these from `apps/agent/dist`**, at
+`/api/deployments/agent/<target>` — one URL per platform, no deployment in it
+and no token on it. Build them before building the API image;
+`docker/api.Dockerfile` copies that directory in. A rippel with no binaries on
+disk says so on the Deployment screen rather than offering links that 404.
 
 ## Running it by hand
 
 ```
 rippel-agent                     Set it up. This is what double-clicking does.
-rippel-agent install <link>      Set it up with the link from rippel, no questions.
+rippel-agent --server <url> --code <code>
+                                 Set it up without being asked anything.
+rippel-agent install --server <url> --code <code>
+                                 The same thing, spelled out.
 rippel-agent run                 Run in the foreground. This is what the service runs.
 rippel-agent status              Say whether it is installed, and what it can see.
-rippel-agent uninstall           Remove the service and the program. Keeps ComfyUI.
+rippel-agent uninstall           Remove the startup entry and the program. Keeps ComfyUI.
 ```
 
 `status` is the one to reach for when somebody says "is it working?" — it
@@ -123,7 +206,7 @@ value on the command line.
 | --- | --- | --- | --- |
 | `token` | `RIPPEL_AGENT_TOKEN` | — | Shared secret. **Required**; the agent refuses to start without one. |
 | `serverUrl` | `RIPPEL_SERVER_URL` | — | The rippel API. Blank disables check-in; rippel can still call in. |
-| `deploymentId` | `RIPPEL_DEPLOYMENT_ID` | — | Learned from the first check-in if absent. |
+| `deploymentId` | `RIPPEL_DEPLOYMENT_ID` | — | Written by pairing; rippel may correct it on check-in. |
 | `port` | `RIPPEL_AGENT_PORT` | `8189` | Where the agent listens. |
 | `host` | `RIPPEL_AGENT_HOST` | `0.0.0.0` | Interface to bind. |
 | `comfyPath` | `RIPPEL_COMFY_PATH` | `~/.rippel-agent/ComfyUI` | Where ComfyUI is, or will be. |
@@ -133,7 +216,10 @@ value on the command line.
 | `heartbeatSeconds` | `RIPPEL_HEARTBEAT_SECONDS` | `20` | Check-in interval. |
 
 `RIPPEL_AGENT_HOME` moves the whole directory, which is how the tests keep off
-a real machine's `~`.
+a real machine's `~`. `RIPPEL_SKIP_SERVICE=1` installs everything except the
+startup entry, for an image that supervises the agent itself — and for this
+repository's own tests, which must not register a service on whatever machine
+runs them.
 
 ## What it does to a machine
 
@@ -161,8 +247,7 @@ the agent refuses to stop it and says so.
 
 ## The HTTP API
 
-Unchanged from the previous agent — the wire format is a contract with
-`apps/api/src/deploy` and was not part of this rewrite.
+Unchanged — the wire format is a contract with `apps/api/src/deploy`.
 
 Every route needs `X-Rippel-Agent-Token`, including the ping. There is no
 harmless route here — knowing an agent is listening is already worth something
@@ -190,11 +275,11 @@ laptop lid all disagree about how long is too long.
 
 ## The token
 
-It lets whoever holds it install software on the machine and read its ComfyUI.
-Treat it like an SSH key. The setup link contains it, so the link is a
-credential too — that is why the setup page says so in as many words. If one
+Not the pairing code — the long-lived one pairing hands over. It lets whoever
+holds it install software on the machine and read its ComfyUI. Treat it like an
+SSH key. It lives in `config.json` at mode 0600 and is never put in a URL. If one
 leaks, remove the deployment in rippel: the agent's next check-in fails, and
-re-installing issues a new one.
+re-pairing issues a new one.
 
 Both the agent and the ComfyUI it manages are LAN software. ComfyUI has no
 authentication of its own; keep both off the open internet.
@@ -206,7 +291,8 @@ npm test -w @comfy/agent        # go test, wrapped so npm --workspaces finds it
 ```
 
 There is a second suite on the API side, `apps/api/src/deploy/oneclick.test.ts`,
-which downloads a binary through the real route and *executes it*. It guards the
-one thing two languages have to agree on: the setup code rippel writes into a
-filename and the agent reads back out. Nothing else in either suite would notice
-if that drifted.
+which runs the real binary against a real rippel and pairs it — then checks the
+same code is refused a second time, and that an expired one is refused too. It
+guards what two languages have to agree on: the code alphabet, its length, and
+the shape of `POST /deployments/pair`. Nothing else in either suite would notice
+if those drifted.

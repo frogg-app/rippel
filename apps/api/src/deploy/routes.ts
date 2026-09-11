@@ -1,20 +1,23 @@
 /**
  * Deployment routes.
  *
- * Two audiences, one file, and the split between them is the thing to keep
+ * Three audiences, one file, and the split between them is the thing to keep
  * straight while reading:
  *
- *  - **An administrator**, session-authenticated, who registers a machine, runs
- *    an install on it, and turns the ComfyUI it ends up with into a backend.
+ *  - **An administrator**, session-authenticated, who registers a machine,
+ *    issues it a pairing code, and turns the ComfyUI it ends up with into a
+ *    backend.
  *  - **An agent**, authenticated by its deployment's token and nothing else,
- *    which checks in and downloads its own source. These routes never touch
- *    `requireAdmin`, because the caller is a machine with no session — the
- *    token *is* the credential, which is why it is 32 random bytes and why the
- *    lookup is by token rather than by an id the request could claim.
+ *    which checks in. These routes never touch `requireAdmin`, because the
+ *    caller is a machine with no session — the token *is* the credential, which
+ *    is why it is 32 random bytes and why the lookup is by token rather than by
+ *    an id the request could claim.
+ *  - **A machine being paired**, authenticated by nothing at all. It has no
+ *    rippel login — that is the entire point — so a one-time code stands in for
+ *    one. See `pairing.ts` for why that is safe and what bounds it.
  *
- * The installer scripts sit in a third position: authenticated by the token in
- * their query string, because the thing fetching them is `curl | bash` on a
- * box that has no cookie and no header to spare.
+ * The binary download sits outside all three: it is the same file for every
+ * machine, carries no credentials, and is served as a plain static asset.
  */
 
 import { randomBytes } from 'node:crypto';
@@ -35,15 +38,23 @@ import { agentServerUrl, type OriginRequest } from './origin.js';
 import {
   AGENT_BINARIES,
   availableBinaries,
+  binaryDownloadPath,
   binaryFor,
-  downloadFileName,
   findBinary,
   readBinary,
-  setupLink,
 } from './binaries.js';
+import {
+  CODE_TTL_MS,
+  generateCode,
+  hashCode,
+  hashesMatch,
+  issueByDeployment,
+  normaliseCode,
+  redeemByDeployment,
+  redeemByIp,
+} from './pairing.js';
 import { latestAgentRelease } from './releases.js';
-import { installerFor, oneLiner, type ScriptParams } from './scripts.js';
-import { setupPage } from './setup-page.js';
+import { installerFor, oneLiner } from './scripts.js';
 import { helperFiles } from './sources.js';
 import { getRun, startSshInstall, type SshExec } from './ssh.js';
 
@@ -75,6 +86,14 @@ interface DeploymentRow {
   backend_name: string | null;
   last_seen_at: Date | null;
   created_at: Date;
+}
+
+/** A pairing code row, as the redemption path reads it. */
+interface PairingRow {
+  deployment_id: string;
+  code_hash: string;
+  expires_at: Date;
+  redeemed_at: Date | null;
 }
 
 const SELECT = `SELECT d.id, d.name, d.host, d.agent_port, d.platform, d.status, d.token,
@@ -185,23 +204,6 @@ export function makeDeploymentRoutes(deps: DeployDeps = {}) {
     throw cause;
   }
 
-  /**
-   * The install parameters, for this request.
-   *
-   * The request matters because the address the agent will check in to is
-   * derived from it — see `origin.ts`. Every caller therefore has to pass the
-   * request it is serving rather than reading a global.
-   */
-  function scriptParams(req: OriginRequest, row: DeploymentRow, comfyPort = 8188): ScriptParams {
-    return {
-      serverUrl: agentServerUrl(req),
-      deploymentId: row.id,
-      token: row.token,
-      agentPort: row.agent_port,
-      comfyPort,
-    };
-  }
-
   return async function deploymentRoutes(app: FastifyInstance) {
     async function load(id: string): Promise<DeploymentRow | null> {
       return db.queryOne<DeploymentRow>(`${SELECT} WHERE d.id = $1`, [id]);
@@ -216,20 +218,54 @@ export function makeDeploymentRoutes(deps: DeployDeps = {}) {
       return row;
     }
 
+    // ------------------------------------------------------------ the download
+
+    /**
+     * The agent binary.
+     *
+     * One build per platform, the same bytes for everybody, no authentication.
+     * It used to be a per-deployment artefact whose *filename* carried the
+     * server address and the token — which meant it could not be cached, could
+     * not be mirrored, and stopped working the moment anything renamed it. A
+     * machine is paired by a code now, so the file itself is just a file.
+     */
+    app.get<{ Params: { target: string } }>('/deployments/agent/:target', async (req, reply) => {
+      const binary = await findBinary(req.params.target);
+      if (!binary) {
+        const known = AGENT_BINARIES.map((b) => b.target).join(', ');
+        return reply.code(404).send({
+          error: 'not_found',
+          message: binaryFor(req.params.target)
+            ? `This rippel has no ${req.params.target} agent built. Run "npm run build:release -w @comfy/agent" where rippel is installed, or download the agent from its GitHub release instead.`
+            : `There is no agent for "${req.params.target}". Known ones: ${known}.`,
+        });
+      }
+      return reply
+        .type('application/octet-stream')
+        .header('content-length', binary.sizeBytes)
+        .header('content-disposition', `attachment; filename="${binary.asset}"`)
+        // Safe to cache: this file is identical for every deployment and carries
+        // nothing secret. That is the whole benefit of retiring the per-machine
+        // build, so it is stated in a header rather than left implied.
+        .header('cache-control', 'public, max-age=300')
+        .send(readBinary(binary));
+    });
+
     // ------------------------------------------------------------ agent-facing
 
     /**
      * Whoever is calling, identified by their deployment token.
      *
-     * The token arrives in a header for the agent's own calls and in the query
-     * string for the installer scripts, because `curl | bash` cannot set a
-     * header on the request that fetches the script it is about to run.
+     * Header only. The token used to be accepted from a query string too,
+     * because `curl | bash` fetching a generated installer could not set a
+     * header — there is no such script any more, so there is no longer a reason
+     * for a long-lived credential to appear in a URL, a proxy log or a browser
+     * history.
      */
     async function byToken(req: FastifyRequest): Promise<DeploymentRow | null> {
       const header = req.headers['x-rippel-agent-token'];
-      const fromQuery = (req.query as { token?: string } | undefined)?.token;
-      const token = typeof header === 'string' && header ? header : fromQuery;
-      if (typeof token !== 'string' || !token) return null;
+      const token = typeof header === 'string' ? header : '';
+      if (!token) return null;
       return db.queryOne<DeploymentRow>(`${SELECT} WHERE d.token = $1`, [token]);
     }
 
@@ -238,10 +274,9 @@ export function makeDeploymentRoutes(deps: DeployDeps = {}) {
      *
      * This is also how a deployment learns the address it is actually reachable
      * at. An operator types a hostname into the form; the machine may answer on
-     * a different one, or on DHCP, or the form may have been skipped entirely
-     * because the install script was run from a token alone. What the agent
-     * says about itself, and the address the request came from, are better
-     * evidence than what was typed — so the row is corrected here.
+     * a different one, or on DHCP, or the form may have been skipped entirely.
+     * What the agent says about itself, and the address the request came from,
+     * are better evidence than what was typed — so the row is corrected here.
      */
     app.post('/deployments/checkin', async (req, reply) => {
       const row = await byToken(req);
@@ -284,109 +319,181 @@ export function makeDeploymentRoutes(deps: DeployDeps = {}) {
       return { ok: true, deploymentId: updated?.id ?? row.id };
     });
 
+    // ------------------------------------------------------------ pairing
+
     /**
-     * The setup page, which is the whole install for a person with a screen.
+     * Redeem a one-time code. No authentication, by necessity.
      *
-     * Reached by opening the one link rippel shows for a deployment. It is
-     * authenticated by the token in its own path and nothing else, because the
-     * point is that it can be sent to somebody who has no rippel login — the
-     * person sitting at the GPU machine usually is not the administrator.
+     * The machine being set up has no rippel login, so the code stands in for
+     * one — which makes it a credential, and everything here treats it as one.
+     * The order of operations is the security of this route:
+     *
+     *  1. Rate-limit by address *before* touching the database, so guessing
+     *     costs an attacker attempts rather than costing us queries.
+     *  2. Reject anything that is not a well-formed code without a lookup.
+     *  3. Spend the code with a single conditional UPDATE. That statement is
+     *     what makes redemption single-use: `redeemed_at IS NULL` is evaluated
+     *     and written in one atomic step, so two agents racing the same code
+     *     produce exactly one winner and one loser, decided by Postgres rather
+     *     than by a read-then-write this code could get wrong. There is no
+     *     transaction here because there is nothing to wrap — atomicity comes
+     *     from it being one statement.
+     *  4. Only then explain a failure, and count it against the deployment.
+     *
+     * A code is spent whether or not the agent then succeeds in installing.
+     * That is deliberate: the alternative is a code that can be replayed by
+     * anyone who watched it fail.
      */
-    app.get<{ Params: { token: string } }>('/deployments/setup/:token', async (req, reply) => {
-      const row = await db.queryOne<DeploymentRow>(`${SELECT} WHERE d.token = $1`, [
-        req.params.token,
-      ]);
-      if (!row) {
-        return reply
-          .code(404)
-          .type('text/html; charset=utf-8')
-          .send(
-            '<!doctype html><meta charset="utf-8"><title>rippel</title>' +
-              '<p style="font:16px system-ui;padding:40px">This setup link is not valid any more. ' +
-              'Ask for a new one from rippel’s Deployment screen.</p>',
-          );
+    app.post<{ Body: { code?: unknown } }>('/deployments/pair', async (req, reply) => {
+      if (!redeemByIp.take(req.ip)) {
+        return reply.code(429).send({
+          error: 'rate_limited',
+          message: 'Too many pairing attempts from this address. Wait a few minutes and try again.',
+        });
       }
-      const params = scriptParams(req, row);
-      return reply.type('text/html; charset=utf-8').send(
-        setupPage({
-          deploymentName: row.name,
-          deploymentId: row.id,
-          serverUrl: params.serverUrl,
-          token: row.token,
-          setup: { serverUrl: params.serverUrl, token: row.token, agentPort: row.agent_port },
-          available: await availableBinaries(),
-        }),
+
+      const code = normaliseCode((req.body ?? {}).code);
+      if (!code) {
+        return reply.code(400).send({
+          error: 'invalid_code',
+          message:
+            'That is not a pairing code. A code is 8 characters, and rippel shows it on the Deployment screen.',
+        });
+      }
+      const codeHash = hashCode(code);
+
+      // One statement, and the only one that may spend a code.
+      const spent = await db.queryOne<{ deployment_id: string }>(
+        `UPDATE deployment_pairing_codes
+            SET redeemed_at = now()
+          WHERE code_hash = $1
+            AND redeemed_at IS NULL
+            AND expires_at > now()
+          RETURNING deployment_id`,
+        [codeHash],
       );
+
+      if (!spent) {
+        // Say why, for whoever is standing at the machine. Telling the holder of
+        // a code that it has expired is not a disclosure — they already had it —
+        // and "that code is not valid" for every case sends people hunting for
+        // typos that are not there. The rate limit above is what keeps this from
+        // being an oracle.
+        const existing = await db.queryOne<PairingRow>(
+          `SELECT deployment_id, code_hash, expires_at, redeemed_at
+             FROM deployment_pairing_codes
+            WHERE code_hash = $1`,
+          [codeHash],
+        );
+        if (existing && hashesMatch(existing.code_hash, codeHash)) {
+          // A real code for a real deployment, so count the attempt against that
+          // deployment too — the per-address limit alone does not bound what a
+          // spread of addresses can do to one machine's enrolment.
+          redeemByDeployment.take(existing.deployment_id);
+          if (existing.redeemed_at) {
+            return reply.code(409).send({
+              error: 'code_used',
+              message:
+                'That pairing code has already been used. Codes work once — ask rippel for a new one on the Deployment screen.',
+            });
+          }
+          return reply.code(410).send({
+            error: 'code_expired',
+            message:
+              'That pairing code has expired. Codes last a few minutes — ask rippel for a new one on the Deployment screen.',
+          });
+        }
+        return reply.code(404).send({
+          error: 'code_unknown',
+          message:
+            'rippel does not recognise that pairing code. Check it against the Deployment screen, or ask for a new one.',
+        });
+      }
+
+      const row = await load(spent.deployment_id);
+      if (!row) {
+        // The deployment was deleted between issuing and redeeming. The code is
+        // spent either way, which is the right outcome.
+        return reply.code(404).send({
+          error: 'not_found',
+          message: 'The machine that code was for no longer exists in rippel.',
+        });
+      }
+
+      // A good pairing should not leave a limiter primed against the person who
+      // just succeeded, or against the machine they set up.
+      redeemByIp.clear(req.ip);
+      redeemByDeployment.clear(row.id);
+
+      // The id comes back from here and is never asked for. `serverUrl` is
+      // derived from this very request, so the agent stores the address that
+      // demonstrably reached this rippel rather than one an operator typed.
+      return {
+        deploymentId: row.id,
+        token: row.token,
+        serverUrl: agentServerUrl(req),
+      };
     });
 
     /**
-     * The agent binary itself.
+     * Issue a pairing code for a deployment.
      *
-     * Served under a filename carrying this deployment's setup code, so the
-     * downloaded file already knows which rippel it belongs to and what its
-     * token is. That is what makes a double-click a complete install.
+     * A POST because it changes something: the primary key on
+     * `deployment_pairing_codes` means issuing replaces whatever code that
+     * deployment had, so an outstanding code stops working the moment a new one
+     * is asked for. That is the contract's "a code read aloud in a meeting
+     * cannot be used tomorrow", enforced by the schema rather than by a delete
+     * this route could forget.
+     *
+     * The plaintext exists only in this response. Only its hash is stored, so
+     * nobody — including an administrator looking at the table — can recover a
+     * code after the fact; they issue a new one instead.
      */
-    app.get<{ Params: { id: string; target: string }; Querystring: { token?: string } }>(
-      '/deployments/:id/agent/:target',
+    app.post<{ Params: { id: string } }>(
+      '/deployments/:id/pairing-code',
+      { onRequest: [app.requireAdmin] },
       async (req, reply) => {
-        const row = await byToken(req);
-        // The id in the path is checked against the token's row, so a valid
-        // token cannot be used to fetch a download branded for another machine.
-        if (!row || row.id !== req.params.id) {
-          return reply
-            .code(401)
-            .send({ error: 'unauthorized', message: 'That token is not this deployment.' });
-        }
-        const binary = await findBinary(req.params.target);
-        if (!binary) {
-          const known = AGENT_BINARIES.map((b) => b.target).join(', ');
-          return reply.code(404).send({
-            error: 'not_found',
-            message: binaryFor(req.params.target)
-              ? `This rippel has no ${req.params.target} agent built. Run "npm run build:release -w @comfy/agent" where rippel is installed, or download the agent from its GitHub release instead.`
-              : `There is no agent for "${req.params.target}". Known ones: ${known}.`,
+        const row = await loadOr404(req, reply);
+        if (!row) return;
+
+        if (!issueByDeployment.take(row.id)) {
+          return reply.code(429).send({
+            error: 'rate_limited',
+            message: 'That machine has been issued a lot of codes just now. Wait a few minutes.',
           });
         }
 
-        const params = scriptParams(req, row);
-        const filename = downloadFileName(binary, {
-          serverUrl: params.serverUrl,
-          token: row.token,
-          agentPort: row.agent_port,
+        const code = generateCode();
+        const expiresAt = new Date(Date.now() + CODE_TTL_MS);
+
+        await db.query(
+          `INSERT INTO deployment_pairing_codes (deployment_id, code_hash, expires_at, created_by)
+                VALUES ($1, $2, $3, $4)
+           ON CONFLICT (deployment_id) DO UPDATE
+                   SET code_hash = EXCLUDED.code_hash,
+                       expires_at = EXCLUDED.expires_at,
+                       created_by = EXCLUDED.created_by,
+                       redeemed_at = NULL,
+                       created_at = now()`,
+          [row.id, hashCode(code), expiresAt, req.user!.id],
+        );
+
+        const serverUrl = agentServerUrl(req);
+        // The commands live with the code rather than on the install route,
+        // because a command is only useful while a code is: a copyable line
+        // with a dead code in it is worse than no line at all.
+        return reply.code(201).send({
+          code,
+          expiresAt: expiresAt.toISOString(),
+          serverUrl,
+          commands: {
+            linux: oneLiner('linux', { serverUrl, code }),
+            darwin: oneLiner('darwin', { serverUrl, code }),
+            win32: oneLiner('win32', { serverUrl, code }),
+          },
         });
-        return reply
-          .type('application/octet-stream')
-          .header('content-length', binary.sizeBytes)
-          .header('content-disposition', `attachment; filename="${filename}"`)
-          // The name is the credential, so it must not be shared between
-          // deployments by anything in the middle.
-          .header('cache-control', 'private, no-store')
-          .send(readBinary(binary));
       },
     );
-
-    /** The generated installer, fetched by the one-liner an operator pasted. */
-    for (const [suffix, platform] of [
-      ['sh', 'linux'],
-      ['ps1', 'win32'],
-    ] as const) {
-      app.get<{ Params: { id: string }; Querystring: { token?: string } }>(
-        `/deployments/:id/install.${suffix}`,
-        async (req, reply) => {
-          const row = await byToken(req);
-          // The id in the path is checked against the token's row so a valid
-          // token cannot be used to fetch a script for a different machine.
-          if (!row || row.id !== req.params.id) {
-            return reply
-              .code(401)
-              .type('text/plain; charset=utf-8')
-              .send('# That token is not this deployment. Copy the command from rippel again.\n');
-          }
-          const { body, contentType } = installerFor(platform as AgentPlatform, scriptParams(req, row));
-          return reply.type(contentType).send(body);
-        },
-      );
-    }
 
     // ------------------------------------------------------------ admin-facing
 
@@ -456,6 +563,7 @@ export function makeDeploymentRoutes(deps: DeployDeps = {}) {
       async (req, reply) => {
         const row = await loadOr404(req, reply);
         if (!row) return;
+        // Any outstanding pairing code goes with it, by ON DELETE CASCADE.
         await db.query(`DELETE FROM deployments WHERE id = $1`, [row.id]);
         // The backend row, if there is one, is left alone on purpose: removing
         // rippel's management of a machine should not stop it generating.
@@ -463,53 +571,38 @@ export function makeDeploymentRoutes(deps: DeployDeps = {}) {
       },
     );
 
-    /** The commands and links the manual install page shows. */
+    /**
+     * What the Deployment screen needs to describe an install.
+     *
+     * Deliberately carries no pairing code: this is a GET, it is polled, and a
+     * safe request must not mint credentials. Ask `POST /pairing-code` for a
+     * code and the commands that go with it.
+     */
     app.get<{ Params: { id: string } }>(
       '/deployments/:id/install',
       { onRequest: [app.requireAdmin] },
       async (req, reply) => {
         const row = await loadOr404(req, reply);
         if (!row) return;
-        // scriptParams takes the request so the install command names the
-        // address the operator is actually on, not a static configured one.
-        const params = scriptParams(req, row);
+        const serverUrl = agentServerUrl(req);
         const available = await availableBinaries();
         return {
-          serverUrl: params.serverUrl,
+          serverUrl,
           token: row.token,
           /**
-           * The one link to hand to whoever is at the machine. It opens a page
-           * with a download button per platform, and the file it serves carries
-           * this deployment's setup code in its own name — so opening it is the
-           * entire install, with nothing typed.
+           * The generic downloads this rippel can serve right now. One per
+           * platform, no deployment in the URL, no token on it — the same file
+           * for every machine.
            */
-          setupLink: setupLink(params.serverUrl, row.token),
-          /**
-           * The same downloads, addressed directly, for a UI that would rather
-           * show the buttons itself than link to the page.
-           */
-          downloads: available.map((binary) => ({
+          binaries: available.map((binary) => ({
             target: binary.target,
             platform: binary.platform,
             arch: binary.arch,
             label: binary.label,
             sizeBytes: binary.sizeBytes,
-            url:
-              `${params.serverUrl}/api/deployments/${row.id}/agent/${binary.target}` +
-              `?token=${encodeURIComponent(row.token)}`,
-            fileName: downloadFileName(binary, {
-              serverUrl: params.serverUrl,
-              token: row.token,
-              agentPort: row.agent_port,
-            }),
+            fileName: binary.asset,
+            url: `${serverUrl}${binaryDownloadPath(binary.target)}`,
           })),
-          // Still generated, for a machine nobody is sitting at: the managed
-          // SSH install runs exactly this, and so does a headless box.
-          commands: {
-            linux: oneLiner('linux', params),
-            darwin: oneLiner('darwin', params),
-            win32: oneLiner('win32', params),
-          },
           release: await latestAgentRelease(fetchImpl),
         };
       },
@@ -756,9 +849,8 @@ export function makeDeploymentRoutes(deps: DeployDeps = {}) {
           });
         }
 
-        // The row exists before the install runs, so the script can be
-        // generated for it and so a failed install leaves something to retry
-        // against rather than nothing.
+        // The row exists before the install runs, so a code can be issued for it
+        // and so a failed install leaves something to retry against.
         const row = await db.queryOne<DeploymentRow>(
           `WITH inserted AS (
              INSERT INTO deployments (name, host, agent_port, platform, token, created_by)
@@ -779,11 +871,28 @@ export function makeDeploymentRoutes(deps: DeployDeps = {}) {
           ],
         );
 
-        const platform = (parsed.data.platform ?? 'linux') as AgentPlatform;
-        const { body: script } = installerFor(
-          platform,
-          scriptParams(req, row!, parsed.data.comfyPort ?? 8188),
+        // The managed install pairs exactly the way a person would, with a code
+        // that expires — rather than piping a long-lived token over the wire and
+        // leaving it in a script. One mechanism, one set of failure modes.
+        const code = generateCode();
+        await db.query(
+          `INSERT INTO deployment_pairing_codes (deployment_id, code_hash, expires_at, created_by)
+                VALUES ($1, $2, $3, $4)
+           ON CONFLICT (deployment_id) DO UPDATE
+                   SET code_hash = EXCLUDED.code_hash,
+                       expires_at = EXCLUDED.expires_at,
+                       created_by = EXCLUDED.created_by,
+                       redeemed_at = NULL,
+                       created_at = now()`,
+          [row!.id, hashCode(code), new Date(Date.now() + CODE_TTL_MS), req.user!.id],
         );
+
+        const platform = (parsed.data.platform ?? 'linux') as AgentPlatform;
+        const { body: script } = installerFor(platform, {
+          serverUrl: agentServerUrl(req),
+          code,
+          comfyPort: parsed.data.comfyPort,
+        });
         const input: SshInstallInput = { ...parsed.data, host };
         const run = startSshInstall({
           input,

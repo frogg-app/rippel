@@ -124,10 +124,39 @@ export function classify(
     runsInMode: partial.runnable ? mode : elsewhere && !mapModes.has(mode) ? otherMode : null,
   });
 
-  // Nothing is decided until the probe lands. The client-side capability map
-  // below is a hardcoded mirror that knows one family, so consulting it in the
-  // meantime does not produce a provisional answer — it produces a wrong one.
-  if (readiness.loading && !(here && here.state !== 'unknown')) {
+  const answered = Boolean(here && here.state !== 'unknown');
+
+  // Two questions were being conflated here, and only one of them needs the
+  // network.
+  //
+  //   "Is there a workflow for this capability at all?" — a *family* question,
+  //   which a live map answers on its own. It arrives with the model list, in
+  //   the same `Promise.all`, so it is already in hand on the first paint.
+  //
+  //   "There is one; can this machine run it?" — a *setup* question, which only
+  //   the per-model probe can answer.
+  //
+  // Waiting on the probe to answer the first question is what produced the
+  // reported flash: six tiles painted, then three removed a moment later by a
+  // request whose answer changed nothing. When the map alone proves this model
+  // cannot do the job we are asking for, that is a settled verdict — hide it on
+  // the first paint, before the probe that was never needed comes back.
+  //
+  // Only a live map may do this. A failed `GET /workflows` is an empty map that
+  // proves nothing, and must still hide nothing at all.
+  if (readiness.loading && !answered && capabilities.live) {
+    if (kinds.length === 0)
+      return entry({ runnable: false, hidden: 'no-template', blocked: null });
+    if (!mapModes.has(mode))
+      return entry({ runnable: false, hidden: 'other-mode', blocked: null });
+  }
+
+  // Everything the map could not settle stays undecided until the probe lands.
+  // What remains here is the setup question, and its answer is a *badge* on a
+  // tile that is already on screen — so it can arrive late without moving
+  // anything. No verdict is drawn in the meantime: a guess dressed as an answer
+  // is what we are here to stop.
+  if (readiness.loading && !answered) {
     return entry({ runnable: false, hidden: null, blocked: null, pending: true });
   }
 
@@ -137,8 +166,21 @@ export function classify(
     // reason: this is the state with a fix.
     if (here.state === 'blocked')
       return entry({ runnable: false, hidden: null, blocked: 'needs-setup' });
-    // no-template: impossible here. Which of the two hidden reasons it is
-    // depends on whether the other tab would run it.
+    // no-template, but not necessarily impossible *here*. SVD is the case: its
+    // family offers img2vid and nothing else, so a txt2vid probe answers "no
+    // template" quite truthfully — and concluding "video model, wrong tab" from
+    // that is wrong twice over. It is a video model, under Video; what it wants
+    // is a starting image, which is one drag away. The map is what knows the
+    // difference, so ask it before hiding.
+    if (
+      mapModes.has(mode) &&
+      kinds.some((candidate) => candidate.startsWith('img2') && modeOfKind(candidate) === mode)
+    ) {
+      return entry({ runnable: false, hidden: null, blocked: 'needs-image' });
+    }
+
+    // Genuinely impossible here. Which of the two hidden reasons it is depends
+    // on whether the other tab would run it.
     return entry({
       runnable: false,
       hidden: elsewhere ? 'other-mode' : 'no-template',

@@ -1,42 +1,42 @@
 /**
- * The one-click path, end to end, against the binaries this repository actually
- * built.
+ * Pairing, end to end, against the binary this repository actually built.
  *
- * Everything else about this feature is unit-tested. This is the join: rippel
- * names a download after a deployment's setup code, and the *compiled agent*
- * reads that name back. Those two halves are written in different languages, in
- * different directories, by different tools — the encoding is the only thing
- * holding them together, and nothing else in either suite would notice if it
- * drifted.
+ * Everything else about this feature is unit-tested on one side or the other.
+ * This is the join: rippel issues a code and the *compiled agent* redeems it.
+ * Those two halves are written in different languages, in different
+ * directories, by different tools — the code's alphabet, its normalisation and
+ * the shape of `POST /deployments/pair` are the only things holding them
+ * together, and nothing else in either suite would notice if they drifted.
  *
- * It skips itself when `apps/agent/dist` is empty, because a checkout where
- * nobody has run the build is a normal checkout, and a test that failed for
- * that reason would teach people to ignore it.
+ * It skips the executing tests when `apps/agent/dist` is empty, because a
+ * checkout where nobody has run the build is a normal checkout, and a test that
+ * failed for that reason would teach people to ignore it.
  */
 
 import { execFile } from 'node:child_process';
-import { chmod, copyFile, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { chmod, copyFile, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
-import Fastify from 'fastify';
+import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import { afterAll, describe, expect, it } from 'vitest';
-import { availableBinaries, downloadFileName, encodeSetup, setupLink } from './binaries.js';
+import { availableBinaries } from './binaries.js';
+import { generateCode, hashCode, normaliseCode, resetPairingLimits } from './pairing.js';
 import { makeDeploymentRoutes } from './routes.js';
 
 const run = promisify(execFile);
+const here = dirname(fileURLToPath(import.meta.url));
 
-const SETUP = { serverUrl: 'http://192.168.1.9:4000', token: 'tok-secret-for-the-round-trip' };
-
-/** One deployment row, as the download route reads it. */
+/** One deployment row, as the pair route reads it. */
 const DEPLOYMENT = {
   id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
   name: 'studio-4090',
   host: '192.168.1.50',
   agent_port: 8189,
-  platform: 'win32',
+  platform: 'linux',
   status: 'online',
-  token: 'tok-for-the-download-route',
+  token: 'tok-for-the-pairing-round-trip',
   agent_version: null,
   comfy: null,
   backend_id: null,
@@ -57,167 +57,223 @@ afterAll(async () => {
   await Promise.all(dirs.map((dir) => rm(dir, { recursive: true, force: true })));
 });
 
-async function stage(fileName: string): Promise<string> {
-  const dir = await mkdtemp(join(tmpdir(), 'rippel-oneclick-'));
+async function stage(): Promise<{ exe: string; home: string }> {
+  const dir = await mkdtemp(join(tmpdir(), 'rippel-pair-'));
   dirs.push(dir);
-  const path = join(dir, fileName);
-  await copyFile(linux!.path, path);
-  await chmod(path, 0o755);
-  return path;
+  const exe = join(dir, 'rippel-agent');
+  await copyFile(linux!.path, exe);
+  await chmod(exe, 0o755);
+  return { exe, home: join(dir, 'home') };
 }
 
 /**
- * Ask the agent what it worked out, without letting it install anything.
+ * A real rippel, listening on a real port, with one deployment and one code.
  *
- * `install` against an unreachable address stops at the check-in it makes
- * *before* touching the disk, and the error it prints names the address it
- * decoded — so it reports what the agent read from its own filename, and proves
- * the nothing-is-written-first ordering at the same time.
+ * `inject` cannot be used here: the thing making the request is a separate
+ * process, so there has to be a socket.
  */
-async function whatItRead(exe: string): Promise<string> {
-  try {
-    const { stdout, stderr } = await run(exe, ['install'], {
-      env: { ...process.env, RIPPEL_AGENT_HOME: join(exe, '..', 'home') },
-      timeout: 30_000,
-    });
-    return stdout + stderr;
-  } catch (cause) {
-    const failure = cause as { stdout?: string; stderr?: string };
-    return `${failure.stdout ?? ''}${failure.stderr ?? ''}`;
-  }
+async function rippel(code: string, opts: { expired?: boolean } = {}) {
+  resetPairingLimits();
+  const codes = [
+    {
+      deployment_id: DEPLOYMENT.id,
+      code_hash: hashCode(code),
+      expires_at: new Date(Date.now() + (opts.expired ? -1000 : 15 * 60 * 1000)),
+      redeemed_at: null as Date | null,
+    },
+  ];
+
+  const app = Fastify();
+  app.decorateRequest('user', null);
+  app.addHook('onRequest', async (req) => {
+    (req as FastifyRequest & { user: unknown }).user = null;
+  });
+  app.decorate('requireAdmin', async (_req: FastifyRequest, reply: FastifyReply) => {
+    await reply.code(401).send({ error: 'unauthorized' });
+  });
+
+  const query = (async (sql: string, params: unknown[] = []) => {
+    if (sql.includes('UPDATE deployment_pairing_codes')) {
+      const found = codes.find(
+        (c) => c.code_hash === params[0] && !c.redeemed_at && c.expires_at > new Date(),
+      );
+      if (!found) return [];
+      found.redeemed_at = new Date();
+      return [{ deployment_id: found.deployment_id }];
+    }
+    if (sql.includes('FROM deployment_pairing_codes')) {
+      return codes.filter((c) => c.code_hash === params[0]);
+    }
+    if (sql.includes('FROM deployments d') && sql.includes('d.id = $1')) {
+      return params[0] === DEPLOYMENT.id ? [DEPLOYMENT] : [];
+    }
+    if (sql.startsWith('UPDATE deployments')) return [{ id: DEPLOYMENT.id }];
+    return [];
+  }) as never;
+
+  // Under /api, exactly as index.ts mounts them. The agent appends
+  // /api/deployments/pair to whatever address it was given, so a harness that
+  // mounted these at the root would test a path no real agent ever calls.
+  await app.register(
+    makeDeploymentRoutes({
+      db: { query, queryOne: (async (sql, params) => (await query(sql, params))[0] ?? null) as never },
+    }),
+    { prefix: '/api' },
+  );
+  const url = await app.listen({ host: '127.0.0.1', port: 0 });
+  return { app, url, codes };
 }
 
-describe.skipIf(!canRun)('a downloaded agent reads its own filename', () => {
-  it('takes the server address and token out of the name rippel gave it', async () => {
-    const fileName = downloadFileName(
-      { target: 'linux-amd64', asset: '', platform: 'linux', arch: 'amd64', label: 'Linux' },
-      SETUP,
-    );
-    const exe = await stage(fileName);
-    const output = await whatItRead(exe);
+describe.skipIf(!canRun)('a real agent pairs with a real rippel', () => {
+  it('redeems a code, and remembers what it was given', async () => {
+    const code = generateCode();
+    const { app, url } = await rippel(code);
+    const { exe, home } = await stage();
 
-    // It found the setup without being told, and it is talking to the address
-    // that was baked into the filename.
-    expect(output).toContain('the name of this file');
-    expect(output).toContain(SETUP.serverUrl);
-  }, 40_000);
-
-  it('falls back to asking when the file has been renamed, rather than failing', async () => {
-    const exe = await stage('rippel-agent');
-    const output = await whatItRead(exe);
-
-    expect(output).not.toContain('the name of this file');
-    // The floor: it says what it needs and where to get it, and exits.
-    expect(output).toContain('needs the setup link');
-    expect(output).toContain('Settings');
-  }, 40_000);
-
-  it('reads a rippel-setup.txt left beside it', async () => {
-    const exe = await stage('rippel-agent');
-    await writeFile(
-      join(exe, '..', 'rippel-setup.txt'),
-      `# The link rippel gave you.\n${setupLink(SETUP.serverUrl, SETUP.token)}\n`,
-      'utf8',
-    );
-    const output = await whatItRead(exe);
-
-    expect(output).toContain('rippel-setup.txt');
-    // And it recovered the *bare* server address from the /api/deployments path
-    // the link carries. The agent appends /api/deployments/checkin itself, so
-    // failing to strip it would send every check-in to
-    // /api/deployments/api/deployments/checkin — a 404 that looks exactly like
-    // "this is not a rippel", which is the worst possible way to be wrong.
-    expect(output).toContain(`rippel at ${SETUP.serverUrl} knows this token`);
-    expect(output).not.toContain('/api/deployments');
-  }, 40_000);
-
-  it('writes nothing at all when it cannot reach rippel', async () => {
-    const exe = await stage(
-      downloadFileName(
-        { target: 'linux-amd64', asset: '', platform: 'linux', arch: 'amd64', label: 'Linux' },
-        SETUP,
-      ),
-    );
-    const home = join(exe, '..', 'home');
-    await run(exe, ['install'], {
-      env: { ...process.env, RIPPEL_AGENT_HOME: home },
-      timeout: 30_000,
-    }).catch(() => undefined);
-
-    // No config, no copied binary, no half-registered service. An install that
-    // cannot succeed must leave the machine exactly as it found it.
-    await expect(run('test', ['-e', home])).rejects.toBeTruthy();
-  }, 40_000);
-});
-
-describe.skipIf(!canRun)('the whole download, exactly as a browser would do it', () => {
-  it('serves a binary that runs and knows where it came from', async () => {
-    // The complete chain, with nothing stubbed between the pieces: the route
-    // streams the file, the browser saves it under the name the
-    // Content-Disposition header gave, and that file is then executed. Every
-    // unit test here passes with a broken join; this one does not.
-    const app = Fastify();
-    app.decorate('requireAdmin', async () => {});
-    app.decorate('user', null);
-    await app.register(
-      makeDeploymentRoutes({
-        db: {
-          query: async () => [] as never[],
-          queryOne: async () => DEPLOYMENT as never,
+    try {
+      const { stdout } = await run(
+        exe,
+        ['install', '--server', url, '--code', code],
+        {
+          env: {
+            ...process.env,
+            RIPPEL_AGENT_HOME: home,
+            // Never register a startup entry on whatever machine runs the suite.
+            RIPPEL_SKIP_SERVICE: '1',
+          },
+          timeout: 30_000,
         },
-      }),
-    );
-    await app.ready();
+      );
+      expect(stdout).toContain('Paired.');
 
-    const res = await app.inject({
-      method: 'GET',
-      url: `/deployments/${DEPLOYMENT.id}/agent/linux-amd64?token=${DEPLOYMENT.token}`,
-    });
-    expect(res.statusCode).toBe(200);
-    await app.close();
+      // The whole point: the id came back from redemption. Nobody typed it, and
+      // the agent never asked for one.
+      const config = JSON.parse(await readFile(join(home, 'config.json'), 'utf8'));
+      expect(config.deploymentId).toBe(DEPLOYMENT.id);
+      expect(config.token).toBe(DEPLOYMENT.token);
+      expect(config.serverUrl).toBe(url.replace(/\/+$/, ''));
+    } finally {
+      await app.close();
+    }
+  }, 60_000);
 
-    const served = /filename="([^"]+)"/.exec(String(res.headers['content-disposition']))?.[1];
-    expect(served).toBeTruthy();
+  it('refuses the same code the second time, and says so in words', async () => {
+    const code = generateCode();
+    const { app, url } = await rippel(code);
+    const first = await stage();
+    const second = await stage();
 
-    const dir = await mkdtemp(join(tmpdir(), 'rippel-download-'));
-    dirs.push(dir);
-    const saved = join(dir, served!);
-    await writeFile(saved, res.rawPayload);
-    await chmod(saved, 0o755);
+    try {
+      // The first machine pairs, which spends the code.
+      await run(first.exe, ['install', '--server', url, '--code', code], {
+        env: { ...process.env, RIPPEL_AGENT_HOME: first.home, RIPPEL_SKIP_SERVICE: '1' },
+        timeout: 30_000,
+      }).catch(() => undefined);
 
-    // It is a working program, not a truncated stream.
-    const { stdout } = await run(saved, ['version'], { timeout: 30_000 });
-    expect(stdout).toContain('rippel-agent');
+      const failure = await run(second.exe, ['install', '--server', url, '--code', code], {
+        env: { ...process.env, RIPPEL_AGENT_HOME: second.home, RIPPEL_SKIP_SERVICE: '1' },
+        timeout: 30_000,
+      }).then(
+        () => ({ stdout: '', stderr: '' }),
+        (cause: { stdout?: string; stderr?: string }) => ({
+          stdout: cause.stdout ?? '',
+          stderr: cause.stderr ?? '',
+        }),
+      );
 
-    // The name the route chose really does carry this deployment's token...
-    const blob = /rippel-agent-setup-([A-Za-z0-9_-]+)/.exec(served!)![1]!;
-    expect(JSON.parse(Buffer.from(blob, 'base64url').toString('utf8')).t).toBe(DEPLOYMENT.token);
+      expect(`${failure.stdout}${failure.stderr}`).toContain('already been used');
+      // And it wrote nothing: a machine that could not pair must be left exactly
+      // as it was found.
+      await expect(run('test', ['-e', second.home])).rejects.toBeTruthy();
+    } finally {
+      await app.close();
+    }
+  }, 90_000);
 
-    // ...and the binary reads it back off its own filename, with nothing typed.
-    // That is the entire one-click install, proven across both languages.
-    const output = await whatItRead(saved);
-    expect(output).toContain('the name of this file');
+  it('refuses an expired code, and writes nothing', async () => {
+    const code = generateCode();
+    const { app, url } = await rippel(code, { expired: true });
+    const { exe, home } = await stage();
+
+    try {
+      const failure = await run(exe, ['install', '--server', url, '--code', code], {
+        env: { ...process.env, RIPPEL_AGENT_HOME: home, RIPPEL_SKIP_SERVICE: '1' },
+        timeout: 30_000,
+      }).then(
+        () => ({ out: '' }),
+        (cause: { stdout?: string; stderr?: string }) => ({
+          out: `${cause.stdout ?? ''}${cause.stderr ?? ''}`,
+        }),
+      );
+
+      expect(failure.out).toContain('expired');
+      await expect(run('test', ['-e', home])).rejects.toBeTruthy();
+    } finally {
+      await app.close();
+    }
+  }, 60_000);
+
+  it('is a working program, not a truncated stream, when served by the route', async () => {
+    const { app } = await rippel(generateCode());
+    try {
+      const res = await app.inject({ method: 'GET', url: '/api/deployments/agent/linux-amd64' });
+      expect(res.statusCode).toBe(200);
+      // The same file for everybody: no deployment in the name, nothing secret
+      // in it, and therefore cacheable.
+      expect(String(res.headers['content-disposition'])).toContain('rippel-agent-linux-amd64');
+      expect(String(res.headers['cache-control'])).toContain('public');
+      expect(res.rawPayload.subarray(0, 4).toString('latin1')).toBe('\x7fELF');
+
+      const dir = await mkdtemp(join(tmpdir(), 'rippel-download-'));
+      dirs.push(dir);
+      const saved = join(dir, 'rippel-agent');
+      await import('node:fs/promises').then((fs) => fs.writeFile(saved, res.rawPayload));
+      await chmod(saved, 0o755);
+      const { stdout } = await run(saved, ['version'], { timeout: 30_000 });
+      expect(stdout).toContain('rippel-agent');
+    } finally {
+      await app.close();
+    }
   }, 60_000);
 });
 
-describe('the setup code the download carries', () => {
-  it('is decoded by the compiled agent, not just by this test', async () => {
-    // Guards the one thing two languages have to agree on. If encodeSetup here
-    // and DecodeSetup in apps/agent/go/setup.go ever drift, every download
-    // silently becomes a paste-the-link install and nobody notices.
-    const blob = encodeSetup(SETUP);
-    expect(JSON.parse(Buffer.from(blob, 'base64url').toString('utf8'))).toEqual({
-      s: SETUP.serverUrl,
-      t: SETUP.token,
-    });
+describe('the pairing code, as both sides spell it', () => {
+  it('uses an alphabet the compiled agent agrees with, character for character', async () => {
+    // The one thing two languages have to agree on. If the alphabet here and
+    // `pairingAlphabet` in apps/agent/go/setup.go ever drift, codes this rippel
+    // issues become codes that agent refuses to even send — and the failure
+    // reads as "rippel does not recognise that code", which sends everyone
+    // hunting in the wrong place.
+    const goSource = await readFile(
+      join(here, '..', '..', '..', 'agent', 'go', 'setup.go'),
+      'utf8',
+    );
+    const goAlphabet = /pairingAlphabet = "([^"]+)"/.exec(goSource)?.[1];
+    expect(goAlphabet).toBeTruthy();
+
+    // Derive this side's alphabet from the generator rather than re-declaring
+    // it, so the test cannot pass against a constant nobody uses.
+    const seen = new Set<string>();
+    for (let i = 0; i < 4000; i++) for (const c of generateCode()) seen.add(c);
+    expect([...seen].sort().join('')).toBe([...goAlphabet!].sort().join(''));
+
+    // And the exclusions the whole scheme rests on.
+    for (const ambiguous of ['O', '0', 'I', '1', 'L']) {
+      expect(goAlphabet).not.toContain(ambiguous);
+    }
   });
 
-  it('reports which binaries this rippel can actually hand out', async () => {
-    // Not an assertion about how many were built — a checkout may have none.
-    // What must hold is that anything reported as available is really there.
-    for (const binary of built) {
-      expect(binary.sizeBytes).toBeGreaterThan(0);
-      expect(binary.path).toContain(binary.asset);
-    }
+  it('agrees on the length, and on what normalisation forgives', () => {
+    const goSource = () => readFile(join(here, '..', '..', '..', 'agent', 'go', 'setup.go'), 'utf8');
+    expect(generateCode()).toHaveLength(8);
+    // The separators a person adds, which both sides strip before hashing. A
+    // disagreement here means a code that works when typed one way and not the
+    // other, which is the least debuggable failure this feature could have.
+    expect(normaliseCode('k7qm-4xtb')).toBe('K7QM4XTB');
+    expect(normaliseCode('K7QM 4XTB')).toBe('K7QM4XTB');
+    expect(normaliseCode(' K7QM4XTB ')).toBe('K7QM4XTB');
+    return goSource().then((source) => {
+      expect(source).toContain('PairingCodeLength = 8');
+    });
   });
 });

@@ -1,22 +1,33 @@
 /**
  * The deployment routes against an in-memory table and a scripted agent: the
- * gating, the two authentications, the check-in that corrects a row, the
+ * gating, the three authentications, the check-in that corrects a row, the
  * refusals, and the scripts. No Postgres, no SSH, no agent.
  *
- * The two authentications are the point of most of this. An administrator has
- * a session and no token; an agent has a token and no session. Confusing them
- * either way is the failure that matters — an admin route reachable by token
- * would let a GPU box read the fleet, and a token route behind requireAdmin
- * would mean no agent could ever check in.
+ * The authentications are the point of most of this. An administrator has a
+ * session and no token; an agent has a token and no session; a machine being
+ * paired has neither, and a one-time code stands in. Confusing any two of them
+ * is the failure that matters — an admin route reachable by token would let a
+ * GPU box read the fleet, a token route behind requireAdmin would mean no agent
+ * could ever check in, and a pairing route behind either would mean nothing
+ * could be set up at all.
  */
 
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AgentTask, ComfyState } from '@comfy/shared';
 import { makeDeploymentRoutes, normaliseHost, type DeployDb } from './routes.js';
 import { bashInstaller, oneLiner, powershellInstaller } from './scripts.js';
 import { clearReleaseCache, latestAgentRelease } from './releases.js';
-import { AGENT_BINARIES, availableBinaries, downloadFileName, encodeSetup, setupLink } from './binaries.js';
+import { AGENT_BINARIES, availableBinaries, binaryDownloadPath } from './binaries.js';
+import {
+  CODE_LENGTH,
+  generateCode,
+  hashCode,
+  hashesMatch,
+  normaliseCode,
+  RateLimiter,
+  resetPairingLimits,
+} from './pairing.js';
 import type { AgentClient } from './agent-client.js';
 import { AgentError } from './agent-client.js';
 
@@ -53,6 +64,14 @@ interface Row {
   created_at: Date;
 }
 
+/** A pairing code row, as the table stores it: a hash and two timestamps. */
+interface CodeRow {
+  deployment_id: string;
+  code_hash: string;
+  expires_at: Date;
+  redeemed_at: Date | null;
+}
+
 function row(over: Partial<Row> = {}): Row {
   return {
     id: D1,
@@ -72,9 +91,43 @@ function row(over: Partial<Row> = {}): Row {
   };
 }
 
-function fakeDb(rows: Row[], backends: { id: string; name: string; base_url: string }[] = []): DeployDb {
+function fakeDb(
+  rows: Row[],
+  backends: { id: string; name: string; base_url: string }[] = [],
+  codes: CodeRow[] = [],
+): DeployDb {
   let next = 0;
   const query = (async (sql: string, params: unknown[] = []) => {
+    // ---- pairing codes. Checked first: the generic `UPDATE deployments`
+    // matcher below would otherwise swallow the redemption statement.
+    if (sql.includes('INSERT INTO deployment_pairing_codes')) {
+      const [deployment_id, code_hash, expires_at] = params as [string, string, Date];
+      const existing = codes.find((c) => c.deployment_id === deployment_id);
+      if (existing) {
+        // The primary key means issuing replaces, which is what invalidates an
+        // outstanding code. Modelled here because that is the behaviour tested.
+        existing.code_hash = code_hash;
+        existing.expires_at = expires_at;
+        existing.redeemed_at = null;
+      } else {
+        codes.push({ deployment_id, code_hash, expires_at, redeemed_at: null });
+      }
+      return [];
+    }
+    if (sql.includes('UPDATE deployment_pairing_codes')) {
+      // The one statement that may spend a code, and the reason redemption is
+      // single-use: the condition and the write are one step.
+      const found = codes.find(
+        (c) => c.code_hash === params[0] && !c.redeemed_at && c.expires_at > new Date(),
+      );
+      if (!found) return [];
+      found.redeemed_at = new Date();
+      return [{ deployment_id: found.deployment_id }];
+    }
+    if (sql.includes('FROM deployment_pairing_codes')) {
+      return codes.filter((c) => c.code_hash === params[0]);
+    }
+
     if (sql.includes('FROM deployments d') && sql.includes('d.id = $1')) {
       return rows.filter((r) => r.id === params[0]);
     }
@@ -188,6 +241,7 @@ async function server(
   opts: {
     rows?: Row[];
     backends?: { id: string; name: string; base_url: string }[];
+    codes?: CodeRow[];
     agent?: AgentClient;
     fetchImpl?: typeof fetch;
   } = {},
@@ -209,7 +263,7 @@ async function server(
   });
   await app.register(
     makeDeploymentRoutes({
-      db: fakeDb(opts.rows ?? [], opts.backends ?? []),
+      db: fakeDb(opts.rows ?? [], opts.backends ?? [], opts.codes ?? []),
       agent: opts.agent ?? fakeAgent(),
       fetchImpl: opts.fetchImpl,
       pollNow: async () => {},
@@ -218,6 +272,9 @@ async function server(
   await app.ready();
   return app;
 }
+
+// The limiters are module-level and therefore shared between tests.
+beforeEach(() => resetPairingLimits());
 
 // ---------------------------------------------------------------- host
 
@@ -236,6 +293,253 @@ describe('normaliseHost', () => {
     expect(normaliseHost('user@box')).toBeNull();
     expect(normaliseHost('')).toBeNull();
     expect(normaliseHost(42)).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------- the code
+
+describe('the pairing code itself', () => {
+  it('is eight characters with nothing ambiguous in it', () => {
+    // O/0 and I/1/L are the pairs people confuse in both directions — reading a
+    // code aloud, and typing one they were sent. Excluding both members of each
+    // pair is stronger than mapping one onto the other, because it means no
+    // code can *contain* an ambiguous character.
+    for (let i = 0; i < 500; i++) {
+      const code = generateCode();
+      expect(code).toHaveLength(CODE_LENGTH);
+      expect(code).toMatch(/^[2-9A-HJ-NP-Z]{8}$/);
+      for (const ambiguous of ['O', '0', 'I', '1', 'L']) {
+        expect(code).not.toContain(ambiguous);
+      }
+    }
+  });
+
+  it('forgives case and the separators people add, and nothing else', () => {
+    expect(normaliseCode('k7qm4xtb')).toBe('K7QM4XTB');
+    expect(normaliseCode('K7QM-4XTB')).toBe('K7QM4XTB');
+    expect(normaliseCode(' K7QM 4XTB ')).toBe('K7QM4XTB');
+
+    // A character the alphabet excludes is a misreading, not something to fold:
+    // there is nothing sensible to map an O onto when neither O nor 0 is ever
+    // in a code. Refusing is the honest answer.
+    expect(normaliseCode('K7QM4XTO')).toBeNull();
+    expect(normaliseCode('K7QM4XT0')).toBeNull();
+    expect(normaliseCode('K7QM4XT')).toBeNull();
+    expect(normaliseCode('K7QM4XTBB')).toBeNull();
+    expect(normaliseCode(42)).toBeNull();
+    expect(normaliseCode(null)).toBeNull();
+  });
+
+  it('is stored as a hash and compared without a shortcut', () => {
+    const code = generateCode();
+    // Case-insensitivity has to survive hashing, or a lowercase paste fails.
+    expect(hashCode(normaliseCode(code.toLowerCase())!)).toBe(hashCode(code));
+    expect(hashCode(code)).toMatch(/^[0-9a-f]{64}$/);
+    expect(hashCode(code)).not.toContain(code);
+
+    expect(hashesMatch(hashCode(code), hashCode(code))).toBe(true);
+    expect(hashesMatch(hashCode(code), hashCode(generateCode()))).toBe(false);
+    // Mismatched lengths must not throw, which timingSafeEqual does on its own.
+    expect(hashesMatch('abcd', hashCode(code))).toBe(false);
+    expect(hashesMatch('', '')).toBe(false);
+  });
+
+  it('counts attempts in a window and forgets a key on success', () => {
+    const limiter = new RateLimiter(3, 1000);
+    expect(limiter.take('a')).toBe(true);
+    expect(limiter.take('a')).toBe(true);
+    expect(limiter.take('a')).toBe(true);
+    expect(limiter.take('a')).toBe(false);
+    // Another caller is unaffected.
+    expect(limiter.take('b')).toBe(true);
+    // The window rolls.
+    expect(limiter.take('a', Date.now() + 2000)).toBe(true);
+
+    limiter.take('c');
+    limiter.clear('c');
+    expect(limiter.take('c')).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------- pairing
+
+describe('pairing a machine', () => {
+  it('issues a code to an administrator, and nobody else', async () => {
+    for (const who of [null, USER]) {
+      const app = await server(who, { rows: [row()] });
+      const res = await app.inject({ method: 'POST', url: `/deployments/${D1}/pairing-code` });
+      expect(res.statusCode).toBe(who ? 403 : 401);
+    }
+
+    const codes: CodeRow[] = [];
+    const app = await server(ADMIN, { rows: [row()], codes });
+    const res = await app.inject({ method: 'POST', url: `/deployments/${D1}/pairing-code` });
+    expect(res.statusCode).toBe(201);
+
+    const body = res.json();
+    expect(body.code).toMatch(/^[2-9A-HJ-NP-Z]{8}$/);
+    expect(new Date(body.expiresAt).getTime()).toBeGreaterThan(Date.now());
+    // Minutes, not days. A credential read aloud should not outlive the meeting.
+    expect(new Date(body.expiresAt).getTime()).toBeLessThan(Date.now() + 60 * 60 * 1000);
+
+    // Only the hash is stored — an administrator looking at the table cannot
+    // recover a code, and neither can a database dump.
+    expect(codes).toHaveLength(1);
+    expect(codes[0].code_hash).toBe(hashCode(body.code));
+    expect(JSON.stringify(codes)).not.toContain(body.code);
+  });
+
+  it('redeems a code with no session at all, and hands back the id', async () => {
+    const codes: CodeRow[] = [];
+    const admin = await server(ADMIN, { rows: [row()], codes });
+    const { code } = (await admin.inject({ method: 'POST', url: `/deployments/${D1}/pairing-code` })).json();
+
+    // A different app with no user: this is the machine being set up, which has
+    // no rippel login. That is the whole reason the code exists.
+    const machine = await server(null, { rows: [row()], codes });
+    const res = await machine.inject({
+      method: 'POST',
+      url: '/deployments/pair',
+      payload: { code },
+    });
+    expect(res.statusCode).toBe(200);
+
+    const body = res.json();
+    // The id comes *back* from redemption. The agent never asks for one.
+    expect(body.deploymentId).toBe(D1);
+    expect(body.token).toBe('tok-secret');
+    expect(body.serverUrl).toMatch(/^https?:\/\//);
+  });
+
+  it('takes the code in whatever case and shape it was written down', async () => {
+    const codes: CodeRow[] = [];
+    const admin = await server(ADMIN, { rows: [row()], codes });
+    const { code } = (await admin.inject({ method: 'POST', url: `/deployments/${D1}/pairing-code` })).json();
+
+    const machine = await server(null, { rows: [row()], codes });
+    const res = await machine.inject({
+      method: 'POST',
+      url: '/deployments/pair',
+      payload: { code: `${code.slice(0, 4).toLowerCase()}-${code.slice(4).toLowerCase()}` },
+    });
+    expect(res.statusCode).toBe(200);
+  });
+
+  it('lets exactly one of two agents racing the same code win', async () => {
+    // The requirement, and the reason redemption is a single conditional UPDATE
+    // rather than a read followed by a write: two machines handed the same code
+    // must not both end up enrolled.
+    const codes: CodeRow[] = [];
+    const admin = await server(ADMIN, { rows: [row()], codes });
+    const { code } = (await admin.inject({ method: 'POST', url: `/deployments/${D1}/pairing-code` })).json();
+
+    const machine = await server(null, { rows: [row()], codes });
+    const results = await Promise.all(
+      Array.from({ length: 8 }, () =>
+        machine.inject({ method: 'POST', url: '/deployments/pair', payload: { code } }),
+      ),
+    );
+
+    const winners = results.filter((r) => r.statusCode === 200);
+    expect(winners).toHaveLength(1);
+    expect(winners[0]!.json().token).toBe('tok-secret');
+    // Everyone else is told the code is spent, not that it never existed.
+    for (const loser of results.filter((r) => r.statusCode !== 200)) {
+      expect(loser.statusCode).toBe(409);
+      expect(loser.json().message).toContain('already been used');
+    }
+    expect(codes[0].redeemed_at).toBeTruthy();
+  });
+
+  it('refuses a code that has expired, and says which it is', async () => {
+    const codes: CodeRow[] = [
+      {
+        deployment_id: D1,
+        code_hash: hashCode('K7QM4XTB'),
+        expires_at: new Date(Date.now() - 1000),
+        redeemed_at: null,
+      },
+    ];
+    const app = await server(null, { rows: [row()], codes });
+    const res = await app.inject({
+      method: 'POST',
+      url: '/deployments/pair',
+      payload: { code: 'K7QM4XTB' },
+    });
+    expect(res.statusCode).toBe(410);
+    expect(res.json().error).toBe('code_expired');
+    // Whoever holds the code already holds it, so telling them it is stale is
+    // not a disclosure — and "not valid" for every case sends people hunting
+    // for typos that are not there.
+    expect(res.json().message).toContain('expired');
+  });
+
+  it('invalidates an outstanding code when a new one is issued', async () => {
+    // A code read aloud in a meeting cannot be used tomorrow.
+    const codes: CodeRow[] = [];
+    const admin = await server(ADMIN, { rows: [row()], codes });
+    const first = (await admin.inject({ method: 'POST', url: `/deployments/${D1}/pairing-code` })).json();
+    const second = (await admin.inject({ method: 'POST', url: `/deployments/${D1}/pairing-code` })).json();
+    expect(second.code).not.toBe(first.code);
+    expect(codes).toHaveLength(1);
+
+    const machine = await server(null, { rows: [row()], codes });
+    const stale = await machine.inject({
+      method: 'POST',
+      url: '/deployments/pair',
+      payload: { code: first.code },
+    });
+    expect(stale.statusCode).toBe(404);
+
+    const fresh = await machine.inject({
+      method: 'POST',
+      url: '/deployments/pair',
+      payload: { code: second.code },
+    });
+    expect(fresh.statusCode).toBe(200);
+  });
+
+  it('refuses a malformed code without going near the database', async () => {
+    // The db here throws on any unexpected query, so a lookup would fail loudly.
+    const app = await server(null, { rows: [row()], codes: [] });
+    for (const code of ['', 'nope', 'K7QM4XT0', 'K7QM4XTBB', 12345678, null]) {
+      const res = await app.inject({ method: 'POST', url: '/deployments/pair', payload: { code } });
+      expect(res.statusCode).toBe(400);
+      expect(res.json().error).toBe('invalid_code');
+    }
+  });
+
+  it('rate-limits guessing from one address', async () => {
+    const app = await server(null, { rows: [row()], codes: [] });
+    const attempt = () =>
+      app.inject({
+        method: 'POST',
+        url: '/deployments/pair',
+        payload: { code: generateCode() },
+        remoteAddress: '203.0.113.9',
+      });
+
+    // Ten in the window are answered; the eleventh is not.
+    for (let i = 0; i < 10; i++) {
+      expect((await attempt()).statusCode).toBe(404);
+    }
+    const blocked = await attempt();
+    expect(blocked.statusCode).toBe(429);
+    expect(blocked.json().message).toContain('Too many');
+  });
+
+  it('never puts the code in a URL', async () => {
+    // It is a credential, so it goes in a body — not in a path a proxy logs, a
+    // browser remembers, or a referrer header leaks.
+    const codes: CodeRow[] = [];
+    const admin = await server(ADMIN, { rows: [row()], codes });
+    const res = await admin.inject({ method: 'POST', url: `/deployments/${D1}/pairing-code` });
+    const { code, commands } = res.json();
+    for (const command of Object.values(commands) as string[]) {
+      expect(command).toContain(code);
+      // Present as an argument, never as part of a fetched URL.
+      expect(command).not.toMatch(new RegExp(`[?&][^ ]*${code}`));
+    }
   });
 });
 
@@ -280,36 +584,37 @@ describe('who may call what', () => {
     expect(wrong.statusCode).toBe(401);
   });
 
-  it('serves the agent binary only to that deployment’s token', async () => {
-    const app = await server(null, {
-      rows: [row(), row({ id: 'other', name: 'other', token: 'tok-other' })],
+  it('no longer takes a long-lived token from a query string', async () => {
+    // There is no `curl | bash` script left that needs one, so there is no
+    // reason for the agent token to appear in a URL — where a proxy logs it and
+    // a browser history keeps it.
+    const app = await server(null, { rows: [row()] });
+    const res = await app.inject({
+      method: 'POST',
+      url: '/deployments/checkin?token=tok-secret',
+      payload: {},
     });
-    const url = `/deployments/${D1}/agent/linux-amd64`;
+    expect(res.statusCode).toBe(401);
+  });
 
-    expect((await app.inject({ method: 'GET', url })).statusCode).toBe(401);
-    // A real token, but for another machine: the download is branded with a
-    // deployment's credentials, so handing one over would enrol the wrong box.
-    expect((await app.inject({ method: 'GET', url: `${url}?token=tok-other` })).statusCode).toBe(401);
+  it('serves the agent binary to anyone, because it is the same file for everyone', async () => {
+    const app = await server(null, { rows: [row()] });
+    const res = await app.inject({ method: 'GET', url: binaryDownloadPath('linux-amd64').replace('/api', '') });
 
-    const res = await app.inject({ method: 'GET', url: `${url}?token=tok-secret` });
-    // 404 when this rippel has not built its binaries, which is a normal state
-    // for a checkout — but never 401, and never a silent empty file.
     const built = await availableBinaries();
     if (built.some((b) => b.target === 'linux-amd64')) {
       expect(res.statusCode).toBe(200);
-      // The filename is the credential: the agent reads its own name and needs
-      // nothing typed. Losing this header is losing the one-click install, so
-      // the blob is decoded rather than string-matched — what matters is that
-      // the token comes back out, not how this rippel spells its own address.
+      // A plain, cacheable asset under its own name — no setup blob, nothing
+      // per-deployment, and nothing a rename could break.
       const disposition = String(res.headers['content-disposition']);
-      const blob = /rippel-agent-setup-([A-Za-z0-9_-]+)/.exec(disposition)?.[1];
-      expect(blob).toBeTruthy();
-      const carried = JSON.parse(Buffer.from(blob!, 'base64url').toString('utf8'));
-      expect(carried.t).toBe('tok-secret');
-      expect(carried.s).toMatch(/^https?:\/\//);
+      expect(disposition).toContain('rippel-agent-linux-amd64');
+      expect(disposition).not.toContain('setup');
+      expect(String(res.headers['cache-control'])).toContain('public');
       // ELF, because that is what a Linux download has to be.
       expect(res.rawPayload.subarray(0, 4).toString('latin1')).toBe('\x7fELF');
     } else {
+      // 404 when this rippel has not built its binaries, which is a normal
+      // state for a checkout — but never a silent empty file.
       expect(res.statusCode).toBe(404);
       expect(res.json().message).toContain('build:release');
     }
@@ -317,47 +622,9 @@ describe('who may call what', () => {
 
   it('refuses a platform it has never heard of, and says which it knows', async () => {
     const app = await server(null, { rows: [row()] });
-    const res = await app.inject({
-      method: 'GET',
-      url: `/deployments/${D1}/agent/solaris-sparc?token=tok-secret`,
-    });
+    const res = await app.inject({ method: 'GET', url: '/deployments/agent/solaris-sparc' });
     expect(res.statusCode).toBe(404);
     expect(res.json().message).toContain('windows-amd64');
-  });
-
-  it('shows the setup page to whoever holds the link, and nobody else', async () => {
-    const app = await server(null, { rows: [row()] });
-
-    const ok = await app.inject({ method: 'GET', url: '/deployments/setup/tok-secret' });
-    expect(ok.statusCode).toBe(200);
-    expect(ok.headers['content-type']).toContain('text/html');
-    // The person opening this is not the administrator — it has to name the
-    // machine and say what the link is worth.
-    expect(ok.body).toContain('studio-4090');
-    expect(ok.body).toContain('This link is a password');
-
-    // A token from a deleted deployment must not 500, and must say what to do.
-    const gone = await app.inject({ method: 'GET', url: '/deployments/setup/tok-nope' });
-    expect(gone.statusCode).toBe(404);
-    expect(gone.body).toContain('not valid any more');
-  });
-
-  it('will not hand one deployment’s script to another’s token', async () => {
-    const app = await server(null, { rows: [row(), row({ id: 'other', name: 'other', token: 'tok-other' })] });
-    const res = await app.inject({ method: 'GET', url: `/deployments/${D1}/install.sh?token=tok-other` });
-    expect(res.statusCode).toBe(401);
-  });
-
-  it('serves the installer to the right token', async () => {
-    const app = await server(null, { rows: [row()] });
-    const sh = await app.inject({ method: 'GET', url: `/deployments/${D1}/install.sh?token=tok-secret` });
-    expect(sh.statusCode).toBe(200);
-    expect(sh.body).toContain('TOKEN=');
-    expect(sh.body).toContain('/api/deployments/setup/');
-
-    const ps1 = await app.inject({ method: 'GET', url: `/deployments/${D1}/install.ps1?token=tok-secret` });
-    expect(ps1.statusCode).toBe(200);
-    expect(ps1.body).toContain('rippel-agent.exe');
   });
 });
 
@@ -395,6 +662,28 @@ describe('managing a deployment', () => {
     });
     expect(url.statusCode).toBe(400);
     expect(url.json().field).toBe('host');
+  });
+
+  it('describes an install without minting a credential', async () => {
+    // A GET is safe and is polled by the panel. If it issued a pairing code,
+    // every refresh would silently invalidate the one on screen.
+    const codes: CodeRow[] = [];
+    const app = await server(ADMIN, { rows: [row()], codes });
+    const res = await app.inject({ method: 'GET', url: `/deployments/${D1}/install` });
+    expect(res.statusCode).toBe(200);
+    expect(codes).toHaveLength(0);
+
+    const body = res.json();
+    expect(body.serverUrl).toMatch(/^https?:\/\//);
+    expect(body.release).toBeTruthy();
+    // The retired per-deployment mechanism, gone from the payload.
+    expect(body.setupLink).toBeUndefined();
+    expect(body.downloads).toBeUndefined();
+    for (const binary of body.binaries ?? []) {
+      expect(binary.url).toContain('/api/deployments/agent/');
+      expect(binary.url).not.toContain('token');
+      expect(binary.fileName).not.toContain('setup');
+    }
   });
 
   it('reports a machine as offline once it stops checking in', async () => {
@@ -503,29 +792,40 @@ describe('managing a deployment', () => {
 describe('the generated installers', () => {
   const params = {
     serverUrl: 'http://192.168.1.9:4000',
-    deploymentId: D1,
-    token: "tok'with-quote",
-    agentPort: 8189,
+    code: "K7QM4XTB",
     comfyPort: 8188,
   };
 
-  it('quotes a token safely for sh', () => {
-    const script = bashInstaller(params);
+  it('quotes a value safely for sh', () => {
+    const script = bashInstaller({ ...params, code: "K7QM'XTB" });
     // A naive interpolation would end the string here and run the rest.
-    expect(script).toContain(`TOKEN='tok'\\''with-quote'`);
-    expect(script).not.toContain(`TOKEN='tok'with-quote'`);
+    expect(script).toContain(`CODE='K7QM'\\''XTB'`);
+    expect(script).not.toContain(`CODE='K7QM'XTB'`);
   });
 
-  it('quotes a token safely for PowerShell', () => {
-    const script = powershellInstaller(params);
-    expect(script).toContain(`$Token      = 'tok''with-quote'`);
+  it('quotes a value safely for PowerShell', () => {
+    const script = powershellInstaller({ ...params, code: "K7QM'XTB" });
+    expect(script).toContain(`$Code   = 'K7QM''XTB'`);
   });
 
-  it('builds a one-liner per platform with the token escaped for a URL', () => {
-    expect(oneLiner('linux', params)).toContain('curl -fsSL');
-    expect(oneLiner('darwin', params)).toContain('install.sh');
-    expect(oneLiner('win32', params)).toContain('install.ps1');
-    expect(oneLiner('linux', params)).toContain(encodeURIComponent(params.token));
+  it('downloads a generic binary, with no deployment and no token in the URL', () => {
+    // The retired scheme put both in the download URL, which meant a script
+    // could not be shared and a leaked one leaked a long-lived credential.
+    for (const script of [bashInstaller(params), powershellInstaller(params)]) {
+      expect(script).toContain('/api/deployments/agent/');
+      expect(script).not.toContain('token');
+      expect(script).not.toContain('setup');
+    }
+  });
+
+  it('hands the agent an address and a code, and lets it do the install', () => {
+    const bash = bashInstaller(params);
+    // exec, so the agent's own exit code is the script's, and its error
+    // messages are what an operator sees rather than a wrapper's.
+    expect(bash).toContain('exec "$BINARY" install --server "$SERVER" --code "$CODE"');
+
+    const ps = powershellInstaller(params);
+    expect(ps).toContain('& $Binary install --server $Server --code $Code');
   });
 
   it('does nothing but download the binary and run it', () => {
@@ -542,18 +842,14 @@ describe('the generated installers', () => {
     expect(bashInstaller(params).split('\n').length).toBeLessThan(70);
   });
 
-  it('hands the agent the setup link and lets it do the install', () => {
-    const bash = bashInstaller(params);
-    // exec, so the agent's own exit code is the script's, and its error
-    // messages are what an operator sees rather than a wrapper's.
-    expect(bash).toContain('exec "$BINARY" install "$SETUP_LINK"');
-    // The link is baked in, sh-quoted — the token here has an apostrophe in it
-    // precisely so a naive interpolation would show up as a broken script.
-    expect(bash).toContain('/api/deployments/setup/');
-    expect(bash).toContain(`SETUP_LINK='${setupLink(params.serverUrl, params.token).replace(/'/g, "'\\''")}'`);
-
-    const ps = powershellInstaller(params);
-    expect(ps).toContain('& $Binary install $SetupLink');
+  it('builds a one-liner per platform that carries the code as an argument', () => {
+    expect(oneLiner('linux', params)).toContain('--code');
+    expect(oneLiner('linux', params)).toContain('linux-amd64');
+    expect(oneLiner('darwin', params)).toContain('macos-arm64');
+    expect(oneLiner('win32', params)).toContain('windows-amd64');
+    for (const platform of ['linux', 'darwin', 'win32'] as const) {
+      expect(oneLiner(platform, params)).toContain(params.code);
+    }
   });
 
   it('picks the right macOS binary, because a Mac is genuinely still split', () => {
@@ -577,55 +873,9 @@ describe('the generated installers', () => {
     // A rippel behind https would otherwise fail with a closed connection.
     expect(powershellInstaller(params)).toContain('Tls12');
   });
-});
 
-// ---------------------------------------------------------------- downloads
-
-describe('the setup code carried in a download’s filename', () => {
-  const setup = { serverUrl: 'http://192.168.1.9:4000', token: 'tok-secret' };
-
-  it('round-trips through base64url, which is what a filename can hold', () => {
-    const blob = encodeSetup(setup);
-    // The agent decodes this with encoding/base64.RawURLEncoding, so no
-    // padding, and only characters that are legal in a filename everywhere.
-    expect(blob).toMatch(/^[A-Za-z0-9_-]+$/);
-    expect(JSON.parse(Buffer.from(blob, 'base64url').toString('utf8'))).toEqual({
-      s: setup.serverUrl,
-      t: setup.token,
-    });
-  });
-
-  it('leaves out ports that are already the agent’s defaults', () => {
-    // Every byte here is a byte of filename, and Windows still has a path limit.
-    const bare = JSON.parse(Buffer.from(encodeSetup({ ...setup, agentPort: 8189, comfyPort: 8188 }), 'base64url').toString());
-    expect(bare.p).toBeUndefined();
-    expect(bare.c).toBeUndefined();
-
-    const custom = JSON.parse(Buffer.from(encodeSetup({ ...setup, agentPort: 9000 }), 'base64url').toString());
-    expect(custom.p).toBe(9000);
-  });
-
-  it('keeps the .exe on Windows, because without it nothing runs at all', () => {
-    const windows = AGENT_BINARIES.find((b) => b.platform === 'win32')!;
-    const linux = AGENT_BINARIES.find((b) => b.platform === 'linux')!;
-    expect(downloadFileName(windows, setup)).toMatch(/^rippel-agent-setup-[A-Za-z0-9_-]+\.exe$/);
-    expect(downloadFileName(linux, setup)).toMatch(/^rippel-agent-setup-[A-Za-z0-9_-]+$/);
-  });
-
-  it('stays short enough to survive a Windows Downloads folder', () => {
-    // A real token is 32 bytes base64url — 43 characters. MAX_PATH is 260, and
-    // C:\\Users\\<name>\\Downloads\\ is most of a hundred of them.
-    const real = { serverUrl: 'http://192.168.100.200:4000', token: 'a'.repeat(43) };
-    const windows = AGENT_BINARIES.find((b) => b.platform === 'win32')!;
-    expect(downloadFileName(windows, real).length).toBeLessThan(150);
-  });
-
-  it('builds a setup link the agent can read the server address back out of', () => {
-    // The agent strips /api/deployments to recover the server URL; if this
-    // path ever changes, apiPrefixes in apps/agent/go/setup.go changes with it.
-    expect(setupLink('http://192.168.1.9:4000/', 'tok-secret')).toBe(
-      'http://192.168.1.9:4000/api/deployments/setup/tok-secret',
-    );
+  it('says it needs no administrator, because that was the failure', () => {
+    expect(powershellInstaller(params)).toContain('needs no administrator');
   });
 });
 
@@ -642,8 +892,8 @@ describe('the agent release lookup', () => {
     );
     expect(release.tag).toBeNull();
     expect(release.note).toContain('Could not reach GitHub');
-    // Four now, not three: a Mac is genuinely split between Apple silicon and
-    // Intel, and one binary cannot serve both.
+    // Four: a Mac is genuinely split between Apple silicon and Intel, and one
+    // binary cannot serve both.
     expect(release.downloads).toHaveLength(4);
     for (const download of release.downloads) {
       expect(download.url).toContain('/releases/latest/download/');
@@ -680,5 +930,16 @@ describe('the agent release lookup', () => {
     // /latest/download link rather than disappearing from the page.
     expect(release.downloads.find((d) => d.platform === 'win32')!.url).toContain('/latest/download/');
     clearReleaseCache();
+  });
+
+  it('names the same assets the build script produces', () => {
+    // A renamed binary must not end up with a working download on one side and
+    // a dead link on the other.
+    expect(AGENT_BINARIES.map((b) => b.asset)).toEqual([
+      'rippel-agent-windows-amd64.exe',
+      'rippel-agent-macos-arm64',
+      'rippel-agent-macos-amd64',
+      'rippel-agent-linux-amd64',
+    ]);
   });
 });

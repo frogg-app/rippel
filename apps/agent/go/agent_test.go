@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -16,9 +17,9 @@ import (
 //
 // What is covered is the part that is security-relevant or easy to get subtly
 // wrong: the token check, the task log's bounds, the refusal to write a helper
-// file outside its own folder, and the setup link parsing — which is the one
-// piece of this program a non-technical person interacts with directly, so its
-// failure messages are as much of the contract as its successes.
+// file outside its own folder, and the pairing input — which is the one piece of
+// this program a non-technical person interacts with directly, so its failure
+// messages are as much of the contract as its successes.
 
 func testConfig(t *testing.T) *Config {
 	t.Helper()
@@ -404,9 +405,6 @@ func TestCheckinSendsTheShapeRippelReadsAndLearnsItsDeploymentId(t *testing.T) {
 	if body["version"] != AgentVersion || body["platform"] != "linux" {
 		t.Fatalf("check-in said %v", body)
 	}
-	if body["deploymentId"] != nil {
-		t.Fatalf("deploymentId should be null before enrolment, was %v", body["deploymentId"])
-	}
 	// A real agent always has a port. What must never go out is a zero, which
 	// rippel would COALESCE into the row and then try to dial.
 	if body["agentPort"] != float64(cfg.Port) {
@@ -416,8 +414,8 @@ func TestCheckinSendsTheShapeRippelReadsAndLearnsItsDeploymentId(t *testing.T) {
 		t.Fatal("the check-in carried no comfy state")
 	}
 
-	// rippel is the authority on which deployment this is, so the id it
-	// answered with is adopted and written down.
+	// rippel remains the authority on which deployment this is, even though
+	// pairing already told the agent: if the two ever disagree, rippel wins.
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
 		if agent.config().DeploymentID == "dep-42" {
@@ -434,11 +432,10 @@ func TestCheckinSendsTheShapeRippelReadsAndLearnsItsDeploymentId(t *testing.T) {
 	}
 }
 
-func TestThePreInstallProbeSendsNothingRippelWouldOverwriteWith(t *testing.T) {
-	// The check the installer makes before it writes anything reaches the same
-	// route as a real check-in. rippel COALESCEs the port and the comfy state,
-	// so a probe carrying zero-values would blank a working row — re-running
-	// the installer on a healthy machine would make the panel wrong.
+func TestAPartialCheckinBodyOmitsWhatRippelWouldOverwriteWith(t *testing.T) {
+	// rippel COALESCEs the port and the comfy state, so a body carrying
+	// zero-values would blank a working row. The struct tags are what prevent
+	// that, and they are easy to remove by accident.
 	body, err := json.Marshal(checkinBody{Version: AgentVersion, Platform: "win32"})
 	if err != nil {
 		t.Fatal(err)
@@ -449,137 +446,336 @@ func TestThePreInstallProbeSendsNothingRippelWouldOverwriteWith(t *testing.T) {
 	}
 	for _, key := range []string{"agentPort", "comfy"} {
 		if _, present := sent[key]; present {
-			t.Fatalf("the probe sent %q, which rippel would write into the row", key)
+			t.Fatalf("a partial check-in sent %q, which rippel would write into the row", key)
 		}
 	}
-	// It still has to identify itself, or the row learns nothing at all.
 	if sent["version"] != AgentVersion || sent["platform"] != "win32" {
-		t.Fatalf("the probe said %v", sent)
+		t.Fatalf("it said %v", sent)
 	}
 }
 
-// ---------------------------------------------------------------- setup links
+// ---------------------------------------------------------------- pairing
 
-func TestParseSetupLink(t *testing.T) {
-	cases := []struct {
-		in     string
-		server string
-		token  string
-	}{
-		{"http://192.168.1.9:4000/setup/abc123", "http://192.168.1.9:4000", "abc123"},
-		// The link rippel actually publishes: its API lives under
-		// /api/deployments, and the agent must store the bare server address,
-		// because that is what it appends /api/deployments/checkin to.
-		{"http://192.168.1.9:4000/api/deployments/setup/abc123", "http://192.168.1.9:4000", "abc123"},
-		{"https://example.com/rippel/api/deployments/setup/abc123", "https://example.com/rippel", "abc123"},
+func TestNormaliseServerURL(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"http://192.168.1.9:4000", "http://192.168.1.9:4000"},
 		// No scheme: someone typing the address means http, and rippel is LAN
 		// software with no certificate, so that is not a downgrade.
-		{"192.168.1.9:4000/setup/abc123", "http://192.168.1.9:4000", "abc123"},
-		// Wrapped by whatever chat window it travelled through.
-		{`  "http://box:4000/setup/abc123"  `, "http://box:4000", "abc123"},
-		// A rippel served under a path prefix.
-		{"https://example.com/rippel/setup/abc123", "https://example.com/rippel", "abc123"},
-		// Reconstructed by hand as a query string.
-		{"http://192.168.1.9:4000?token=abc123", "http://192.168.1.9:4000", "abc123"},
+		{"192.168.1.9:4000", "http://192.168.1.9:4000"},
 		// A trailing slash a browser added.
-		{"http://192.168.1.9:4000/setup/abc123/", "http://192.168.1.9:4000", "abc123"},
+		{"http://192.168.1.9:4000/", "http://192.168.1.9:4000"},
+		// Wrapped by whatever chat window it travelled through.
+		{`  "http://box:4000"  `, "http://box:4000"},
+		// A rippel served under a path prefix.
+		{"https://example.com/rippel", "https://example.com/rippel"},
+		// Someone who pasted an API URL meant the server. The agent must store
+		// the bare address, because that is what it appends
+		// /api/deployments/pair and /api/deployments/checkin to — failing to
+		// strip this sends every call to /api/deployments/api/deployments/...,
+		// a 404 that looks exactly like "this is not a rippel".
+		{"http://192.168.1.9:4000/api/deployments", "http://192.168.1.9:4000"},
+		{"http://192.168.1.9:4000/api", "http://192.168.1.9:4000"},
+		{"https://example.com/rippel/api/deployments", "https://example.com/rippel"},
 	}
 	for _, c := range cases {
-		got, err := ParseSetupLink(c.in)
+		got, err := NormaliseServerURL(c.in)
 		if err != nil {
 			t.Errorf("%q: %v", c.in, err)
 			continue
 		}
-		if got.ServerURL != c.server || got.Token != c.token {
-			t.Errorf("%q gave %q / %q", c.in, got.ServerURL, got.Token)
+		if got != c.want {
+			t.Errorf("%q gave %q, wanted %q", c.in, got, c.want)
 		}
 	}
 }
 
-func TestParseSetupLinkExplainsItselfWhenItRefuses(t *testing.T) {
-	// Every refusal must tell someone who has never opened a terminal what to
-	// do next, which in every case is "copy it from rippel again".
-	for _, bad := range []string{"", "   ", "http://192.168.1.9:4000", "http://192.168.1.9:4000/setup/"} {
-		_, err := ParseSetupLink(bad)
+func TestNormaliseServerURLExplainsItselfWhenItRefuses(t *testing.T) {
+	for _, bad := range []string{"", "   ", "ftp://192.168.1.9", "http://"} {
+		if _, err := NormaliseServerURL(bad); err == nil {
+			t.Fatalf("%q was accepted", bad)
+		}
+	}
+}
+
+func TestNormalisePairingCodeTakesWhatAPersonActuallyTypes(t *testing.T) {
+	// The same code, written down the ways people write things down.
+	for _, in := range []string{
+		"K7QM4XTB",
+		"k7qm4xtb",
+		"K7QM-4XTB",
+		"K7QM 4XTB",
+		" k7qm4xtb ",
+		`"K7QM4XTB"`,
+		"K7QM_4XTB",
+	} {
+		got, err := NormalisePairingCode(in)
+		if err != nil {
+			t.Errorf("%q: %v", in, err)
+			continue
+		}
+		if got != "K7QM4XTB" {
+			t.Errorf("%q gave %q", in, got)
+		}
+	}
+}
+
+func TestNormalisePairingCodeRefusesTheAmbiguousCharactersByName(t *testing.T) {
+	// The alphabet has no O/0 and no I/1/L precisely so a person never has to
+	// tell them apart. A code containing one is therefore a misreading, and
+	// saying which character is wrong is more use than "invalid code".
+	for _, bad := range []string{"K7QM4XTO", "K7QM4XT0", "K7QM4XTI", "K7QM4XT1", "K7QM4XTL"} {
+		_, err := NormalisePairingCode(bad)
 		if err == nil {
 			t.Fatalf("%q was accepted", bad)
 		}
-		if strings.ToUpper(err.Error()[:1]) == err.Error()[:1] && strings.Contains(err.Error(), "panic") {
-			t.Fatalf("%q gave a developer-facing message: %s", bad, err)
-		}
-	}
-}
-
-func TestSetupBlobRoundTripsAndIsFilenameSafe(t *testing.T) {
-	setup := Setup{ServerURL: "http://192.168.1.9:4000", Token: "vT7kQ2-_abcdefghijklmnopqrstuvwxyz012345678"}
-	blob, err := EncodeSetup(setup)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// base64url's alphabet is exactly what is safe in a filename on all three
-	// platforms; anything else here would produce a download nobody can save.
-	for _, r := range blob {
-		safe := (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_'
-		if !safe {
-			t.Fatalf("the blob contains %q, which is not filename-safe", r)
+		if !strings.Contains(err.Error(), "not part of a pairing code") {
+			t.Fatalf("%q gave an unhelpful message: %s", bad, err)
 		}
 	}
 
-	back, err := DecodeSetup(blob)
-	if err != nil {
-		t.Fatal(err)
+	// Wrong length says so, with both numbers.
+	if _, err := NormalisePairingCode("K7QM4XT"); err == nil ||
+		!strings.Contains(err.Error(), "8 characters") {
+		t.Fatalf("a short code gave %v", err)
 	}
-	if back != setup {
-		t.Fatalf("round trip gave %+v", back)
+	if _, err := NormalisePairingCode(""); err == nil {
+		t.Fatal("an empty code was accepted")
 	}
 }
 
-func TestSetupIsReadFromTheFileName(t *testing.T) {
-	setup := Setup{ServerURL: "http://192.168.1.9:4000", Token: "tok-secret"}
-	blob, err := EncodeSetup(setup)
+func TestPairSendsTheCodeAndKeepsWhatComesBack(t *testing.T) {
+	var seenPath, seenCode string
+	rippel := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seenPath = r.URL.Path
+		var body struct {
+			Code string `json:"code"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		seenCode = body.Code
+		_, _ = w.Write([]byte(
+			`{"deploymentId":"dep-7","token":"tok-abc","serverUrl":"http://canonical:4000"}`))
+	}))
+	defer rippel.Close()
+
+	setup, err := Pair(rippel.URL, "K7QM4XTB")
 	if err != nil {
 		t.Fatal(err)
 	}
+	if seenPath != "/api/deployments/pair" {
+		t.Fatalf("the agent posted to %s", seenPath)
+	}
+	if seenCode != "K7QM4XTB" {
+		t.Fatalf("it sent the code as %q", seenCode)
+	}
+	if setup.Token != "tok-abc" || setup.DeploymentID != "dep-7" {
+		t.Fatalf("pairing gave %+v", setup)
+	}
+	// rippel knows which address really reached it, and that beats what was
+	// typed — an agent set up via one name must check in to one that works.
+	if setup.ServerURL != "http://canonical:4000" {
+		t.Fatalf("serverUrl is %q", setup.ServerURL)
+	}
+}
 
-	for _, name := range []string{
-		"rippel-agent-setup-" + blob + ".exe",
-		"rippel-agent-setup-" + blob,
-		// A browser deduplicating a second download of the same file.
-		"rippel-agent-setup-" + blob + " (1).exe",
+func TestPairShowsRippelsOwnRefusalRatherThanAGenericOne(t *testing.T) {
+	// rippel writes these for exactly this audience — someone standing at a
+	// machine with a code that will not work — so they must not be swallowed.
+	for _, c := range []struct {
+		status  int
+		body    string
+		wanting string
+	}{
+		{http.StatusConflict, `{"error":"code_used","message":"That pairing code has already been used."}`, "already been used"},
+		{http.StatusGone, `{"error":"code_expired","message":"That pairing code has expired."}`, "expired"},
+		{http.StatusTooManyRequests, `{"error":"rate_limited","message":"Too many pairing attempts from this address."}`, "Too many"},
 	} {
-		got, ok := setupFromFileName(filepath.Join("C:\\Users\\Someone\\Downloads", name))
-		if !ok {
-			t.Fatalf("%q was not recognised", name)
+		rippel := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("content-type", "application/json")
+			w.WriteHeader(c.status)
+			_, _ = w.Write([]byte(c.body))
+		}))
+		_, err := Pair(rippel.URL, "K7QM4XTB")
+		rippel.Close()
+		if err == nil || !strings.Contains(err.Error(), c.wanting) {
+			t.Fatalf("status %d gave %v", c.status, err)
 		}
-		if got != setup {
-			t.Fatalf("%q gave %+v", name, got)
-		}
-	}
-
-	// A renamed download must fall through quietly rather than failing: the
-	// prompt is always there as the floor.
-	if _, ok := setupFromFileName("rippel-agent.exe"); ok {
-		t.Fatal("a plain name was read as a setup blob")
-	}
-	if _, ok := setupFromFileName("rippel-agent-setup-not-base64!!.exe"); ok {
-		t.Fatal("rubbish was read as a setup blob")
 	}
 }
 
-func TestSetupIsReadFromAnAdjacentFile(t *testing.T) {
-	dir := t.TempDir()
-	exe := filepath.Join(dir, "rippel-agent")
-	body := "# The link rippel gave you.\n\nhttp://192.168.1.9:4000/setup/tok-secret\n"
-	if err := os.WriteFile(filepath.Join(dir, setupFileName), []byte(body), 0o600); err != nil {
+func TestPairRefusesAnAnswerThatIsNotRippels(t *testing.T) {
+	// Something answered, but it was not rippel. Installing from this would
+	// produce an agent with no credentials that never appears.
+	rippel := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`<html>hello</html>`))
+	}))
+	defer rippel.Close()
+
+	if _, err := Pair(rippel.URL, "K7QM4XTB"); err == nil {
+		t.Fatal("a non-rippel answer was accepted")
+	}
+
+	// Valid JSON, but no credentials in it.
+	empty := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"deploymentId":"dep-7"}`))
+	}))
+	defer empty.Close()
+	if _, err := Pair(empty.URL, "K7QM4XTB"); err == nil {
+		t.Fatal("an answer with no token was accepted")
+	}
+}
+
+func TestParseInstallFlags(t *testing.T) {
+	for _, c := range []struct{ args []string }{
+		{[]string{"--server", "http://a:4000", "--code", "K7QM4XTB"}},
+		{[]string{"--server=http://a:4000", "--code=K7QM4XTB"}},
+		{[]string{"--code", "K7QM4XTB", "--server", "http://a:4000"}},
+	} {
+		server, code, err := parseInstallFlags(c.args)
+		if err != nil {
+			t.Fatalf("%v: %v", c.args, err)
+		}
+		if server != "http://a:4000" || code != "K7QM4XTB" {
+			t.Fatalf("%v gave %q / %q", c.args, server, code)
+		}
+	}
+
+	// A flag with nothing after it, and an unknown flag, are both named rather
+	// than ignored: silently dropping one sends the agent to the prompt and
+	// looks like the flags did not work.
+	if _, _, err := parseInstallFlags([]string{"--server"}); err == nil {
+		t.Fatal("a dangling --server was accepted")
+	}
+	if _, _, err := parseInstallFlags([]string{"--wat", "x"}); err == nil {
+		t.Fatal("an unknown flag was accepted")
+	}
+}
+
+// ---------------------------------------------------------------- autostart
+
+func TestTheWindowsStartupEntryNeedsNoAdministrator(t *testing.T) {
+	// This is the bug the rewrite exists for: schtasks /Create answered
+	// "Access is denied" on a real machine. Neither branch can be *executed*
+	// here, so what is asserted is the shape of what would be run — that it is
+	// the per-user hive and not the machine-wide one, and that a path with a
+	// space in it stays quoted.
+	if !strings.HasPrefix(windowsRunKey, `HKCU\`) {
+		t.Fatalf("the Run key is %q, which is not the per-user hive", windowsRunKey)
+	}
+	if strings.Contains(strings.ToUpper(windowsRunKey), "HKLM") ||
+		strings.Contains(strings.ToUpper(windowsRunKey), "LOCAL_MACHINE") {
+		t.Fatal("the machine-wide Run key needs administrator rights")
+	}
+
+	exe := `C:\Users\Steve Hughes\.rippel-agent\rippel-agent.exe`
+	command := windowsRunCommand(exe)
+	if !strings.HasPrefix(command, `"`+exe+`"`) {
+		t.Fatalf("the command does not quote the path: %s", command)
+	}
+	if !strings.HasSuffix(command, " run") {
+		t.Fatalf("the command does not run the agent: %s", command)
+	}
+
+	// The fallback is a plain text file, so it can be written without COM.
+	shim := startupShimBody(exe)
+	if !strings.Contains(shim, `start "" /b "`+exe+`" run`) {
+		t.Fatalf("the startup script would not launch the agent: %q", shim)
+	}
+	// start's first quoted argument is the window title. Without the empty
+	// pair, a quoted path is read as a title and nothing launches at all.
+	if !strings.Contains(shim, `start ""`) {
+		t.Fatal("start has no title argument, so the quoted path would be taken as one")
+	}
+	if !strings.HasSuffix(shim, "\r\n") {
+		t.Fatal("a .cmd file wants CRLF line endings")
+	}
+}
+
+func TestAFailedStartupEntryIsReportedWithoutUndoingTheInstall(t *testing.T) {
+	// The owner's machine ended up installed-but-not-starting and was told
+	// almost nothing. The message has to name what worked, what did not, and
+	// the exact command that finishes the job.
+	var out strings.Builder
+	say := func(format string, a ...any) {
+		out.WriteString(fmt.Sprintf(format, a...) + "\n")
+	}
+	reportPartialInstall(&AutostartError{
+		Detail: "ERROR: Access is denied.",
+		Exe:    `C:\Users\steve\.rippel-agent\rippel-agent.exe`,
+	}, say)
+
+	text := out.String()
+	for _, want := range []string{
+		"What worked:",
+		"What did not:",
+		"ERROR: Access is denied.",
+		`C:\Users\steve\.rippel-agent\rippel-agent.exe run`,
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("the report does not mention %q:\n%s", want, text)
+		}
+	}
+}
+
+// ---------------------------------------------------------------- install
+
+func TestAFailedInstallLeavesNothingBehind(t *testing.T) {
+	// The half-installed state is the failure this ordering exists to prevent:
+	// a binary and a config on disk and no way to tell. A run that creates the
+	// home directory and then fails must take it away again.
+	home := filepath.Join(t.TempDir(), "agent-home")
+	t.Setenv("RIPPEL_AGENT_HOME", home)
+	t.Setenv(skipServiceEnv, "1")
+
+	// A config path that cannot be written: the home is created, the binary is
+	// copied, and then writing the config fails.
+	if err := os.MkdirAll(home, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(home, "config.json"), 0o700); err != nil {
 		t.Fatal(err)
 	}
 
-	got, ok := setupFromAdjacentFile(exe)
-	if !ok {
-		t.Fatal("the adjacent file was not read")
+	err := Install(Setup{ServerURL: "http://x:4000", Token: "t", DeploymentID: "d"},
+		func(string, ...any) {})
+	if err == nil {
+		t.Fatal("the install claimed to succeed")
 	}
-	if got.ServerURL != "http://192.168.1.9:4000" || got.Token != "tok-secret" {
-		t.Fatalf("gave %+v", got)
+	// The binary this run copied in must be gone again.
+	if _, statErr := os.Stat(InstalledPath()); statErr == nil {
+		t.Fatal("a failed install left its binary behind")
+	}
+}
+
+func TestInstallWritesTheDeploymentIdPairingGaveIt(t *testing.T) {
+	home := filepath.Join(t.TempDir(), "agent-home")
+	t.Setenv("RIPPEL_AGENT_HOME", home)
+	t.Setenv(skipServiceEnv, "1")
+
+	setup := Setup{ServerURL: "http://rippel:4000", Token: "tok-abc", DeploymentID: "dep-7"}
+	if err := Install(setup, func(string, ...any) {}); err != nil {
+		t.Fatal(err)
+	}
+
+	raw, err := os.ReadFile(filepath.Join(home, "config.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var saved map[string]any
+	if err := json.Unmarshal(raw, &saved); err != nil {
+		t.Fatal(err)
+	}
+	// Pairing knows the id up front, unlike the setup link it replaced, so it
+	// is written now rather than learned on the first check-in.
+	if saved["deploymentId"] != "dep-7" || saved["token"] != "tok-abc" {
+		t.Fatalf("config is %v", saved)
+	}
+	info, err := os.Stat(filepath.Join(home, "config.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// It holds the token, and on a shared box the default umask is not enough.
+	if info.Mode().Perm() != 0o600 {
+		t.Fatalf("mode is %v", info.Mode().Perm())
 	}
 }
 
@@ -644,8 +840,6 @@ func TestSaveConfigMergesAndKeepsTheFilePrivate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// The file holds the token, and on a shared box the default umask is not
-	// enough.
 	if info.Mode().Perm() != 0o600 {
 		t.Fatalf("mode is %v", info.Mode().Perm())
 	}

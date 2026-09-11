@@ -931,28 +931,70 @@ describe('the first paint', () => {
 
   const tiles = () => within(screen.getByRole('radiogroup', { name: 'Model' })).getAllByRole('radio');
 
-  it('draws no verdict before the probes answer, and the right one after', async () => {
-    // The reported flash: all six checkpoints painted, five badged
-    // "No template", then corrected to three plus a hidden count. The badge was
-    // not merely ugly mid-flight, it was wrong — it came from the hardcoded
-    // capability mirror, which knows one family.
+  it('opens at the final tile count rather than collapsing to it', async () => {
+    // The reported flash, twice over: every checkpoint painted and then removed
+    // a moment later. The fix is that the *family* question — is there a
+    // workflow for this capability at all — is answered by the capability map,
+    // which arrives with the model list. Only the *setup* question waits on a
+    // probe, and that is a badge on a tile already on screen.
+    //
+    // Of the five checkpoints here, only the two SDXL ones can do txt2img:
+    // Hunyuan and LTX are video families and Mystery has no template at all.
+    // So the grid must open at two and stay there.
     const probes = gatedReadiness({ 'model-sdxl': 'ready', 'model-sdxl-2': 'ready' });
     await probes.install();
 
     render(<CreatePage />);
-
-    // The tiles themselves are known from /models and paint at once...
     await screen.findByRole('radiogroup', { name: 'Model' });
-    expect(tiles().length).toBeGreaterThan(2);
-    // ...but nothing claims a verdict yet.
+
+    // The first painted frame is already the right one.
+    expect(tiles()).toHaveLength(2);
+    expect(tiles().map((tile) => tile.textContent)).toEqual([
+      expect.stringContaining('SDXL Base'),
+      expect.stringContaining('Juggernaut'),
+    ]);
+    // The count of what was left out is settled too, so it does not appear a
+    // beat later and push everything below it down the panel.
+    expect(screen.getByText(/1 model hidden/i)).toBeInTheDocument();
+
+    // Still no *setup* verdict on a tile that is on screen: that is the half
+    // the probe owns, and guessing it is what drew wrong badges before.
     expect(screen.queryByText(/No template/i)).toBeNull();
-    expect(screen.queryByText(/models? hidden/i)).toBeNull();
+    expect(screen.queryByText(/Needs setup/i)).toBeNull();
     for (const tile of tiles()) expect(tile).toHaveAttribute('aria-disabled', 'false');
 
-    // And the answers, when they land, are the real ones.
+    // And when the probes land, nothing moves.
+    probes.release();
+    await waitFor(() =>
+      expect(screen.getByRole('radio', { name: /SDXL Base/i })).toHaveAttribute(
+        'aria-checked',
+        'true',
+      ),
+    );
+    expect(tiles()).toHaveLength(2);
+    expect(screen.getByText(/1 model hidden/i)).toBeInTheDocument();
+  });
+
+  it('never paints a tile it is about to take away', async () => {
+    // Sampled every microtask from mount until the probes have answered: the
+    // count must never exceed the two it settles on.
+    const probes = gatedReadiness({ 'model-sdxl': 'ready', 'model-sdxl-2': 'ready' });
+    await probes.install();
+
+    const counts: number[] = [];
+    render(<CreatePage />);
+    for (let i = 0; i < 40; i += 1) {
+      const group = screen.queryByRole('radiogroup', { name: 'Model' });
+      if (group) counts.push(within(group).getAllByRole('radio').length);
+      await act(async () => {
+        await Promise.resolve();
+      });
+    }
     probes.release();
     await waitFor(() => expect(tiles()).toHaveLength(2));
-    expect(screen.getByText(/models? hidden/i)).toBeInTheDocument();
+
+    expect(counts.length).toBeGreaterThan(0);
+    expect(Math.max(...counts)).toBe(2);
   });
 
   it('does not preselect or clear a model on an unanswered probe', async () => {

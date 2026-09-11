@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -21,10 +20,10 @@ import (
 // in to rippel on a timer, and between those two it can install, update, start
 // and stop the ComfyUI on this box and keep the storage helper in place.
 //
-// It is one static binary with no runtime beside it, which is the whole point:
-// installing it is downloading one file and opening it. There is nothing to
-// unpack, nothing to compile, and no Node, Python or Visual C++ redistributable
-// to get wrong first.
+// It is one static binary with no runtime beside it, and it is the *same*
+// binary for every rippel and every machine — there is no per-deployment build.
+// A machine joins by being told two things a person can read aloud: where
+// rippel is, and a one-time code.
 //
 // There are two ways in, and the difference between them is the entire user
 // experience:
@@ -33,14 +32,14 @@ import (
 //     writes one line per interesting event to stdout, where systemd, launchd
 //     or a log file will catch it.
 //   - Double-clicking it, or running it with no arguments, is a person. That
-//     path explains what the program is, works out or asks for the one thing it
-//     needs, installs itself, and does not close the window on the way out.
+//     path explains what the program is, asks its two questions, installs
+//     itself, and does not close the window on the way out.
 
 func main() {
 	args := os.Args[1:]
 	command := ""
-	if len(args) > 0 {
-		command = strings.ToLower(strings.TrimPrefix(args[0], "--"))
+	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
+		command = strings.ToLower(args[0])
 	}
 
 	switch command {
@@ -55,11 +54,25 @@ func main() {
 		os.Exit(commandUninstall())
 	case "status":
 		os.Exit(commandStatus())
-	case "version", "-v":
+	case "version":
 		fmt.Printf("rippel-agent %s (%s)\n", AgentVersion, normalisePlatform())
-	case "help", "-h", "?":
+	case "help":
 		usage(os.Stdout)
 	case "":
+		// No command. Either bare flags (a scripted install) or nothing at all
+		// (a double-click), and both mean "set this machine up".
+		if len(args) > 0 {
+			switch args[0] {
+			case "-v", "--version":
+				fmt.Printf("rippel-agent %s (%s)\n", AgentVersion, normalisePlatform())
+				return
+			case "-h", "--help", "-?":
+				usage(os.Stdout)
+				return
+			}
+			os.Exit(commandInstall(args))
+			return
+		}
 		os.Exit(welcome())
 	default:
 		fmt.Fprintf(os.Stderr, "rippel-agent: there is no command called %q.\n\n", args[0])
@@ -72,14 +85,19 @@ func usage(to *os.File) {
 	fmt.Fprintf(to, `rippel-agent %s — installs and manages ComfyUI on this machine for rippel.
 
   rippel-agent                     Set it up. This is what double-clicking does.
-  rippel-agent install <link>      Set it up with the link from rippel, no questions.
+  rippel-agent --server <url> --code <code>
+                                   Set it up without being asked anything.
+  rippel-agent install --server <url> --code <code>
+                                   The same thing, spelled out.
   rippel-agent run                 Run in the foreground. This is what the service runs.
   rippel-agent status              Say whether it is installed, and what it can see.
-  rippel-agent uninstall           Remove the service and the program. Keeps ComfyUI.
+  rippel-agent uninstall           Remove the startup entry and the program. Keeps ComfyUI.
   rippel-agent version
 
-The link comes from rippel: Settings, then Deployment, then the machine you are
-setting up. It looks like http://192.168.1.9:4000/setup/xxxxxxxx
+The address and the code both come from rippel: Settings, then Deployment, then
+the machine you are setting up. The address looks like http://192.168.1.9:4000
+and the code is 8 characters, like K7QM4XTB. A code works once and expires after
+a few minutes.
 `, AgentVersion)
 }
 
@@ -161,32 +179,91 @@ func runAgent() error {
 
 // ---------------------------------------------------------------- commands
 
+// parseInstallFlags reads --server and --code in the forms people actually
+// type, including `--server=x`. Anything else is named rather than ignored: a
+// mistyped flag that was silently dropped would send the agent to the prompt
+// and look like the flags did not work.
+func parseInstallFlags(args []string) (server, code string, err error) {
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		var name, value string
+		var inline bool
+		if eq := strings.Index(arg, "="); eq > 0 && strings.HasPrefix(arg, "-") {
+			name, value, inline = arg[:eq], arg[eq+1:], true
+		} else {
+			name = arg
+		}
+		switch strings.TrimLeft(name, "-") {
+		case "server", "url":
+			if !inline {
+				if i+1 >= len(args) {
+					return "", "", fmt.Errorf("--server needs an address after it")
+				}
+				i++
+				value = args[i]
+			}
+			server = value
+		case "code", "pairing-code":
+			if !inline {
+				if i+1 >= len(args) {
+					return "", "", fmt.Errorf("--code needs a pairing code after it")
+				}
+				i++
+				value = args[i]
+			}
+			code = value
+		default:
+			return "", "", fmt.Errorf(
+				"%q is not something this understands. Use --server <url> --code <code>.", arg)
+		}
+	}
+	return server, code, nil
+}
+
 func commandInstall(args []string) int {
 	say := func(format string, a ...any) { fmt.Printf(format+"\n", a...) }
 
-	var setup Setup
-	var err error
-	switch {
-	case len(args) > 0 && args[0] != "":
-		setup, err = ParseSetupLink(args[0])
-	default:
-		found, source, ok := DiscoverSetup()
-		if !ok {
-			fmt.Fprintln(os.Stderr,
-				"rippel-agent install needs the setup link from rippel.\n\n"+
-					"  rippel-agent install http://192.168.1.9:4000/setup/xxxxxxxx\n\n"+
-					"Find it in rippel under Settings, then Deployment.")
-			return 2
-		}
-		setup = found
-		say("Using the setup details from %s.", source)
+	server, code, err := parseInstallFlags(args)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "rippel-agent: %s\n", err)
+		return 2
 	}
+	if server == "" || code == "" {
+		fmt.Fprintln(os.Stderr,
+			"rippel-agent install needs the address of rippel and a pairing code.\n\n"+
+				"  rippel-agent install --server http://192.168.1.9:4000 --code K7QM4XTB\n\n"+
+				"Find both in rippel under Settings, then Deployment. Run this program with\n"+
+				"no arguments at all and it will ask you for them instead.")
+		return 2
+	}
+
+	serverURL, err := NormaliseServerURL(server)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "rippel-agent: %s\n", err)
+		return 2
+	}
+	pairingCode, err := NormalisePairingCode(code)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "rippel-agent: %s\n", err)
 		return 2
 	}
 
+	say("Pairing with rippel at %s...", serverURL)
+	setup, err := Pair(serverURL, pairingCode)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "\n%s\n", err)
+		return 1
+	}
+	say("Paired.")
+
 	if err := Install(setup, say); err != nil {
+		var partial *AutostartError
+		if errors.As(err, &partial) {
+			reportPartialInstall(partial, func(format string, a ...any) {
+				fmt.Printf(format+"\n", a...)
+			})
+			return 0
+		}
 		fmt.Fprintf(os.Stderr, "\n%s\n", err)
 		return 1
 	}
@@ -261,6 +338,8 @@ func reachable(host string, port int) bool {
 // does anything, and on Windows it holds the window open at the end whether it
 // succeeded or failed — an error nobody can read is the same as no error
 // message at all.
+//
+// It asks exactly two questions, and neither of them is the deployment id.
 func welcome() int {
 	defer pause()
 
@@ -278,55 +357,73 @@ func welcome() int {
 		fmt.Printf("  This computer is already set up, for rippel at %s.\n\n", cfg.ServerURL)
 		if reachable(cfg.Host, cfg.Port) {
 			fmt.Println("  The agent is running. There is nothing for you to do.")
-		} else {
-			fmt.Println("  The agent is not running at the moment. Setting it up again will")
-			fmt.Println("  start it. Press Enter to do that, or close this window to leave it.")
-			fmt.Println()
-			readLine("  Press Enter to start it again: ")
-			if err := Install(Setup{ServerURL: cfg.ServerURL, Token: cfg.Token}, indented); err != nil {
-				return fail(err)
-			}
-			fmt.Println()
-			fmt.Println("  Done. rippel should show this computer as online within a minute.")
+			return 0
 		}
+		fmt.Println("  The agent is not running at the moment. Setting it up again will")
+		fmt.Println("  start it. Press Enter to do that, or close this window to leave it.")
+		fmt.Println()
+		readLine("  Press Enter to start it again: ")
+		// No pairing: this machine already has its credentials. Re-running the
+		// install is how the startup entry and the running process are restored,
+		// and asking for a fresh code to do that would be a pointless errand.
+		err := Install(Setup{
+			ServerURL:    cfg.ServerURL,
+			Token:        cfg.Token,
+			DeploymentID: cfg.DeploymentID,
+		}, indented)
+		if err != nil {
+			var partial *AutostartError
+			if errors.As(err, &partial) {
+				reportPartialInstall(partial, indented)
+				return 0
+			}
+			return fail(err)
+		}
+		fmt.Println()
+		fmt.Println("  Done. rippel should show this computer as online within a minute.")
 		return 0
 	}
 
-	setup, source, found := DiscoverSetup()
-	if found {
-		fmt.Printf("  Setting up from %s.\n\n", source)
-	} else {
-		fmt.Println("  To set it up, this program needs the link from rippel.")
-		fmt.Println()
-		fmt.Println("  In rippel, go to Settings, then Deployment, and find this computer.")
-		fmt.Println("  Copy the setup link. It looks like this:")
-		fmt.Println()
-		fmt.Println("      http://192.168.1.9:4000/setup/vT7kQ2...")
-		fmt.Println()
+	fmt.Println("  To set it up, this program needs two things from rippel.")
+	fmt.Println()
+	fmt.Println("  In rippel, go to Settings, then Deployment, and find this computer.")
+	fmt.Println("  It shows the address to use and a pairing code.")
+	fmt.Println()
 
-		for attempt := 0; attempt < 3; attempt++ {
-			line := readLine("  Paste the link here and press Enter: ")
-			if strings.TrimSpace(line) == "" {
-				fmt.Println()
-				fmt.Println("  Nothing was pasted, so nothing was changed.")
-				fmt.Println("  Run this program again when you have the link.")
-				return 1
-			}
-			parsed, err := ParseSetupLink(line)
-			if err == nil {
-				setup = parsed
-				break
-			}
-			fmt.Printf("\n  %s\n\n", err)
-			if attempt == 2 {
-				fmt.Println("  Nothing was changed. Run this program again when you have the link.")
-				return 1
-			}
-		}
-		fmt.Println()
+	serverURL, ok := ask(
+		"  What is rippel's address? It looks like http://192.168.1.9:4000",
+		"  Address: ",
+		func(line string) (string, error) { return NormaliseServerURL(line) },
+	)
+	if !ok {
+		return 1
 	}
 
+	fmt.Println()
+	code, ok := ask(
+		"  What is the pairing code? It is 8 characters, like K7QM4XTB.\n"+
+			"  A code works once and expires after a few minutes.",
+		"  Code: ",
+		func(line string) (string, error) { return NormalisePairingCode(line) },
+	)
+	if !ok {
+		return 1
+	}
+
+	fmt.Println()
+	indented("Pairing with rippel at %s...", serverURL)
+	setup, err := Pair(serverURL, code)
+	if err != nil {
+		return fail(err)
+	}
+	indented("Paired.")
+
 	if err := Install(setup, indented); err != nil {
+		var partial *AutostartError
+		if errors.As(err, &partial) {
+			reportPartialInstall(partial, indented)
+			return 0
+		}
 		return fail(err)
 	}
 	fmt.Println()
@@ -335,9 +432,81 @@ func welcome() int {
 	return 0
 }
 
+// ask puts one question, validates the answer, and gives three goes at it.
+//
+// Both prompts take a paste, which is the normal way an address and a code
+// arrive — they were sent to whoever is at the machine in a chat window.
+func ask(explain, prompt string, parse func(string) (string, error)) (string, bool) {
+	fmt.Println(explain)
+	fmt.Println()
+	for attempt := 0; attempt < 3; attempt++ {
+		line := readLine(prompt)
+		if strings.TrimSpace(line) == "" {
+			fmt.Println()
+			fmt.Println("  Nothing was entered, so nothing was changed.")
+			fmt.Println("  Run this program again when you have it.")
+			return "", false
+		}
+		value, err := parse(line)
+		if err == nil {
+			return value, true
+		}
+		fmt.Printf("\n  %s\n\n", err)
+		if attempt == 2 {
+			fmt.Println("  Nothing was changed. Run this program again when you have it.")
+			return "", false
+		}
+	}
+	return "", false
+}
+
 func indented(format string, args ...any) {
 	fmt.Printf("  "+format+"\n", args...)
 }
+
+// reportPartialInstall is the honest answer to "it installed but it will not
+// start again by itself".
+//
+// The owner hit exactly this and the old message was two sentences of apology.
+// What someone needs here is the three facts in order: what worked, what did
+// not, and the one command that finishes the job.
+func reportPartialInstall(partial *AutostartError, out func(string, ...any)) {
+	out("")
+	out("Almost. This computer is paired with rippel and the agent is installed,")
+	out("but it could not be set to start again by itself.")
+	out("")
+	out("What worked:")
+	out("  - paired with rippel, and the credentials are saved")
+	out("  - the agent is installed at %s", partial.Exe)
+	out("  - its settings are written to %s", ConfigFile())
+	out("")
+	out("What did not:")
+	out("  - registering it to start when you log in")
+	out("    %s", partial.Detail)
+	out("")
+	out("The agent is not running now, and will not come back after a restart,")
+	out("until that is fixed. To run it by hand whenever you need it:")
+	out("")
+	out("    %s run", partial.Exe)
+	out("")
+	if isWindows() {
+		out("To make it automatic, run this once in a normal (not administrator)")
+		out("Command Prompt — it is the same per-user entry this tried to make:")
+		out("")
+		out(`    reg add "%s" /v %s /t REG_SZ /d "\"%s\" run" /f`,
+			windowsRunKey, serviceName, partial.Exe)
+		out("")
+		out("Or put a shortcut to the agent in your Startup folder: press")
+		out("Windows+R, type  shell:startup  , and drop a shortcut to")
+		out("%s in the folder that opens.", partial.Exe)
+	} else {
+		out("To make it automatic, re-run this installer once the problem above is")
+		out("resolved, and it will register the startup entry then.")
+	}
+	out("")
+}
+
+func isWindows() bool { return normalisePlatform() == "win32" }
 
 // fail prints an error the way someone who cannot read a stack trace can use:
 // indented under a heading, with its own line breaks preserved, and nothing
@@ -358,8 +527,7 @@ func fail(err error) int {
 //
 // A fresh bufio.Reader per prompt reads ahead and then throws its buffer away
 // with itself, so the second question silently eats the answer to the third.
-// That is invisible at a terminal and obvious the moment anything is piped in —
-// including the SSH install path.
+// That is invisible at a terminal and obvious the moment anything is piped in.
 var stdin = bufio.NewReader(os.Stdin)
 
 func readLine(prompt string) string {
@@ -386,5 +554,3 @@ func pause() {
 	fmt.Print("  Press Enter to close this window. ")
 	_, _ = stdin.ReadString('\n')
 }
-
-var _ = filepath.Join

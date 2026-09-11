@@ -46,15 +46,15 @@ const instructions: InstallInstructions = {
   token: 'tok-secret',
   // Four builds, not three: macOS is split by architecture, which is the whole
   // reason picking a download by platform alone is wrong.
-  downloads: [
+  binaries: [
     {
       target: 'windows-amd64',
       platform: 'win32',
       arch: 'amd64',
       label: 'Windows',
       sizeBytes: 7599104,
-      url: 'http://192.168.1.9:4000/api/deployments/d1/agent/windows-amd64?token=tok-secret',
-      fileName: 'rippel-agent-setup-blob.exe',
+      url: 'http://192.168.1.9:4000/api/deployments/agent/windows-amd64',
+      fileName: 'rippel-agent-windows-amd64.exe',
     },
     {
       target: 'macos-arm64',
@@ -62,8 +62,8 @@ const instructions: InstallInstructions = {
       arch: 'arm64',
       label: 'macOS (Apple silicon)',
       sizeBytes: 6964018,
-      url: 'http://192.168.1.9:4000/api/deployments/d1/agent/macos-arm64?token=tok-secret',
-      fileName: 'rippel-agent-setup-blob',
+      url: 'http://192.168.1.9:4000/api/deployments/agent/macos-arm64',
+      fileName: 'rippel-agent-macos-arm64',
     },
     {
       target: 'macos-amd64',
@@ -71,8 +71,8 @@ const instructions: InstallInstructions = {
       arch: 'amd64',
       label: 'macOS (Intel)',
       sizeBytes: 7528896,
-      url: 'http://192.168.1.9:4000/api/deployments/d1/agent/macos-amd64?token=tok-secret',
-      fileName: 'rippel-agent-setup-blob',
+      url: 'http://192.168.1.9:4000/api/deployments/agent/macos-amd64',
+      fileName: 'rippel-agent-macos-amd64',
     },
     {
       target: 'linux-amd64',
@@ -80,15 +80,10 @@ const instructions: InstallInstructions = {
       arch: 'amd64',
       label: 'Linux',
       sizeBytes: 7372960,
-      url: 'http://192.168.1.9:4000/api/deployments/d1/agent/linux-amd64?token=tok-secret',
-      fileName: 'rippel-agent-setup-blob',
+      url: 'http://192.168.1.9:4000/api/deployments/agent/linux-amd64',
+      fileName: 'rippel-agent-linux-amd64',
     },
   ],
-  commands: {
-    linux: "curl -fsSL 'http://192.168.1.9:4000/api/deployments/d1/install.sh?token=tok-secret' | bash",
-    darwin: "curl -fsSL 'http://192.168.1.9:4000/api/deployments/d1/install.sh?token=tok-secret' | bash",
-    win32: `powershell -ExecutionPolicy Bypass -Command "irm 'http://192.168.1.9:4000/api/deployments/d1/install.ps1?token=tok-secret' | iex"`,
-  },
   release: {
     tag: 'agent-v0.1.0',
     name: 'agent 0.1.0',
@@ -141,6 +136,12 @@ function fakeApi(initial: Deployment[] = [online], over: Partial<DeploymentsApi>
     pairingCode: vi.fn(async () => ({
       code: 'K7M4P2QR',
       expiresAt: new Date(Date.now() + 10 * 60_000).toISOString(),
+      serverUrl: 'https://rippel.test',
+      commands: {
+        linux: "curl -fsSL -o /tmp/rippel-agent 'https://rippel.test/api/deployments/agent/linux-amd64' && chmod +x /tmp/rippel-agent && /tmp/rippel-agent install --server 'https://rippel.test' --code 'K7M4P2QR'",
+        darwin: "curl -fsSL -o /tmp/rippel-agent 'https://rippel.test/api/deployments/agent/macos-arm64' && chmod +x /tmp/rippel-agent && /tmp/rippel-agent install --server 'https://rippel.test' --code 'K7M4P2QR'",
+        win32: "powershell -ExecutionPolicy Bypass -Command \"& { iwr -UseBasicParsing 'https://rippel.test/api/deployments/agent/windows-amd64' -OutFile rippel-agent.exe; & ./rippel-agent.exe install --server 'https://rippel.test' --code 'K7M4P2QR' }\"",
+      },
     })),
     releases: vi.fn(async () => instructions.release),
     installComfy: vi.fn(async () => done()),
@@ -228,7 +229,7 @@ describe('DeploymentsSection', () => {
     expect(screen.getByText('studio-4090')).toBeInTheDocument();
   });
 
-  it('gives the manual path a command carrying the token', async () => {
+  it('gives the manual path a command carrying the pairing code', async () => {
     const { api } = fakeApi([]);
     render(<DeploymentsSection api={api} />);
 
@@ -239,21 +240,20 @@ describe('DeploymentsSection', () => {
 
     await waitFor(() => expect(api.create).toHaveBeenCalledWith({ name: 'garage-box', host: '10.0.0.7' }));
     const command = await screen.findByText(/curl -fsSL/);
-    expect(command).toHaveTextContent('token=tok-secret');
+    // A pairing code, not a token: the command is only good while the code is,
+    // which is why it comes back with the code rather than from a polled GET.
+    expect(command).toHaveTextContent('--code');
 
     // The Windows tab shows the PowerShell form of the same thing.
     await userEvent.click(screen.getByRole('tab', { name: 'Windows' }));
     expect(await screen.findByText(/powershell -ExecutionPolicy Bypass/)).toBeInTheDocument();
 
-    // The download offered first comes from this rippel, not from GitHub: its
-    // filename carries the setup code, which is what makes it a one-click
-    // install rather than a file you then have to configure.
+    // The download is a generic build served by this rippel — no deployment in
+    // the path, nothing encoded in the filename. What makes it a short install
+    // is the code above, not a bespoke binary.
     const primary = screen.getByRole('link', { name: /Download for/ });
-    expect(primary).toHaveAttribute(
-      'href',
-      expect.stringContaining('/api/deployments/d1/agent/'),
-    );
-    expect(primary).toHaveAttribute('download', expect.stringContaining('rippel-agent-setup-'));
+    expect(primary).toHaveAttribute('href', expect.stringContaining('/agent/'));
+    expect(primary.getAttribute('href')).not.toContain('/deployments/d1/agent/');
 
     // Every other build stays one click away, including both Macs.
     for (const label of ['Windows', 'macOS (Apple silicon)', 'macOS (Intel)', 'Linux']) {
@@ -489,6 +489,12 @@ describe('DeploymentsSection', () => {
         pairingCode: vi.fn(async () => ({
           code: 'K7M4P2QR',
           expiresAt: new Date(Date.now() - 1000).toISOString(),
+          serverUrl: 'https://rippel.test',
+          commands: {
+        linux: "curl -fsSL -o /tmp/rippel-agent 'https://rippel.test/api/deployments/agent/linux-amd64' && chmod +x /tmp/rippel-agent && /tmp/rippel-agent install --server 'https://rippel.test' --code 'K7M4P2QR'",
+        darwin: "curl -fsSL -o /tmp/rippel-agent 'https://rippel.test/api/deployments/agent/macos-arm64' && chmod +x /tmp/rippel-agent && /tmp/rippel-agent install --server 'https://rippel.test' --code 'K7M4P2QR'",
+        win32: "powershell -ExecutionPolicy Bypass -Command \"& { iwr -UseBasicParsing 'https://rippel.test/api/deployments/agent/windows-amd64' -OutFile rippel-agent.exe; & ./rippel-agent.exe install --server 'https://rippel.test' --code 'K7M4P2QR' }\"",
+      },
         })),
       });
       render(<DeploymentsSection api={api} />);

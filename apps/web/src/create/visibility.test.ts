@@ -74,6 +74,79 @@ describe('while the probe is still in flight', () => {
     expect(partition.pending).toBe(true);
   });
 
+  it('hides a wrong-mode model at once, without waiting on a probe', () => {
+    // The reported flash. The live map alone settles this: `ltxv` offers
+    // txt2vid, so under Image there is nothing a per-model readiness probe
+    // could add — it is the wrong tab, not a machine that needs setting up.
+    const entry = classify(model('a', 'ltxv'), 'txt2img', live, pendingMap());
+    expect(entry.pending).toBe(false);
+    expect(entry.hidden).toBe('other-mode');
+    expect(entry.runsInMode).toBe('video');
+  });
+
+  it('hides a family the live map does not carry at once', () => {
+    const entry = classify(model('a', 'mystery'), 'txt2img', live, pendingMap());
+    expect(entry.pending).toBe(false);
+    expect(entry.hidden).toBe('no-template');
+  });
+
+  it('still waits on the probe when only the machine setup is in question', () => {
+    // `ltxv` *does* offer txt2vid, so whether this box can actually run it is
+    // the one thing the map cannot answer. That is a badge on a tile already on
+    // screen, so it may land late without moving anything.
+    const entry = classify(model('a', 'ltxv'), 'txt2vid', live, pendingMap());
+    expect(entry.pending).toBe(true);
+    expect(entry.hidden).toBeNull();
+    expect(entry.blocked).toBeNull();
+  });
+
+  it('hides nothing early on a map that is not live', () => {
+    // The failure path, unchanged: an unreachable `GET /workflows` proves
+    // nothing, and must never be the reason the grid empties.
+    for (const family of ['ltxv', 'mystery', 'hunyuan-video']) {
+      const entry = classify(model('a', family), 'txt2img', guessed, pendingMap());
+      expect(entry.pending).toBe(true);
+      expect(entry.hidden).toBeNull();
+    }
+  });
+
+  it('keeps an unclassified checkpoint on the first paint', () => {
+    // `baseModel: null` runs on the generic graph. It must not be swept up by
+    // the early hide — it is listed, and pending only on its setup probe.
+    const entry = classify(model('a', null), 'txt2img', live, pendingMap());
+    expect(entry.hidden).toBeNull();
+    expect(entry.pending).toBe(true);
+  });
+
+  it('settles the first paint without a single probe answering', () => {
+    // Three of six on the real box: the count the grid opens at, and stays at.
+    const models = [
+      model('sdxl', 'sdxl'),
+      model('hunyuan-video', 'hunyuan-video'),
+      model('ltx', 'ltx-video'),
+    ];
+    const capabilities: CapabilityMap = {
+      byFamily: {
+        sdxl: ['txt2img', 'img2img'],
+        hunyuanvideo: ['txt2vid'],
+        ltxvideo: ['txt2vid', 'img2vid'],
+      },
+      unknownFamily: ['txt2img', 'img2img'],
+      live: true,
+    };
+    const first = partitionModels(models, 'txt2img', capabilities, pendingMap());
+    expect(first.listed.map((entry) => entry.model.id)).toEqual(['sdxl']);
+
+    // ...and the same list once every probe has answered: nothing moves.
+    const settled = partitionModels(
+      models,
+      'txt2img',
+      capabilities,
+      map({ sdxl: 'ready', 'hunyuan-video': 'no-template', ltx: 'no-template' }, { 'hunyuan-video': 'ready', ltx: 'ready' }),
+    );
+    expect(settled.listed.map((entry) => entry.model.id)).toEqual(['sdxl']);
+  });
+
   it('still uses an answer that has already arrived for one model', () => {
     // A cached answer is a real answer, whatever the rest of the pass is doing.
     const entry = classify(model('a', 'sdxl'), 'txt2img', guessed, pendingMap({ a: 'ready' }));
@@ -108,6 +181,28 @@ describe('classify', () => {
     );
     expect(entry.hidden).toBe('other-mode');
     expect(entry.runsInMode).toBe('video');
+  });
+
+  it('asks an img2-only family for a starting image rather than hiding it', () => {
+    // SVD on the real box: `img2vid` and nothing else. The txt2vid probe says
+    // "no template" truthfully, but this is a video model under Video — not one
+    // from the other tab — and the fix is a starting image, not a mode switch.
+    // Hiding it on the probe's word was a second show-then-hide, at +4.3s.
+    const capabilities: CapabilityMap = {
+      byFamily: { svd: ['img2vid'] },
+      unknownFamily: [],
+      live: true,
+    };
+    const readiness = map({ a: 'no-template' }, { a: 'ready' });
+
+    const entry = classify(model('a', 'svd'), 'txt2vid', capabilities, readiness);
+    expect(entry.hidden).toBeNull();
+    expect(entry.blocked).toBe('needs-image');
+
+    // ...and it is the same verdict the map gives before any probe answers, so
+    // the tile does not move when the probe lands.
+    const early = classify(model('a', 'svd'), 'txt2vid', capabilities, pendingMap());
+    expect(early.hidden).toBeNull();
   });
 
   it('keeps a model whose backend merely needs setting up', () => {

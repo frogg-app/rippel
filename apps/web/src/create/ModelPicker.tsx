@@ -284,8 +284,15 @@ export function ModelPicker({
       ) : null}
 
       {/* The honest count. Hiding a checkpoint the user installed is fine;
-          not saying so is not. */}
-      {hiddenNoTemplate.length > 0 && !partition.pending ? (
+          not saying so is not.
+
+          Deliberately not gated on `partition.pending`: a hidden entry is never
+          a pending one (`visibility.ts` gives a pending entry no verdict at
+          all), so a count that exists is already a settled count. Holding it
+          back until every *listed* tile's setup probe answered made the line
+          appear a moment after the grid and shove everything below it down —
+          the same shift, one element lower. */}
+      {hiddenNoTemplate.length > 0 ? (
         <p className={styles.note}>
           <span>
             {hiddenNoTemplate.length} {hiddenNoTemplate.length === 1 ? 'model' : 'models'} hidden —

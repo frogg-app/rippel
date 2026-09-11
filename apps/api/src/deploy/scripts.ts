@@ -1,36 +1,35 @@
 /**
- * The install scripts, generated per deployment.
+ * The install scripts, for a machine nobody is sitting at.
  *
- * These used to be two long programs — 250 lines of bash and PowerShell whose
- * entire job was to find or plant a Node.js runtime, download six `.mjs` files
- * one at a time, write a config file and register a service. All of that is now
- * inside the agent, which is one static binary: it copies itself, writes its
- * own config and registers its own service, and it does so identically however
- * it was started.
+ * These are a bootstrap and nothing more: download one file, make it
+ * executable, run it with a server address and a pairing code. Everything a
+ * person can go wrong on lives inside the agent, which is a compiled program
+ * that can answer in sentences rather than in shell errors.
  *
- * So what is left here is a bootstrap, and it is deliberately short enough to
- * read in one breath: download one file, make it executable, run it with the
- * setup link. Two commands and a check. Everything a person can go wrong on has
- * moved into a compiled program that can give them a sentence instead of a
- * shell error.
+ * Two things changed when pairing replaced the per-deployment binary, and both
+ * make these scripts safer to hand around:
  *
- * These exist at all because a headless box cannot click a download link — the
- * managed SSH install runs one of these, and so does an operator on a machine
- * with no desktop. On Windows with a screen, nobody should be pasting anything:
- * the download is a pre-named exe, and opening it is the whole install.
+ *  - The download URL is generic. It carries no deployment and no token, so the
+ *    same line works for every machine and a leaked script leaks nothing.
+ *  - What authorises the enrolment is a one-time code with a lifetime of
+ *    minutes, passed to the agent as an argument. A script that is pasted into
+ *    the wrong window, or ends up in a shell history, is worth nothing an hour
+ *    later — which was never true of the deployment token these used to carry.
+ *
+ * They exist at all because a headless box cannot click a download link. Anyone
+ * with a screen downloads the agent and opens it, and it asks them two questions.
  */
 
 import type { AgentPlatform } from '@comfy/shared';
-import { defaultBinaryFor, setupLink } from './binaries.js';
+import { binaryDownloadPath, defaultBinaryFor } from './binaries.js';
 
 export interface ScriptParams {
   /** Where the agent fetches itself and checks in, e.g. http://192.168.1.9:4000 */
   serverUrl: string;
-  deploymentId: string;
-  token: string;
-  agentPort: number;
-  /** Port the agent will run ComfyUI on. */
-  comfyPort: number;
+  /** A one-time pairing code, already issued for the deployment being set up. */
+  code: string;
+  /** Port the agent will run ComfyUI on, when it is not the default. */
+  comfyPort?: number;
 }
 
 /** Single-quote a value for POSIX sh. */
@@ -43,19 +42,9 @@ function ps(value: string): string {
   return `'${value.replace(/'/g, "''")}'`;
 }
 
-/**
- * The URL a script downloads the binary from.
- *
- * The token goes in the query string because the thing fetching this is `curl`
- * or `Invoke-WebRequest` inside a script that was itself fetched by a one-liner
- * — there is no header to spare and no cookie to send.
- */
-export function downloadUrl(p: ScriptParams, platform: AgentPlatform): string {
-  const binary = defaultBinaryFor(platform);
-  return (
-    `${p.serverUrl}/api/deployments/${p.deploymentId}/agent/${binary.target}` +
-    `?token=${encodeURIComponent(p.token)}`
-  );
+/** The URL a script downloads the binary from — generic, unauthenticated. */
+export function downloadUrl(serverUrl: string, platform: AgentPlatform): string {
+  return `${serverUrl.replace(/\/+$/, '')}${binaryDownloadPath(defaultBinaryFor(platform).target)}`;
 }
 
 /**
@@ -70,17 +59,16 @@ export function bashInstaller(p: ScriptParams): string {
 # rippel agent installer.
 #
 # Downloads the rippel agent — one file, no runtime, nothing to unpack — and
-# runs it. The agent then installs itself into ~/.rippel-agent and registers a
-# user service. Re-running this upgrades in place.
+# pairs this machine with rippel using a one-time code. The agent then installs
+# itself into ~/.rippel-agent and registers a user service. Re-running this
+# upgrades in place.
 #
 # It touches nothing outside ~/.rippel-agent and the user service directory,
 # and it needs no root.
 set -euo pipefail
 
-SERVER=${sh(p.serverUrl)}
-DEPLOYMENT=${sh(p.deploymentId)}
-TOKEN=${sh(p.token)}
-SETUP_LINK=${sh(setupLink(p.serverUrl, p.token))}
+SERVER=${sh(p.serverUrl.replace(/\/+$/, ''))}
+CODE=${sh(p.code)}
 
 say() { printf 'rippel: %s\\n' "$1"; }
 die() { printf 'rippel: %s\\n' "$1" >&2; exit 1; }
@@ -104,16 +92,15 @@ trap 'rm -rf "$WORK"' EXIT
 BINARY="$WORK/rippel-agent"
 
 say "downloading the agent ($TARGET) from $SERVER"
-curl -fsSL -o "$BINARY" \\
-  "$SERVER/api/deployments/$DEPLOYMENT/agent/$TARGET?token=$TOKEN" \\
+curl -fsSL -o "$BINARY" "$SERVER/api/deployments/agent/$TARGET" \\
   || die "could not download the agent from $SERVER. Check the address, and that rippel is running."
 
 chmod +x "$BINARY"
 
-# The agent does the rest: it checks the token with rippel before it writes
+# The agent does the rest: it redeems the code with rippel before it writes
 # anything, copies itself into place, writes its config and registers the
 # service. Any failure from here on is its own, and it explains itself.
-exec "$BINARY" install "$SETUP_LINK"
+exec "$BINARY" install --server "$SERVER" --code "$CODE"
 `;
 }
 
@@ -121,29 +108,27 @@ exec "$BINARY" install "$SETUP_LINK"
  * Windows.
  *
  * Only for a machine nobody is sitting at — a headless box, or the managed SSH
- * install. Anyone with a screen should be downloading the exe from rippel and
- * opening it, which is one click and needs no execution policy, no PowerShell
- * version and no pasted command.
+ * install. Anyone with a screen should download the exe from rippel and open
+ * it: it asks for the address and the code, and needs no execution policy, no
+ * PowerShell version and no pasted command.
  */
 export function powershellInstaller(p: ScriptParams): string {
   return `#requires -version 5
 <#
   rippel agent installer.
 
-  Downloads the rippel agent — one file, no runtime, nothing to unzip — and runs
-  it. The agent then installs itself into %USERPROFILE%\\.rippel-agent and
-  registers a scheduled task that starts it at logon. Re-running upgrades in
-  place.
+  Downloads the rippel agent — one file, no runtime, nothing to unzip — and
+  pairs this machine with rippel using a one-time code. The agent then installs
+  itself into %USERPROFILE%\\.rippel-agent and registers a per-user startup
+  entry. Re-running upgrades in place. It needs no administrator.
 
   If you are sitting at this machine, you do not need this script: download the
   agent from rippel's Deployment screen and double-click it.
 #>
 $ErrorActionPreference = 'Stop'
 
-$Server     = ${ps(p.serverUrl)}
-$Deployment = ${ps(p.deploymentId)}
-$Token      = ${ps(p.token)}
-$SetupLink  = ${ps(setupLink(p.serverUrl, p.token))}
+$Server = ${ps(p.serverUrl.replace(/\/+$/, ''))}
+$Code   = ${ps(p.code)}
 
 function Say($m) { Write-Host "rippel: $m" }
 
@@ -160,16 +145,16 @@ try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::
 Say "downloading the agent from $Server"
 try {
   Invoke-WebRequest -UseBasicParsing \`
-    -Uri "$Server/api/deployments/$Deployment/agent/windows-amd64?token=$Token" \`
+    -Uri "$Server/api/deployments/agent/windows-amd64" \`
     -OutFile $Binary
 } catch {
   throw "Could not download the agent from $Server. Check the address, and that rippel is running. ($($_.Exception.Message))"
 }
 
-# The agent does the rest: it checks the token with rippel before it writes
-# anything, copies itself into place, writes its config and registers the
-# scheduled task. Any failure from here on is its own, and it explains itself.
-& $Binary install $SetupLink
+# The agent does the rest: it redeems the code with rippel before it writes
+# anything, copies itself into place, writes its config and registers its
+# startup entry. Any failure from here on is its own, and it explains itself.
+& $Binary install --server $Server --code $Code
 $code = $LASTEXITCODE
 
 Remove-Item -Recurse -Force $Work -ErrorAction SilentlyContinue
@@ -177,15 +162,29 @@ if ($code -ne 0) { throw "The agent's installer exited with code $code." }
 `;
 }
 
-/** The line an operator pastes into a shell on the target machine. */
+/**
+ * The line an operator pastes into a shell on the target machine.
+ *
+ * The code goes on the command line rather than in the fetched URL, so the
+ * script itself stays generic and the credential is visible to whoever is
+ * pasting it — which is the person it was issued to.
+ */
 export function oneLiner(platform: AgentPlatform, p: ScriptParams): string {
-  const url = `${p.serverUrl}/api/deployments/${p.deploymentId}/install.${
-    platform === 'win32' ? 'ps1' : 'sh'
-  }?token=${encodeURIComponent(p.token)}`;
+  const server = p.serverUrl.replace(/\/+$/, '');
   if (platform === 'win32') {
-    return `powershell -ExecutionPolicy Bypass -Command "irm '${url}' | iex"`;
+    return (
+      `powershell -ExecutionPolicy Bypass -Command "& { ` +
+      `iwr -UseBasicParsing '${server}/api/deployments/agent/windows-amd64' ` +
+      `-OutFile \\"$env:TEMP\\rippel-agent.exe\\"; ` +
+      `& \\"$env:TEMP\\rippel-agent.exe\\" install --server '${server}' --code '${p.code}' }"`
+    );
   }
-  return `curl -fsSL '${url}' | bash`;
+  const target = platform === 'darwin' ? 'macos-arm64' : 'linux-amd64';
+  return (
+    `curl -fsSL -o /tmp/rippel-agent '${server}/api/deployments/agent/${target}' && ` +
+    `chmod +x /tmp/rippel-agent && ` +
+    `/tmp/rippel-agent install --server '${server}' --code '${p.code}'`
+  );
 }
 
 export function installerFor(
