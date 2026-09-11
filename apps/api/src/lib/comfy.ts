@@ -259,7 +259,7 @@ const CASED_TOKENS: Record<string, string> = {
   fp8: 'FP8', fp16: 'FP16', fp32: 'FP32', bf16: 'BF16', gguf: 'GGUF',
   esrgan: 'ESRGAN', ip: 'IP', ai: 'AI', nsfw: 'NSFW', hd: 'HD', '3d': '3D',
   controlnet: 'ControlNet', comfyui: 'ComfyUI', flux: 'FLUX',
-  svd: 'SVD', dit: 'DiT', vae: 'VAE', sdxl: 'SDXL',
+  svd: 'SVD', dit: 'DiT',
 };
 
 /** Token pairs that are really one word once the separator is gone. */

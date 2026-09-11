@@ -1,0 +1,9 @@
+{
+  "4": { "class_type": "ImageOnlyCheckpointLoader", "inputs": { "ckpt_name": "svd.safetensors" }, "_meta": { "title": "Load SVD checkpoint" } },
+  "11": { "class_type": "VideoLinearCFGGuidance", "inputs": { "model": ["4", 0], "min_cfg": 1.0 }, "_meta": { "title": "CFG ramp across frames" } },
+  "10": { "class_type": "LoadImage", "inputs": { "image": "example.png" }, "_meta": { "title": "First frame" } },
+  "18": { "class_type": "SVD_img2vid_Conditioning", "inputs": { "clip_vision": ["4", 1], "init_image": ["10", 0], "vae": ["4", 2], "width": 1024, "height": 576, "video_frames": 14, "motion_bucket_id": 127, "fps": 6, "augmentation_level": 0.0 }, "_meta": { "title": "First frame to video" } },
+  "3": { "class_type": "KSampler", "inputs": { "seed": 0, "steps": 20, "cfg": 2.5, "sampler_name": "euler", "scheduler": "karras", "denoise": 1.0, "model": ["11", 0], "positive": ["18", 0], "negative": ["18", 1], "latent_image": ["18", 2] }, "_meta": { "title": "Sample" } },
+  "8": { "class_type": "VAEDecode", "inputs": { "samples": ["3", 0], "vae": ["4", 2] }, "_meta": { "title": "Decode" } },
+  "9": { "class_type": "SaveWEBM", "inputs": { "images": ["8", 0], "filename_prefix": "comfy-studio/img2vid", "codec": "vp9", "fps": 6.0, "crf": 24.0 }, "_meta": { "title": "Save" } }
+}

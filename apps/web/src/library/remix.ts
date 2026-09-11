@@ -84,7 +84,6 @@ export function buildPrefill(
     params.video = {
       lengthSeconds: 4,
       fps: 24,
-      motion: 127,
       ...params.video,
       firstFrame: { from: 'asset', assetId: asset.id },
     };

@@ -24,6 +24,7 @@ import { loaderFolderOf } from './folders.js';
 import { img2imgSdxlTemplate } from './img2img-sdxl.js';
 import { img2vidLtxvTemplate } from './img2vid-ltxv.js';
 import { img2vidLtxvDmTemplate } from './img2vid-ltxv-dm.js';
+import { img2vidSvdTemplate } from './img2vid-svd.js';
 import { txt2imgSdxlTemplate } from './txt2img-sdxl.js';
 import { txt2vidHunyuanTemplate } from './txt2vid-hunyuan.js';
 import { txt2vidLtxvTemplate } from './txt2vid-ltxv.js';
@@ -46,6 +47,7 @@ export const TEMPLATES: readonly WorkflowTemplate[] = [
   img2vidLtxvTemplate,
   txt2vidLtxvDmTemplate,
   img2vidLtxvDmTemplate,
+  img2vidSvdTemplate,
   txt2vidHunyuanTemplate,
   ...SD_GENERIC_TEMPLATES,
 ];

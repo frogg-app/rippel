@@ -130,7 +130,8 @@ export const IMG2VID_LTXV_INPUTS: readonly ManifestInput[] = [
     // See the header: this *is* the motion control for this family. The range
     // is the node's own 0..100, which is what the UI's slider will span.
     constraint: { kind: 'int', min: 0, max: 100, step: 1 },
-    required: true,
+    // Optional: omitted, the graph's own 35 stands, which is Lightricks' default.
+    required: false,
   },
   {
     path: '13.inputs.frame_rate',

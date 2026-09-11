@@ -1098,7 +1098,8 @@ describe('generic SD fallback: what it must never touch', () => {
     // LTX-Video keeps its own video templates and gains no image ones.
     expect([...capabilitiesFor('ltx-video')].sort()).toEqual(['img2vid', 'txt2vid']);
     expect(capabilitiesFor('hunyuan-video')).toEqual(['txt2vid']);
-    expect(capabilitiesFor('svd')).toEqual([]);
+    // SVD gained its own image-to-video template; it still gets no image ones.
+    expect(capabilitiesFor('svd')).toEqual(['img2vid']);
     expect(capabilitiesFor('wan')).toEqual([]);
   });
 

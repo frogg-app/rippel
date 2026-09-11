@@ -162,8 +162,6 @@ export const VIDEO_LENGTH_MAX = 6;
 export const VIDEO_LENGTH_STEP = 0.5;
 export const VIDEO_FPS_OPTIONS = [12, 16, 24, 25] as const;
 export type VideoFps = (typeof VIDEO_FPS_OPTIONS)[number];
-/** SVD-style motion amount; the middle of its 0..255 range. */
-const DEFAULT_MOTION = 127;
 
 export interface VideoState {
   lengthSeconds: number;
@@ -384,7 +382,8 @@ export function toGenerationParams(state: CreateFormState): GenerationParams {
     params.video = {
       lengthSeconds: state.video.lengthSeconds,
       fps: state.video.fps,
-      motion: DEFAULT_MOTION,
+      // No motion: there is no control for it, and each family's range is
+      // different, so the template's own default is the only honest value.
     };
   }
 

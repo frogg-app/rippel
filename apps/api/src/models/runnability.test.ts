@@ -48,13 +48,16 @@ function objectInfo(options: {
     'SamplerCustom',
     'SamplerCustomAdvanced',
     'SaveImage',
+    'SVD_img2vid_Conditioning',
     'SaveWEBM',
     'VAEDecode',
     'VAEDecodeTiled',
     'VAEEncode',
+    'VideoLinearCFGGuidance',
   ];
   const info: ObjectInfo = {
     CheckpointLoaderSimple: { input: { required: { ckpt_name: [options.checkpoints, {}] } } },
+    ImageOnlyCheckpointLoader: { input: { required: { ckpt_name: [options.checkpoints, {}] } } },
     CLIPLoader: { input: { required: { clip_name: [options.clips, {}] } } },
     DualCLIPLoader: {
       input: { required: { clip_name1: [options.clips, {}], clip_name2: [options.clips, {}] } },
@@ -117,15 +120,28 @@ describe('runnabilityFor', () => {
   it('says outright that a family with no template will not become usable', () => {
     const verdict = runnabilityFor({
       ...base,
+      filename: 'wan2.1_i2v_480p_14B_fp8_e4m3fn.safetensors',
+      type: 'checkpoint',
+      catalogueBase: 'Wan',
+      folder: 'diffusion_models',
+    });
+    expect(verdict.status).toBe('no-workflow');
+    expect(verdict.family).toBe('wan');
+    expect(verdict.capabilities).toEqual([]);
+  });
+
+  it('runs an SVD checkpoint for image to video with nothing else installed', () => {
+    const verdict = runnabilityFor({
+      ...base,
       filename: 'svd_xt.safetensors',
       type: 'checkpoint',
       catalogueBase: 'SVD',
       folder: 'checkpoints',
     });
-    expect(verdict.status).toBe('no-workflow');
+    expect(verdict.status).toBe('ready');
     expect(verdict.family).toBe('svd');
-    expect(verdict.detail).toContain('Stable Video Diffusion');
-    expect(verdict.capabilities).toEqual([]);
+    expect(verdict.templateId).toBe('img2vid-svd');
+    expect(verdict.capabilities).toEqual(['img2vid']);
   });
 
   it('names the companion model an LTX-Video checkpoint needs, and what it is for', () => {

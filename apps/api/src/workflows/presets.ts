@@ -315,3 +315,19 @@ export const GENERIC_SD_RESOLUTIONS: ResolutionTable = {
   '16:9': { width: 768, height: 448 },
   '9:16': { width: 448, height: 768 },
 };
+
+/** SVD's native bucket is 1024x576; the others keep roughly that pixel count. */
+export const SVD_RESOLUTIONS: ResolutionTable = {
+  '1:1': { width: 768, height: 768 },
+  '3:2': { width: 864, height: 576 },
+  '2:3': { width: 576, height: 864 },
+  '16:9': { width: 1024, height: 576 },
+  '9:16': { width: 576, height: 1024 },
+};
+
+/** cfg is the *peak*: VideoLinearCFGGuidance ramps from 1.0 up to it. */
+export const SVD_QUALITY_PRESETS: PresetTable = {
+  fast: { steps: 12, cfg: 2.5, sampler: 'euler', scheduler: 'karras' },
+  balanced: { steps: 20, cfg: 2.5, sampler: 'euler', scheduler: 'karras' },
+  high: { steps: 30, cfg: 3.0, sampler: 'euler', scheduler: 'karras' },
+};
