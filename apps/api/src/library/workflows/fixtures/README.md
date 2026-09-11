@@ -10,16 +10,18 @@ Package metadata:
 https://pypi.org/pypi/comfyui-workflow-templates/0.11.55/json
 https://pypi.org/pypi/comfyui-workflow-templates-json/0.1.68/json
 
-These are upstream fixtures, not files captured from desktop-6900xt in this
-session. The LAN backend is unreachable. Converter unit tests do not establish
-that its installed nodes accept these workflows; live `/prompt` validation and
-completed outputs remain required.
+The workflow files are upstream fixtures. Converter unit tests alone do not
+establish that the GPU accepts them; live `/prompt` validation and completed
+outputs remain required.
 
-`object-info.json` was generated on 2026-09-12 with `npm run snapshot:nodes`
-against a local CPU-only ComfyUI 0.34.0, commit
-`12d5279438bfefc058a269eae805ceab6047777f`, with custom nodes disabled and no
-model weights installed. It contains 899 node specifications. To refresh from
-the actual GPU machine:
+`object-info.json` was refreshed on 2026-09-12 from the newly agent-deployed
+ComfyUI 0.35.0 on desktop-6900xt, with ROCm 10.0/PyTorch 2.13.0, the RX 6900 XT
+selected explicitly and no model weights installed. It contains 928 node
+specifications. The desktop's current library is 0.11.59 (547 entries, still
+14 explicitly open-source image-to-video entries); the saved library fixtures
+remain pinned to 0.11.55 to exercise cross-version conversion.
+
+Refresh with:
 
 ```sh
 npm run snapshot:nodes -w @comfy/api -- http://192.168.1.10:8188 src/library/workflows/fixtures/object-info.json

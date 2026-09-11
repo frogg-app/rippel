@@ -704,3 +704,23 @@ At the end of each run, report:
   cover confirmation and refresh recovery. Existing ModelsPage tests: 37 passed.
   Migration 015 applied to isolated PostgreSQL. Remaining source coverage and full
   live card transitions need the desktop's existing ComfyUI path.
+
+- **Desktop deployment restored, 2026-09-12.** At the user's request, created a
+  fresh managed ComfyUI at `C:\Users\steve\.rippel-agent\ComfyUI`; did not use
+  their previous installation. Fixed the agent's Linux-only ROCm wheel index on
+  Windows, deployed agent 0.3.0, and installed ComfyUI 0.35.0 / PyTorch
+  2.13.0+rocm10.0.0. Selected the RX 6900 XT with `--cpu-vae --cuda-device 1`;
+  the default device was the integrated GPU. Current model folders are empty.
+  Historical installed-model statuses above do not describe this fresh install.
+- **Task 22 live refresh complete.** Captured 928 actual node specifications
+  from the desktop; converter, mapper and runnability tests: 36 passed. The
+  current desktop library is 0.11.59 with 547 entries and 14 explicitly open-source
+  image-to-video entries. Version 0.11.55 workflow fixtures remain pinned.
+- **Server restored.** Reused the existing `comfy-dev-pg` database (backed up
+  before migrations), copied its 37 assets, started API 4000 and web 5173, and
+  recovered the existing `rippel-dev` tunnel. `https://dev.rippel.app` returns
+  200 and `/api/health` returns `{ "ok": true }`.
+- **User-requested agent self-update added.** Hash-verified, configured-server-only
+  endpoint plus admin API/UI. Go/race tests and real Linux replacement passed;
+  Windows manual replacement reports 0.3.0. Windows automatic handoff still needs
+  testing. Custom-node installation remains pending by explicit user choice.
