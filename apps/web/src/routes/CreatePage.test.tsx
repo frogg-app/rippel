@@ -943,48 +943,56 @@ describe('the first paint', () => {
           return state ? { ...UNKNOWN, state } : UNKNOWN;
         });
       },
-      release: () => act(() => release()),
+      release: () => act(async () => { release(); await gate; }),
     };
   }
 
   const tiles = () => within(screen.getByRole('radiogroup', { name: 'Model' })).getAllByRole('radio');
 
-  it('draws no verdict before the probes answer, and the right one after', async () => {
-    // The reported flash: all six checkpoints painted, five badged
-    // "No template", then corrected to three plus a hidden count. The badge was
-    // not merely ugly mid-flight, it was wrong — it came from the hardcoded
-    // capability mirror, which knows one family.
+  it('keeps model cards hidden until their eligibility is known', async () => {
     const probes = gatedReadiness({ 'model-sdxl': 'ready', 'model-sdxl-2': 'ready' });
     await probes.install();
-
-    render(<CreatePage />);
-
-    // The tiles themselves are known from /models and paint at once...
-    await screen.findByRole('radiogroup', { name: 'Model' });
-    expect(tiles().length).toBeGreaterThan(2);
-    // ...but nothing claims a verdict yet.
-    expect(screen.queryByText(/No template/i)).toBeNull();
+    await act(async () => { render(<CreatePage />); });
+    const { readinessApi, modelsApi } = await import('../lib/api-jobs');
+    await waitFor(() => expect(readinessApi.get).toHaveBeenCalled());
+    expect(modelsApi.list).toHaveBeenCalledWith(
+      { type: 'checkpoint', availableOnly: true }, expect.any(AbortSignal),
+    );
+    expect(modelsApi.list).toHaveBeenCalledWith(
+      { type: 'lora', availableOnly: true }, expect.any(AbortSignal),
+    );
+    expect(screen.getByLabelText('Loading models')).toHaveAttribute('aria-busy', 'true');
+    expect(screen.queryByRole('radiogroup', { name: 'Model' })).toBeNull();
     expect(screen.queryByText(/models? hidden/i)).toBeNull();
-    for (const tile of tiles()) expect(tile).toHaveAttribute('aria-disabled', 'false');
-
-    // And the answers, when they land, are the real ones.
-    probes.release();
+    await probes.release();
     await waitFor(() => expect(tiles()).toHaveLength(2));
     expect(screen.getByText(/models? hidden/i)).toBeInTheDocument();
+  });
+
+  it('hides the previous mode cards while checking the new mode', async () => {
+    await act(async () => { render(<CreatePage />); });
+    await screen.findByRole('radio', { name: /SDXL Base/i });
+    const probes = gatedReadiness({});
+    await probes.install();
+    const { setCreateMode } = await import('../create/mode');
+    act(() => setCreateMode('video'));
+    expect(screen.getByLabelText('Loading models')).toBeInTheDocument();
+    expect(screen.queryByRole('radiogroup', { name: 'Model' })).toBeNull();
+    await probes.release();
+    await screen.findByRole('radio', { name: /Hunyuan Video/i });
+    expect(screen.queryByRole('radio', { name: /SDXL Base/i })).toBeNull();
   });
 
   it('does not preselect or clear a model on an unanswered probe', async () => {
     const probes = gatedReadiness({ 'model-sdxl': 'ready' });
     await probes.install();
 
-    render(<CreatePage />);
-    await screen.findByRole('radiogroup', { name: 'Model' });
+    await act(async () => { render(<CreatePage />); });
+    const { readinessApi } = await import('../lib/api-jobs');
+    await waitFor(() => expect(readinessApi.get).toHaveBeenCalled());
+    expect(screen.queryByRole('radiogroup', { name: 'Model' })).toBeNull();
 
-    // Nothing is chosen on a guess: preselecting here would visibly swap the
-    // model out from under the user a moment later.
-    expect(tiles().every((tile) => tile.getAttribute('aria-checked') === 'false')).toBe(true);
-
-    probes.release();
+    await probes.release();
     await waitFor(() =>
       expect(screen.getByRole('radio', { name: /SDXL Base/i })).toHaveAttribute(
         'aria-checked',

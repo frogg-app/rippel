@@ -35,13 +35,10 @@ export function useModels(): ModelsState {
 
     void (async () => {
       try {
-        // `availableOnly` is deliberately not set: a checkpoint on a backend
-        // that is merely asleep should still be visible and pickable, and the
-        // 409 `no_backend` case is worth showing honestly rather than making
-        // models vanish when the desktop is off.
+        // Create offers only files held by an online, enabled backend.
         const [checkpoints, loras, capabilities] = await Promise.all([
-          modelsApi.list({ type: 'checkpoint' }, controller.signal),
-          modelsApi.list({ type: 'lora' }, controller.signal),
+          modelsApi.list({ type: 'checkpoint', availableOnly: true }, controller.signal),
+          modelsApi.list({ type: 'lora', availableOnly: true }, controller.signal),
           workflowsApi.capabilities(controller.signal),
         ]);
         if (controller.signal.aborted) return;

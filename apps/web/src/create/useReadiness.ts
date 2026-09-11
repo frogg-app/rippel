@@ -109,7 +109,10 @@ export function useReadiness(models: Model[], kind: JobKind): ReadinessMap {
 
   // The identity of the model list, not the array: `useModels` hands back a new
   // array on every render and we must not probe on every render.
-  const modelKey = useMemo(() => models.map((model) => model.id).join(','), [models]);
+  const modelKey = useMemo(
+    () => models.map((model) => `${model.id}:${model.backendIds.join(',')}`).join(';'),
+    [models],
+  );
 
   useEffect(() => {
     if (models.length === 0) {
@@ -151,7 +154,7 @@ export function useReadiness(models: Model[], kind: JobKind): ReadinessMap {
   // The flag the screen actually reads. Note this is true on the very first
   // render, before the effect above has run at all, which is the whole point.
   const loading = answeredFor !== `${modelKey}|${kind}`;
-  return useMemo(() => ({ ...map, loading }), [map, loading]);
+  return useMemo(() => loading ? { here: {}, other: {}, loading: true } : map, [map, loading]);
 }
 
 /** Test seam: forget what the server said. */
@@ -176,6 +179,7 @@ export function isRunnable(
   capabilities: CapabilityMap,
   readiness: ReadinessMap,
 ): boolean {
+  if (readiness.loading) return false;
   const answer = readiness.here[model.id];
   if (answer && answer.state !== 'unknown') return answer.state === 'ready';
   return modelSupported(model, kind, capabilities);

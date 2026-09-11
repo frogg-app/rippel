@@ -30,12 +30,15 @@ interface ModelRow {
   backend_ids: string[] | null;
 }
 
+// Query strings are strings: Boolean('false') is true, so do not coerce them.
+const queryBoolean = z.enum(['true', 'false']).transform((value) => value === 'true');
+
 const listQuery = z.object({
   type: z
     .enum(['checkpoint', 'lora', 'vae', 'controlnet', 'upscaler', 'clip', 'video'])
     .optional(),
-  /** Only models at least one online backend can actually load right now. */
-  availableOnly: z.coerce.boolean().optional(),
+  /** Only models held by at least one online, enabled backend. */
+  availableOnly: queryBoolean.optional(),
   /**
    * One base model family, in any spelling: compared the way the workflow
    * registry compares families, so "SDXL 1.0", "sdxl" and "sd-xl-1.0" all
@@ -51,7 +54,7 @@ const listQuery = z.object({
    * to 20 seconds on a cold cache. The Create screen calls this route on every
    * load and must not pay for it; the Models screen asks once and wants it.
    */
-  runnability: z.coerce.boolean().optional(),
+  runnability: queryBoolean.optional(),
   /**
    * Also match each installed file against the backend's catalogue, so the
    * Models screen can show the picture, licence and download count we already
@@ -61,7 +64,7 @@ const listQuery = z.object({
    * online backend's Manager for its catalogue. The Create screen calls this
    * route on every load and must not pay for it.
    */
-  previews: z.coerce.boolean().optional(),
+  previews: queryBoolean.optional(),
 });
 
 /**
@@ -100,7 +103,7 @@ export default async function modelRoutes(app: FastifyInstance) {
          LEFT JOIN model_backends mb ON mb.model_id = m.id
          LEFT JOIN backends b ON b.id = mb.backend_id
         WHERE ($1::text IS NULL OR m.type = $1)
-          AND ($2::boolean IS NOT TRUE OR b.status = 'online')
+          AND ($2::boolean IS NOT TRUE OR (b.status = 'online' AND b.enabled))
           AND ($3::text IS NULL
                OR regexp_replace(lower(m.base_model), '[^a-z0-9]', '', 'g') = $3)
         GROUP BY m.id
@@ -133,7 +136,7 @@ export default async function modelRoutes(app: FastifyInstance) {
          LEFT JOIN backends b ON b.id = mb.backend_id
         WHERE m.base_model IS NOT NULL
           AND ($1::text IS NULL OR m.type = $1)
-          AND ($2::boolean IS NOT TRUE OR b.status = 'online')
+          AND ($2::boolean IS NOT TRUE OR (b.status = 'online' AND b.enabled))
         ORDER BY m.base_model`,
       [type ?? null, availableOnly ?? false],
     );
