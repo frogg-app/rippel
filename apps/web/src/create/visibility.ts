@@ -31,8 +31,17 @@
  * unreachable API must not make somebody's models disappear. When readiness
  * could not be asked we fall back to the capability map, and even then we only
  * hide a family with no known capabilities if that map came from the server
- * (`live`) — the hardcoded fallback mirror in `api-jobs.ts` knows one family
- * and is not evidence of absence.
+ * (`live`). That flag used to be false almost always, because the map was a
+ * hardcoded mirror in `api-jobs.ts`; it now comes from `GET /workflows`, so the
+ * live branch is the normal one and this module finally gets to act on a real
+ * answer. An empty map with `live: false` still asserts nothing.
+ *
+ * One trap that comes with a live map, handled in `modelKinds` rather than
+ * here: a checkpoint whose family the server could not infer is **not** a
+ * family with no workflow. The generic Stable Diffusion graph answers for it
+ * deliberately, and the map reports that in `unknownFamily`. Reading a null
+ * family as "no capabilities" would hide every unclassified merge the day the
+ * endpoint shipped, which is the opposite of what it was built for.
  */
 import type { JobKind, Model } from '@comfy/shared';
 import { type CapabilityMap, modelKinds } from '../lib/api-jobs';
@@ -152,8 +161,9 @@ export function classify(
     });
   }
 
-  // Nothing known about the family at all. Only the server's own capability
-  // list is grounds for hiding; the hardcoded fallback mirror is not.
+  // Nothing known about the family at all — and for a *named* family that the
+  // server's own list does not carry, that is a real absence worth acting on.
+  // An empty or failed map (`live: false`) is not, and never hides anything.
   return capabilities.live
     ? entry({ runnable: false, hidden: 'no-template', blocked: null })
     : entry({ runnable: false, hidden: null, blocked: 'no-template' });

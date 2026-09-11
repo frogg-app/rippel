@@ -20,6 +20,7 @@ import modelRoutes from './routes/models.js';
 import assetRoutes from './storage/routes.js';
 import modelInstallRoutes from './models/routes.js';
 import modelWorkflowRoutes from './models/workflow-routes.js';
+import workflowCapabilityRoutes from './workflows/routes.js';
 import jobRoutes from './orchestrator/routes.js';
 import libraryRoutes from './library/routes.js';
 import uploadRoutes from './uploads/routes.js';
@@ -51,6 +52,7 @@ await app.register(
     await api.register(assetRoutes);
     await api.register(modelInstallRoutes);
     await api.register(modelWorkflowRoutes);
+    await api.register(workflowCapabilityRoutes);
     await api.register(jobRoutes);
     await api.register(libraryRoutes);
     await api.register(uploadRoutes);

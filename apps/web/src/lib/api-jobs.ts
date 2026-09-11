@@ -121,46 +121,69 @@ export const modelsApi = {
 /**
  * Which model families we can actually compile a graph for.
  *
- * The server knows this — `apps/api/src/workflows/registry.ts` indexes every
- * template by `(capability, baseModel)` — but does not yet expose it. Until it
- * does, the picker has no way to tell a user that their Hunyuan checkpoint
- * cannot run txt2img except by letting them press Generate and collecting a
- * 501 `no_template`. That is the failure this exists to avoid.
+ * This comes from `GET /workflows`, which is a projection of the server's
+ * template registry: per family, which capabilities have a workflow, which
+ * template would run, and whether that template was written for the family or
+ * is the generic best guess. Nothing about the graph itself crosses the wire,
+ * and nothing here reconstructs it — the client's whole model of "what can run"
+ * is a family-keyed map of capability names.
  *
- * So: ask for the endpoint, and fall back to a mirror of the registry when it
- * 404s. The fallback is a *copy* and will rot; the endpoint is the fix, and the
- * moment it exists this starts using it with no other change here.
+ * This used to be a hardcoded mirror of one manifest (SDXL does txt2img)
+ * because the endpoint did not exist. It does now, and the mirror is gone: a
+ * copy of the registry in the browser was wrong about every other family on the
+ * box and had no way of ever becoming right.
+ *
+ * `live` is what remains of that history, and it still earns its place. It says
+ * the map came from the server and is therefore *evidence of absence* — a
+ * family missing from a live map genuinely has no workflow. When the request
+ * fails we return an empty map with `live: false`, which asserts nothing at
+ * all, and `visibility.ts` refuses to hide anything on that basis.
  */
 export interface CapabilityMap {
   /** normalised family -> capabilities we hold a template for. */
   byFamily: Record<string, JobKind[]>;
   /**
-   * Families whose template is a generic best-guess rather than a
-   * hand-authored one, when the server says so (`isFallback` on a manifest).
-   * Absent on a server that does not report it — treat an empty list as "we
-   * were not told", not as "none".
+   * Families whose only template is a generic best-guess rather than a
+   * hand-authored one (`isFallback` on every offer the server made).
    */
   fallbackFamilies?: string[];
-  /** True when this came from the server rather than the fallback below. */
+  /**
+   * What a checkpoint whose family the server could not infer can do
+   * (`baseModel: null`). Not the same as "nothing": the generic Stable
+   * Diffusion graph answers for unknown families deliberately, and treating a
+   * null family as unrunnable would hide ordinary community merges.
+   */
+  unknownFamily: JobKind[];
+  /** True when even the unknown-family answer is a guess. It always is today. */
+  unknownIsFallback?: boolean;
+  /** True when this came from the server rather than being the empty default. */
   live: boolean;
 }
 
-/** Mirrors `txt2imgSdxlTemplate.manifest.baseModels`. */
-const FALLBACK_TEMPLATES: WorkflowManifest[] = [
-  { capability: 'txt2img', baseModels: ['sdxl', 'SDXL 1.0', 'pony', 'illustrious'] },
-];
-
 /**
- * One template's manifest as `GET /workflows` reports it.
+ * What we know before the server has answered, and after it has failed to.
  *
- * `isFallback` marks a generic best-guess workflow — a template that will
- * probably run a checkpoint nobody has written a graph for. It is optional
- * because the endpoint may not report it yet; nothing here may require it.
+ * Genuinely inert: no families, no capabilities, `live: false`. It makes no
+ * claim about any model, which is the only honest thing to hold when the one
+ * source of truth is unreachable.
  */
-export interface WorkflowManifest {
-  capability: JobKind;
-  baseModels: string[];
-  isFallback?: boolean;
+const NO_CAPABILITIES: CapabilityMap = {
+  byFamily: {},
+  fallbackFamilies: [],
+  unknownFamily: [],
+  live: false,
+};
+
+/** One family's entry as `GET /workflows` reports it. */
+interface FamilyCapabilities {
+  family: string;
+  label: string;
+  offers: { capability: JobKind; isFallback: boolean }[];
+}
+
+interface WorkflowCapabilitiesPayload {
+  families: FamilyCapabilities[];
+  unknownFamily?: { capability: JobKind; isFallback: boolean }[];
 }
 
 /** The same fold `normalizeBaseModel()` does on the server. Must not diverge. */
@@ -168,43 +191,43 @@ export function normalizeFamily(baseModel: string): string {
   return baseModel.toLowerCase().replace(/[^a-z0-9]/g, '');
 }
 
-function toMap(manifests: WorkflowManifest[], live: boolean): CapabilityMap {
+function toMap(payload: WorkflowCapabilitiesPayload): CapabilityMap {
   const byFamily: Record<string, JobKind[]> = {};
-  const fallbackFamilies = new Set<string>();
-  const authored = new Set<string>();
+  const fallbackFamilies: string[] = [];
 
-  for (const manifest of manifests) {
-    for (const base of manifest.baseModels) {
-      const key = normalizeFamily(base);
-      const kinds = byFamily[key] ?? (byFamily[key] = []);
-      if (!kinds.includes(manifest.capability)) kinds.push(manifest.capability);
-      // A family with any hand-authored template is not a fallback family,
-      // whatever else also matches it.
-      if (manifest.isFallback) fallbackFamilies.add(key);
-      else authored.add(key);
+  for (const entry of payload.families ?? []) {
+    const kinds: JobKind[] = [];
+    for (const offer of entry.offers) {
+      if (!kinds.includes(offer.capability)) kinds.push(offer.capability);
+    }
+    byFamily[entry.family] = kinds;
+    // A family with any hand-authored template is not a fallback family,
+    // whatever else also matches it.
+    if (entry.offers.length > 0 && entry.offers.every((offer) => offer.isFallback)) {
+      fallbackFamilies.push(entry.family);
     }
   }
 
+  const unknown = payload.unknownFamily ?? [];
   return {
     byFamily,
-    fallbackFamilies: [...fallbackFamilies].filter((family) => !authored.has(family)),
-    live,
+    fallbackFamilies,
+    unknownFamily: unknown.map((offer) => offer.capability),
+    unknownIsFallback: unknown.length > 0 && unknown.every((offer) => offer.isFallback),
+    live: true,
   };
 }
 
 export const workflowsApi = {
   capabilities: async (signal?: AbortSignal): Promise<CapabilityMap> => {
     try {
-      const { manifests } = await request<{ manifests: WorkflowManifest[] }>('/workflows', {
-        signal,
-      });
-      return toMap(manifests, true);
+      return toMap(await request<WorkflowCapabilitiesPayload>('/workflows', { signal }));
     } catch {
-      // A 404 means the endpoint is not built yet. Anything else — unreachable,
-      // a 500 — is a real failure, but a Create screen that cannot answer "is
-      // this model runnable" is still usable, so degrade to the fallback in
-      // both cases rather than blanking the picker.
-      return toMap(FALLBACK_TEMPLATES, false);
+      // Unreachable, a 500, an old server that does not serve this yet: all the
+      // same answer. A Create screen that cannot say "is this runnable" is still
+      // usable, so degrade to knowing nothing rather than blanking the picker —
+      // and `live: false` stops that ignorance being read as a verdict.
+      return NO_CAPABILITIES;
     }
   },
 };
@@ -229,7 +252,11 @@ export function modelKinds(
   model: Pick<Model, 'baseModel'>,
   capabilities: CapabilityMap,
 ): JobKind[] {
-  if (!model.baseModel) return [];
+  // A model whose family nobody could infer is not a model with no workflow.
+  // The server holds a generic graph for exactly this case and says so in
+  // `unknownFamily`; returning [] here would hide every unclassified merge the
+  // moment the map went live.
+  if (!model.baseModel) return capabilities.unknownFamily ?? [];
   return capabilities.byFamily[normalizeFamily(model.baseModel)] ?? [];
 }
 
@@ -238,7 +265,9 @@ export function isFallbackFamily(
   model: Pick<Model, 'baseModel'>,
   capabilities: CapabilityMap,
 ): boolean {
-  if (!model.baseModel) return false;
+  // An unclassified checkpoint runs on the generic graph by definition, so it
+  // is a "generic workflow" tile too — the badge is the honest one to show.
+  if (!model.baseModel) return capabilities.unknownIsFallback === true;
   return (capabilities.fallbackFamilies ?? []).includes(normalizeFamily(model.baseModel));
 }
 

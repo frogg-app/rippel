@@ -25,6 +25,11 @@ const capabilities = {
     // up to run it — the "needs setup" case, which must stay visible.
     ltxv: ['txt2vid'],
   },
+  // "Mystery Mix" carries the family `mystery`, which the server does not
+  // know — a named family that is genuinely absent, not the null-family case.
+  // The generic graphs the real server offers for *unclassified* checkpoints
+  // are therefore not in play here.
+  unknownFamily: [],
   live: true,
 };
 
@@ -739,6 +744,7 @@ describe('mode toggle', () => {
     const { workflowsApi } = await import('../lib/api-jobs');
     vi.mocked(workflowsApi.capabilities).mockResolvedValueOnce({
       byFamily: { sdxl: ['txt2img'] },
+      unknownFamily: [],
       live: true,
     });
     render(
@@ -821,6 +827,7 @@ describe('what the picker hides', () => {
     // absence, so even the unknown family is drawn rather than hidden.
     vi.mocked(workflowsApi.capabilities).mockResolvedValueOnce({
       byFamily: { sdxl: ['txt2img'] },
+      unknownFamily: [],
       live: false,
     });
 
@@ -836,6 +843,7 @@ describe('what the picker hides', () => {
     const { workflowsApi } = await import('../lib/api-jobs');
     vi.mocked(workflowsApi.capabilities).mockResolvedValueOnce({
       byFamily: { sdxl: ['txt2img'] },
+      unknownFamily: [],
       live: true,
     });
     render(

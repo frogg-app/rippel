@@ -253,8 +253,13 @@ export interface VideoParams {
   /** Seconds of finished video. */
   lengthSeconds: number;
   fps: number;
-  /** Backend-specific motion amount, 0..255 for SVD-style models. */
-  motion: number;
+  /**
+   * Backend-specific motion amount. Its range is the template's own: 1..1023
+   * for SVD's motion bucket, 0..100 for LTX-Video's guide compression. Omit it
+   * to use the template's default, which is what a client with no motion
+   * control should do rather than guess one number for every family.
+   */
+  motion?: number;
   cameraPreset?: 'static' | 'push-in' | 'orbit' | 'pan-left' | 'crane-up';
   /**
    * The frame the video starts from — an existing generation or a file the user
@@ -712,6 +717,67 @@ export interface BackendStorage {
 export interface StorageDeletion {
   deleted: string[];
   missing: string[];
+}
+
+// ------------------------------------------------------------ workflow capabilities
+
+/**
+ * One thing we could do for a model family, and how much we mean it.
+ *
+ * This is the whole of what `GET /workflows` says about a template, and it is
+ * deliberately the whole of it: a manifest also carries JSON paths into a node
+ * graph, node class names and constraint tables, and the browser has no use for
+ * any of that. PLAN.md's rule is that the frontend does not change when a model
+ * family is added, which only stays true while the frontend cannot see a node.
+ *
+ * `isFallback` is the one bit of nuance that has to survive the trip: a generic
+ * best-guess graph runs, but nobody has checked this family against it, and a
+ * UI that presents that with the confidence of a hand-authored template is
+ * lying by omission.
+ */
+export interface WorkflowCapabilityOffer {
+  capability: JobKind;
+  /** The template that would actually run, so a verdict can be traced. */
+  templateId: string;
+  /** Human label, e.g. "Text to video (LTX-Video)". */
+  templateLabel: string;
+  /** True when the graph is a generic guess rather than authored for this family. */
+  isFallback: boolean;
+}
+
+/** Every capability we hold a template for, one entry per family. */
+export interface WorkflowFamilyCapabilities {
+  /**
+   * The family key, already folded the way the registry folds it — lowercase,
+   * alphanumerics only. The client normalises `Model.baseModel` the same way
+   * and looks straight up in here, so no spelling negotiation happens in the
+   * browser. Every alias a manifest claims appears as its own entry.
+   */
+  family: string;
+  /** A readable spelling of the family, for messages. */
+  label: string;
+  offers: WorkflowCapabilityOffer[];
+}
+
+/**
+ * What `GET /workflows` returns: which families can do what, and nothing else.
+ *
+ * The question the Create screen actually asks is "for this family and this
+ * capability, is there a workflow, and is it real or a guess?" — so that is the
+ * shape, rather than a dump of manifests the client would have to re-derive it
+ * from.
+ */
+export interface WorkflowCapabilities {
+  /** Every capability any template implements, for a UI that lists modes. */
+  capabilities: JobKind[];
+  families: WorkflowFamilyCapabilities[];
+  /**
+   * What a checkpoint whose family we could **not** infer gets
+   * (`Model.baseModel IS NULL`). Not the same claim as "no workflow": the
+   * generic SD graph answers for unknown families on purpose, and a client that
+   * treated a null family as unrunnable would hide perfectly ordinary merges.
+   */
+  unknownFamily: WorkflowCapabilityOffer[];
 }
 
 // ---------------------------------------------------------------- model workflows

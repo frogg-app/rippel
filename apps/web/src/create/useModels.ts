@@ -14,7 +14,12 @@ export interface ModelsState {
   error: string | null;
 }
 
-const EMPTY_CAPABILITIES: CapabilityMap = { byFamily: {}, live: false };
+/**
+ * What we hold before the first fetch resolves. `live: false` is load-bearing:
+ * the picker must not draw a verdict from it, and `visibility.ts` will not hide
+ * anything on the strength of a map that did not come from the server.
+ */
+const EMPTY_CAPABILITIES: CapabilityMap = { byFamily: {}, unknownFamily: [], live: false };
 
 export function useModels(): ModelsState {
   const [state, setState] = useState<ModelsState>({
