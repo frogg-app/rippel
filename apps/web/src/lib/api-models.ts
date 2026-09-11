@@ -204,7 +204,7 @@ export const modelsApi: ModelsApi = {
       families: string[];
       runnability?: Record<Uuid, ModelRunnability>;
       previews?: Record<Uuid, ModelCatalogInfo>;
-    }>('/models?runnability=1&previews=1', { signal });
+    }>('/models?installedOnly=true&runnability=1&previews=1', { signal });
     return {
       models: body.models ?? [],
       families: body.families ?? [],

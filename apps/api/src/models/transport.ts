@@ -44,11 +44,11 @@ export class TransportUnavailable extends TransportError {
 
 /**
  * What we hand a transport to install. It mirrors a catalogue entry rather than
- * being free-form: the only transport we have refuses anything not on its own
- * whitelist, so "install this arbitrary URL" is not a capability we can
+ * being free-form: the service resolves every request against its transport catalogue, so "install this arbitrary URL" is not a capability we can
  * honestly offer, and an interface that implied otherwise would be a lie.
  */
 export interface InstallRequest {
+  installId?: string;
   name: string;
   filename: string;
   /** The catalogue's own type word, e.g. "checkpoint". */

@@ -22,12 +22,14 @@ import type {
 } from '@comfy/shared';
 import { query, queryOne } from '../db.js';
 import { ComfyClient } from '../lib/comfy.js';
+import { AgentModelTransport } from './transports/agent.js';
 import { ComfyManagerTransport } from './transports/comfy-manager.js';
 import type { InstallRequest, ModelTransport } from './transport.js';
 import { TransportError, TransportUnavailable } from './transport.js';
 
 export interface InstallRow {
   id: string;
+  transport_kind?: string;
   backend_id: string;
   requested_by: string;
   filename: string;
@@ -84,24 +86,23 @@ function bigintOrNull(value: string | number | null | undefined): number | null 
   return Number.isFinite(n) ? n : null;
 }
 
-/**
- * Which transport a backend has.
- *
- * Only one exists today. It is resolved per call rather than cached because a
- * backend gains or loses the capability when someone installs Manager and
- * restarts ComfyUI, and a cache would report the stale answer for as long as
- * the API happened to stay up.
- */
+/** Legacy downloads retain their original transport when an agent is linked.
+ * New downloads prefer the linked agent and never require a custom node. */
 export function transportFor(baseUrl: string): ModelTransport {
   return new ComfyManagerTransport(baseUrl);
 }
 
-export async function requireTransport(baseUrl: string): Promise<ModelTransport> {
-  const transport = transportFor(baseUrl);
+export async function agentTransportFor(backendId: string, baseUrl: string): Promise<ModelTransport | null> {
+  const target = await queryOne<{ host: string; agent_port: number; token: string }>(
+    'SELECT host, agent_port, token FROM deployments WHERE backend_id = $1 ORDER BY created_at DESC LIMIT 1', [backendId]);
+  return target ? new AgentModelTransport(backendId, { host: target.host, agentPort: target.agent_port, token: target.token }, baseUrl) : null;
+}
+
+export async function requireTransport(baseUrl: string, backendId?: string): Promise<ModelTransport> {
+  const transport = (backendId ? await agentTransportFor(backendId, baseUrl) : null) ?? transportFor(baseUrl);
   if (!(await transport.available())) {
     throw new TransportUnavailable(
-      'This backend cannot install models: ComfyUI-Manager is not responding on it. ' +
-        'Install ComfyUI-Manager into the backend\'s custom_nodes and restart ComfyUI.',
+      'Model installation is unavailable. Check the agent connection in Settings.',
     );
   }
   return transport;
@@ -110,6 +111,7 @@ export async function requireTransport(baseUrl: string): Promise<ModelTransport>
 /** The request we hand the transport, rebuilt from a stored row. */
 export function requestFromRow(row: InstallRow): InstallRequest {
   return {
+    installId: row.id,
     name: row.display_name,
     filename: row.filename,
     type: row.model_type,
@@ -224,7 +226,9 @@ function basename(path: string): string {
 export async function refreshInstall(row: InstallRow, baseUrl: string): Promise<ModelInstall> {
   let progress;
   try {
-    progress = await transportFor(baseUrl).progress(requestFromRow(row));
+    const transport = row.transport_kind === 'rippel-agent' ? await agentTransportFor(row.backend_id, baseUrl) : transportFor(baseUrl);
+    if (!transport) throw new TransportError('The agent for this download has been removed.');
+    progress = await transport.progress(requestFromRow(row));
   } catch (err) {
     // Unreachable is not failed: the next tick tries again. Only a definite,
     // non-retryable answer from the transport ends an install.
@@ -273,8 +277,8 @@ export async function refreshInstall(row: InstallRow, baseUrl: string): Promise<
   const fullyWritten =
     bytesTotal !== null && bytesReceived !== null && bytesReceived >= bytesTotal;
 
-  if (fullyWritten) {
-    const folder = folderForType(row.model_type);
+  if (fullyWritten && (row.transport_kind !== 'rippel-agent' || progress.state === 'complete')) {
+    const folder = folderForRow(row);
     try {
       if (folder && (await backendHasFile(baseUrl, folder, row.filename))) {
         return finish(row.id, 'complete', 'Installed and visible to ComfyUI', bytesReceived);
@@ -294,7 +298,11 @@ export async function refreshInstall(row: InstallRow, baseUrl: string): Promise<
     return update(row, 'downloading', progress.detail, bytesReceived);
   }
 
-  const folder = folderForType(row.model_type);
+  if (row.transport_kind === 'rippel-agent' && progress.state !== 'complete') {
+    return update(row, 'queued', progress.detail, bytesReceived);
+  }
+
+  const folder = folderForRow(row);
   if (folder) {
     try {
       if (await backendHasFile(baseUrl, folder, row.filename)) {
@@ -432,8 +440,8 @@ export class InstallConflict extends Error {
  * otherwise leave a multi-gigabyte download running that nothing tracks — and
  * mark the row failed if the transport refuses.
  *
- * This is the only path that puts a file on a backend. Both install routes go
- * through it; there is deliberately no second downloader.
+ * Both catalogue and readiness installs use this record and progress path;
+ * native agent downloads also retain their durable file-operation journal.
  */
 export async function startInstall(params: {
   backendId: Uuid;
@@ -469,6 +477,7 @@ export async function startInstall(params: {
   // a network call can — and none of those failures may stop an install. A null
   // here simply means the UI will show bytes-so-far without a percentage, which
   // is the honest fallback and exactly what happened before this existed.
+  await query('UPDATE model_installs SET transport_kind = $2 WHERE id = $1', [row.id, params.transport.kind]);
   void resolveTotalBytes(row.id, params.transport, requestFromRow(row));
 
   try {

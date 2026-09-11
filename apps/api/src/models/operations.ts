@@ -2,7 +2,7 @@
  * response is never retried automatically: the remote file action may have
  * succeeded. Polling known task IDs is safe across API/browser restarts. */
 import { query, queryOne, transaction } from '../db.js';
-import { agentClient, type ModelDownloadRequest, type ModelMoveRequest } from '../deploy/agent-client.js';
+import { AgentError, agentClient, type ModelDownloadRequest, type ModelMoveRequest } from '../deploy/agent-client.js';
 import { clearObjectInfoCache } from '../orchestrator/preflight.js';
 import { pollBackendNow } from '../lib/backend-poller.js';
 export type ModelOperationStep = { kind: 'move'; request: ModelMoveRequest } | { kind: 'download'; request: ModelDownloadRequest };
@@ -49,9 +49,23 @@ async function recheck(backendId: string) {
   if (host) clearObjectInfoCache(host.base_url);
   await pollBackendNow(backendId);
 }
-async function pollOperation(operation: ModelOperation) {
+export async function pollOperation(operation: ModelOperation) {
   if (!operation.agent_task_id || !operation.backend_id) return;
-  const { task } = await agentClient.task(await target(operation.backend_id), operation.agent_task_id, 0);
+  let task;
+  try {
+    ({ task } = await agentClient.task(await target(operation.backend_id), operation.agent_task_id, 0));
+  } catch (error) {
+    if (!(error instanceof AgentError) || error.status !== 404) throw error;
+    // Agent tasks are held in memory. After a restart an unknown task is a
+    // definite loss of tracking, not evidence that the file action can replay.
+    // Match the task ID to avoid failing a newer step claimed by another poll.
+    await query(`UPDATE model_operations SET status='failed',
+      error='File tracking was lost when the agent restarted. Check installed files before retrying.',
+      updated_at=now() WHERE id=$1 AND status='running' AND agent_task_id=$2`,
+    [operation.id, operation.agent_task_id]);
+    await recheck(operation.backend_id).catch(() => {});
+    return;
+  }
   if (task.status === 'running') {
     await query('UPDATE model_operations SET progress = $2::jsonb, updated_at = now() WHERE id = $1', [operation.id, JSON.stringify(task)]);
     return;

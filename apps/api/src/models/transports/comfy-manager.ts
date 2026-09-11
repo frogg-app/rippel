@@ -54,7 +54,7 @@ interface QueueStatus {
   is_processing: boolean;
 }
 
-interface RawCatalogueEntry {
+export interface RawCatalogueEntry {
   name?: string;
   type?: string;
   base?: string;
@@ -133,41 +133,7 @@ export class ComfyManagerTransport implements ModelTransport {
     }
 
     const body = (await res.json()) as { models?: RawCatalogueEntry[] };
-    const entries: ModelCatalogEntry[] = [];
-
-    for (const raw of body.models ?? []) {
-      const type = raw.type ? TYPE_MAP[raw.type.toLowerCase()] : undefined;
-      if (!type || !raw.filename || !raw.url || !raw.base || raw.save_path === undefined) continue;
-
-      entries.push({
-        // save_path + filename is exactly the tuple Manager's whitelist matches
-        // on, so using it as the ref means an install request we build from a
-        // catalogue entry can never fail that check.
-        ref: `${raw.save_path}/${raw.filename}`,
-        name: raw.name ?? raw.filename,
-        filename: raw.filename,
-        type,
-        base: raw.base,
-        description: raw.description ?? null,
-        size: raw.size ?? null,
-        url: raw.url,
-        // Manager states this for every entry in its list (562/562 on the live
-        // box) and it is the only handle we have on anything a human wrote
-        // about the model — see models/metadata.ts.
-        reference: raw.reference ?? null,
-        savePath: raw.save_path,
-        // Manager reports this as the string "True"/"False" in some versions
-        // and a boolean in others.
-        installed: raw.installed === true || raw.installed === 'True',
-        // Both are filled in by the route, which is where the cache and the
-        // backend's /object_info live. A transport talks to one backend and
-        // knows nothing about either.
-        info: null,
-        runnability: null,
-      });
-    }
-
-    return entries;
+    return parseCatalogue(body.models ?? []);
   }
 
   /**
@@ -370,4 +336,43 @@ export class ComfyManagerTransport implements ModelTransport {
       detail: 'Waiting for the backend to start the download',
     };
   }
+}
+
+/** Shared parser for the upstream catalogue data and Manager API. */
+export function parseCatalogue(models: RawCatalogueEntry[]): ModelCatalogEntry[] {
+    const entries: ModelCatalogEntry[] = [];
+
+    for (const raw of models) {
+      const type = raw.type ? TYPE_MAP[raw.type.toLowerCase()] : undefined;
+      if (!type || !raw.filename || !raw.url || !raw.base || raw.save_path === undefined) continue;
+
+      entries.push({
+        // save_path + filename is exactly the tuple Manager's whitelist matches
+        // on, so using it as the ref means an install request we build from a
+        // catalogue entry can never fail that check.
+        ref: `${raw.save_path}/${raw.filename}`,
+        name: raw.name ?? raw.filename,
+        filename: raw.filename,
+        type,
+        base: raw.base,
+        description: raw.description ?? null,
+        size: raw.size ?? null,
+        url: raw.url,
+        // Manager states this for every entry in its list (562/562 on the live
+        // box) and it is the only handle we have on anything a human wrote
+        // about the model — see models/metadata.ts.
+        reference: raw.reference ?? null,
+        savePath: raw.save_path,
+        // Manager reports this as the string "True"/"False" in some versions
+        // and a boolean in others.
+        installed: raw.installed === true || raw.installed === 'True',
+        // Both are filled in by the route, which is where the cache and the
+        // backend's /object_info live. A transport talks to one backend and
+        // knows nothing about either.
+        info: null,
+        runnability: null,
+      });
+    }
+
+    return entries;
 }

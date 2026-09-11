@@ -147,7 +147,7 @@ export function ModelsPage({ api = modelsApi, storageApi: storage = storageApi }
 
   const installs = useInstalls({ api, backendId, enabled: isAdmin });
   const backendWarning = backend?.status !== 'online' ||
-    (tab === 'discover' && ['unsupported', 'error', 'offline'].includes(catalogue.state.kind));
+    ['unsupported', 'error', 'offline'].includes(catalogue.state.kind);
   const now = useNow(installs.live.length > 0);
 
   // ------------------------------------------------------------- workflows
@@ -673,6 +673,7 @@ function CatalogueBody({
           title="Model installation unavailable"
           message="This machine’s model installer isn’t ready."
           footnote="You can still use models that are already installed."
+          action={{ label: 'Try again', onClick: onReload }}
         />
       );
 

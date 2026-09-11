@@ -40,6 +40,8 @@ const listQuery = z.object({
     .optional(),
   /** Only models held by at least one online, enabled backend. */
   availableOnly: queryBoolean.optional(),
+  /** Exclude historical records no backend currently holds, including offline inventory. */
+  installedOnly: queryBoolean.optional(),
   /**
    * One base model family, in any spelling: compared the way the workflow
    * registry compares families, so "SDXL 1.0", "sdxl" and "sd-xl-1.0" all
@@ -90,7 +92,7 @@ export default async function modelRoutes(app: FastifyInstance) {
     if (!parsed.success) {
       return reply.code(400).send({ error: 'invalid_input', message: 'Bad filter.' });
     }
-    const { type, availableOnly, baseModel, runnability, previews } = parsed.data;
+    const { type, availableOnly, installedOnly, baseModel, runnability, previews } = parsed.data;
     // Normalised on the way in and in SQL on the way out, so a stored "sdxl"
     // matches a requested "SDXL 1.0" — the same fold the registry does when it
     // looks a template up, and the reason the two can never disagree.
@@ -107,9 +109,10 @@ export default async function modelRoutes(app: FastifyInstance) {
           AND ($2::boolean IS NOT TRUE OR (b.status = 'online' AND b.enabled))
           AND ($3::text IS NULL
                OR regexp_replace(lower(m.base_model), '[^a-z0-9]', '', 'g') = $3)
+          AND ($4::boolean IS NOT TRUE OR mb.backend_id IS NOT NULL)
         GROUP BY m.id
         ORDER BY m.type, m.display_name`,
-      [type ?? null, availableOnly ?? false, family],
+      [type ?? null, availableOnly ?? false, family, installedOnly ?? false],
     );
 
     const models: Model[] = rows.map((row) => ({
@@ -138,8 +141,9 @@ export default async function modelRoutes(app: FastifyInstance) {
         WHERE m.base_model IS NOT NULL
           AND ($1::text IS NULL OR m.type = $1)
           AND ($2::boolean IS NOT TRUE OR (b.status = 'online' AND b.enabled))
+          AND ($3::boolean IS NOT TRUE OR mb.backend_id IS NOT NULL)
         ORDER BY m.base_model`,
-      [type ?? null, availableOnly ?? false],
+      [type ?? null, availableOnly ?? false, installedOnly ?? false],
     );
 
     return {

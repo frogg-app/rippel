@@ -76,7 +76,7 @@ export default async function modelInstallRoutes(app: FastifyInstance) {
       if (!backend) return reply.code(404).send({ error: 'not_found', message: 'No such backend' });
 
       try {
-        const transport = await requireTransport(backend.base_url);
+        const transport = await requireTransport(backend.base_url, backend.id);
         const raw: ModelCatalogEntry[] = await transport.catalogue();
 
         const { entries, pending } = await withCatalogueInfo(raw, (message) => req.log.info(message));
@@ -164,7 +164,7 @@ export default async function modelInstallRoutes(app: FastifyInstance) {
       }
 
       try {
-        const transport = await requireTransport(backend.base_url);
+        const transport = await requireTransport(backend.base_url, backend.id);
 
         // Resolve the ref against the live catalogue rather than trusting the
         // client's copy of it: the URL and save_path we send must be the ones
@@ -251,7 +251,7 @@ export default async function modelInstallRoutes(app: FastifyInstance) {
         : 'Only an administrator can see or install catalogue models on this backend.';
       if (isAdmin) {
         try {
-          transport = await requireTransport(backend.base_url);
+          transport = await requireTransport(backend.base_url, backend.id);
         } catch (err) {
           transportReason = err instanceof Error ? err.message : String(err);
         }
@@ -328,7 +328,7 @@ export default async function modelInstallRoutes(app: FastifyInstance) {
       }
 
       try {
-        const transport = await requireTransport(backend.base_url);
+        const transport = await requireTransport(backend.base_url, backend.id);
         const readiness = await readinessFor({
           backend,
           template: resolved.template,

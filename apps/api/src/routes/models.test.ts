@@ -18,9 +18,13 @@ describe('model availability filters', () => {
   it('accepts numeric flags sent by the Models page', async () => {
     vi.mocked(query).mockResolvedValue([]);
     const server = await app();
-    const response = await server.inject('/models?runnability=1&previews=1');
+    const response = await server.inject('/models?installedOnly=true&runnability=1&previews=1');
     expect(response.statusCode).toBe(200);
     expect(response.json()).toMatchObject({ models: [], runnability: {}, previews: {} });
+    expect(vi.mocked(query).mock.calls[0]?.[1]).toEqual([null, false, null, true]);
+    expect(vi.mocked(query).mock.calls[1]?.[1]).toEqual([null, false, true]);
+    expect(vi.mocked(query).mock.calls[0]?.[0]).toContain('$4::boolean IS NOT TRUE OR mb.backend_id IS NOT NULL');
+    expect(vi.mocked(query).mock.calls[1]?.[0]).toContain('$3::boolean IS NOT TRUE OR mb.backend_id IS NOT NULL');
     await server.close();
   });
 
