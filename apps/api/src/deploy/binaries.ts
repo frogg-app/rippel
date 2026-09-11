@@ -1,19 +1,18 @@
 /**
- * The agent binaries this rippel can hand out, and how a download carries its
- * own credentials.
+ * The agent binaries this rippel can hand out.
  *
- * The agent used to be a folder of `.mjs` files that an install script fetched
- * one at a time, plus an 89 MB Node runtime to run them with. It is now a
- * single static Go binary per platform, so there is nothing to assemble: this
- * module finds the file, names it, and streams it.
+ * There is one build per platform and it is the same file for everybody. It used
+ * to be otherwise: rippel served a *per-deployment* executable whose filename
+ * carried the server address and the token, so that double-clicking it was the
+ * whole install. That bought one click and cost too much — every rippel had to
+ * serve its own build, the names were unreadable
+ * (`rippel-agent-setup-eyJzIjoiaHR0cHM6...exe`), and anything that renamed the
+ * download broke the install silently.
  *
- * The naming is the interesting part. rippel already knows the deployment's
- * server address and token at the moment someone clicks Download, so it puts
- * them *in the filename* — `rippel-agent-setup-<blob>.exe`. The agent reads its
- * own name on startup and needs nothing else, which turns "download, unzip,
- * open a terminal, paste a command" into "download, double-click". If a browser
- * or a tidy user renames the file, the agent falls back to asking, so the trick
- * can only help; it can never be the reason an install fails.
+ * A machine is paired now by someone typing a URL and an eight-character code
+ * (see `pairing.ts`), which a browser cannot corrupt. So this module has one job
+ * left: find the file and stream it. The download carries no credentials and is
+ * therefore a plain static asset, cacheable and identical for every caller.
  */
 
 import { createReadStream } from 'node:fs';
@@ -40,7 +39,7 @@ export interface AgentBinary {
  * offer them.
  *
  * Windows first because that is the machine with the GPU in it, and the one the
- * owner's two failed installs were on.
+ * owner's failed installs were on.
  */
 export const AGENT_BINARIES: AgentBinary[] = [
   {
@@ -160,59 +159,13 @@ export function readBinary(binary: FoundBinary): NodeJS.ReadableStream {
   return createReadStream(binary.path);
 }
 
-// ---------------------------------------------------------------- setup codes
-
-export interface SetupDetails {
-  /** Where the agent checks in, e.g. http://192.168.1.9:4000 — no trailing slash. */
-  serverUrl: string;
-  token: string;
-  /** Only sent when they differ from the agent's own defaults. */
-  agentPort?: number;
-  comfyPort?: number;
-}
-
 /**
- * Pack a setup into the base64url blob that goes in a filename.
+ * Where this rippel serves a given build from.
  *
- * This must stay byte-for-byte compatible with `DecodeSetup` in
- * `apps/agent/go/setup.go` — the short keys are deliberate, because the blob
- * ends up in a filename and Windows still has a path length limit.
- *
- * base64url's alphabet (A–Z a–z 0–9 - _) is exactly what is safe in a filename
- * on all three platforms, which is why it is the encoding rather than anything
- * with padding or punctuation in it.
+ * One path per platform, no deployment in it and no token on it, because the
+ * file is the same for every machine. That is what lets it be cached, mirrored,
+ * or fetched once and copied onto a box with no route to this rippel at all.
  */
-export function encodeSetup(setup: SetupDetails): string {
-  const payload: Record<string, string | number> = {
-    s: setup.serverUrl.replace(/\/+$/, ''),
-    t: setup.token,
-  };
-  // Omitted when they are the agent's defaults, because every byte here is a
-  // byte of filename.
-  if (setup.agentPort && setup.agentPort !== 8189) payload.p = setup.agentPort;
-  if (setup.comfyPort && setup.comfyPort !== 8188) payload.c = setup.comfyPort;
-  return Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url');
-}
-
-/**
- * The filename a download is served under, carrying its own setup.
- *
- * The `.exe` matters on Windows and must survive: without it the file will not
- * run at all, so the extension is appended after the blob rather than being
- * part of it.
- */
-export function downloadFileName(binary: AgentBinary, setup: SetupDetails): string {
-  const suffix = binary.platform === 'win32' ? '.exe' : '';
-  return `rippel-agent-setup-${encodeSetup(setup)}${suffix}`;
-}
-
-/**
- * The link rippel shows for pasting, and the page a person opens to download.
- *
- * It carries the token in the path rather than a query string because it is
- * meant to be copied by hand: a path segment survives a chat window, an email
- * client and a screenshot in a way `?token=` does not.
- */
-export function setupLink(serverUrl: string, token: string): string {
-  return `${serverUrl.replace(/\/+$/, '')}/api/deployments/setup/${encodeURIComponent(token)}`;
+export function binaryDownloadPath(target: string): string {
+  return `/api/deployments/agent/${target}`;
 }

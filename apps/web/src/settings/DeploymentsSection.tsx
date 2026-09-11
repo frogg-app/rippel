@@ -847,7 +847,16 @@ function countdown(ms: number): string {
  * Issuing a new one invalidates the old one, which is why "New code" is a
  * deliberate button rather than something that happens on every render.
  */
-function PairingPanel({ api, deployment }: { api: DeploymentsApi; deployment: Deployment }) {
+function PairingPanel({
+  api,
+  deployment,
+  platform,
+}: {
+  api: DeploymentsApi;
+  deployment: Deployment;
+  /** Chosen by the tabs above, so the command matches what they say. */
+  platform: 'linux' | 'darwin' | 'win32';
+}) {
   type State =
     | { kind: 'loading' }
     | { kind: 'ready'; code: PairingCode }
@@ -951,22 +960,33 @@ function PairingPanel({ api, deployment }: { api: DeploymentsApi; deployment: De
   }
 
   return (
-    <CopyField
-      label="Pairing code"
-      value={state.code.code}
-      big
-      meta={
-        <>
-          Expires in <span className="mono">{countdown(left)}</span>, and works once. {fresh}
-        </>
-      }
-    />
+    <>
+      <CopyField
+        label="Pairing code"
+        value={state.code.code}
+        big
+        meta={
+          <>
+            Expires in <span className="mono">{countdown(left)}</span>, and works once. {fresh}
+          </>
+        }
+      />
+      {/* The one-liner carries this code, so it lives beside it and dies with
+          it. Keeping it on the install payload would have meant a polled GET
+          handing out a credential every few seconds. */}
+      <CopyField
+        label="Or run this on that machine"
+        value={state.code.commands[platform]}
+      />
+    </>
   );
 }
 
 // ---------------------------------------------------------------- manual path
 
 const PLATFORM_ORDER: AgentPlatform[] = ['linux', 'darwin', 'win32'];
+
+
 
 /** One static binary, so this is single-digit megabytes and always will be. */
 function fileSize(bytes: number): string {
@@ -1132,8 +1152,8 @@ function InstallInstructionsPanel({ api, deployment, method }: { api: Deployment
   // Prefer a binary this rippel has on disk — its filename carries the address
   // and token, so opening it is the whole install. Fall back to the GitHub
   // release only when nothing is built here.
-  const chosen = data.downloads.find((d) => d.target === target) ?? data.downloads[0] ?? null;
-  const others = data.downloads.filter((d) => d.target !== chosen?.target);
+  const chosen = data.binaries.find((d) => d.target === target) ?? data.binaries[0] ?? null;
+  const others = data.binaries.filter((d) => d.target !== chosen?.target);
 
   return (
     <div className={styles.panel}>
@@ -1169,7 +1189,11 @@ function InstallInstructionsPanel({ api, deployment, method }: { api: Deployment
           </div>
         ) : null}
         <CopyField label="Server URL" value={data.serverUrl} />
-        <PairingPanel api={api} deployment={deployment} />
+        <PairingPanel
+          api={api}
+          deployment={deployment}
+          platform={platform === 'unknown' ? 'linux' : platform}
+        />
       </div>}
 
       {/* ------------------------------------------------ the command line */}
@@ -1195,12 +1219,12 @@ function InstallInstructionsPanel({ api, deployment, method }: { api: Deployment
           ))}
         </div>
 
-        <CopyField label="Install Agent" value={data.commands[platform === 'darwin' ? 'darwin' : platform === 'win32' ? 'win32' : 'linux']} />
+        <PairingPanel api={api} deployment={deployment} platform={platform} />
 
         {plaintextToPublicHost(data.serverUrl) ? (
           <p className={styles.warn}>
             That address is plain <code className="mono">http</code> on a public host, and this
-            command carries the agent token in its URL. Anything on the path between the two
+            command carries a pairing code. Anything on the path between the two
             machines can read it. Reach rippel over https before running this, or install over SSH
             instead.
           </p>

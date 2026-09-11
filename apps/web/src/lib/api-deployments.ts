@@ -69,7 +69,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
  * `fileName` carries the deployment's address and token encoded into the name
  * itself, which is what makes opening the file the whole install.
  */
-export interface AgentDownload {
+export interface AgentBinary {
   target: string;
   platform: AgentPlatform;
   arch: 'amd64' | 'arm64';
@@ -87,8 +87,7 @@ export interface InstallInstructions {
    * rippel run from a checkout has none until the agent release is built — so
    * the panel falls back to the GitHub release links.
    */
-  downloads: AgentDownload[];
-  commands: { linux: string; darwin: string; win32: string };
+  binaries: AgentBinary[];
   release: AgentRelease;
 }
 
@@ -104,6 +103,14 @@ export interface PairingCode {
   code: string;
   /** ISO-8601. */
   expiresAt: string;
+  /**
+   * The address the machine should be pointed at, and one-liners that carry
+   * this code. They live here rather than on the install route because a
+   * command containing a credential is only meaningful while that credential
+   * is alive — and a polled GET must not mint one.
+   */
+  serverUrl: string;
+  commands: { linux: string; darwin: string; win32: string };
 }
 
 /**
@@ -129,9 +136,17 @@ const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 function mockCode(): PairingCode {
   const bytes = new Uint8Array(8);
   globalThis.crypto.getRandomValues(bytes);
+  const origin = window.location.origin;
+  const code = [...bytes].map((b) => CODE_ALPHABET[b % CODE_ALPHABET.length]).join('');
   return {
-    code: [...bytes].map((b) => CODE_ALPHABET[b % CODE_ALPHABET.length]).join(''),
+    code,
     expiresAt: new Date(Date.now() + 10 * 60_000).toISOString(),
+    serverUrl: origin,
+    commands: {
+      linux: `curl -fsSL -o /tmp/rippel-agent '${origin}/api/deployments/agent/linux-amd64' && chmod +x /tmp/rippel-agent && /tmp/rippel-agent install --server '${origin}' --code '${code}'`,
+      darwin: `curl -fsSL -o /tmp/rippel-agent '${origin}/api/deployments/agent/macos-arm64' && chmod +x /tmp/rippel-agent && /tmp/rippel-agent install --server '${origin}' --code '${code}'`,
+      win32: `powershell -ExecutionPolicy Bypass -Command "& { iwr -UseBasicParsing '${origin}/api/deployments/agent/windows-amd64' -OutFile rippel-agent.exe; & ./rippel-agent.exe install --server '${origin}' --code '${code}' }"`,
+    },
   };
 }
 

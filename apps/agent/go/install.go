@@ -1,31 +1,27 @@
 package main
 
 import (
-	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"strconv"
 	"strings"
-	"time"
 )
 
 // Installing the agent onto the machine it is being run on.
 //
-// The old agent needed a shell script for this, because it was source that had
-// to find a Node runtime, download six files and write a service unit. A single
-// static binary needs none of that: installing is copying one file, writing one
-// config, and registering one service. That whole reduction is why this is Go.
+// Installing is copying one file, writing one config, and registering one
+// startup entry. Nothing here needs root, and on Windows nothing here needs
+// Administrator either — that second point is not a nicety, it is the bug this
+// file was rewritten to fix. See registerWindowsAutostart.
 //
-// Nothing here needs root. The agent installs into its own home directory and
-// runs as whoever owns the ComfyUI checkout, which is what you want — a ComfyUI
-// installed by root is one you cannot maintain as yourself later.
+// The ordering is deliberate and is the other half of the fix. Pairing happens
+// first, before a single byte is written; if it fails, the machine is exactly as
+// it was. Everything written after that is tracked, so a failure part-way
+// through undoes itself rather than leaving the half-installed state the owner
+// hit: a binary and a config on disk, no way to start, and no way to tell.
 
 // serviceName is what the agent registers itself as, on all three platforms.
 // An administrator who has never heard of rippel can find and stop this.
@@ -33,9 +29,16 @@ const serviceName = "rippel-agent"
 
 const launchAgentLabel = "app.rippel.agent"
 
+// skipServiceEnv lets a caller install everything except the startup entry.
+//
+// For two real cases: a container or image that supervises the agent itself and
+// would be confused by a second mechanism, and this repository's own tests,
+// which must not register a user service on whatever machine they run on.
+const skipServiceEnv = "RIPPEL_SKIP_SERVICE"
+
 // InstalledPath is where the agent copies itself to. The folder someone
 // downloaded into is a Downloads folder they will one day tidy up, and a
-// service pointing into it would stop working that day.
+// startup entry pointing into it would stop working that day.
 func InstalledPath() string {
 	name := serviceName
 	if runtime.GOOS == "windows" {
@@ -44,135 +47,122 @@ func InstalledPath() string {
 	return filepath.Join(AgentHome(), name)
 }
 
-// Install does the whole job: check the server will have us, copy the binary,
-// write the config, register the service, start it.
+// AutostartError marks the one failure that must not undo the install.
+//
+// If the binary and config are in place but the startup entry could not be
+// made, the machine is genuinely usable — the agent runs when started — and
+// deleting a working install over it would be the wrong trade. So it is
+// reported as its own thing, in the words of what did and did not happen,
+// rather than as "it did not work".
+type AutostartError struct {
+	// Detail is the mechanism's own output, kept verbatim.
+	Detail string
+	// Exe is where the agent actually is, so the manual instructions can name it.
+	Exe string
+}
+
+func (e *AutostartError) Error() string {
+	return fmt.Sprintf("could not register a startup entry: %s", e.Detail)
+}
+
+// installedFiles tracks what this run created, so a later failure can undo it.
+type installedFiles struct {
+	paths      []string
+	createdDir string
+}
+
+func (f *installedFiles) track(path string) { f.paths = append(f.paths, path) }
+
+// rollBack removes what this run created and nothing else. An upgrade over an
+// existing install creates nothing, so it rolls back nothing — which is correct:
+// the previous install is still there and still works.
+func (f *installedFiles) rollBack() {
+	for i := len(f.paths) - 1; i >= 0; i-- {
+		_ = os.Remove(f.paths[i])
+	}
+	if f.createdDir != "" {
+		// Only if we made it and it is now empty; never a recursive delete of a
+		// directory that might hold somebody's ComfyUI.
+		_ = os.Remove(f.createdDir)
+	}
+}
+
+// Install does the whole job: pair, copy the binary, write the config, register
+// the startup entry, start it.
 //
 // `say` is how it narrates itself — the interactive path prints to a console a
 // person is watching, and the SSH path streams the same lines back to rippel.
 func Install(setup Setup, say func(string, ...any)) error {
 	home := AgentHome()
+	created := &installedFiles{}
 
-	say("Checking that rippel at %s knows this token...", setup.ServerURL)
-	if err := verifySetup(setup); err != nil {
-		return err
+	if _, err := os.Stat(home); os.IsNotExist(err) {
+		created.createdDir = home
 	}
-	say("rippel recognised it.")
-
 	if err := os.MkdirAll(home, 0o700); err != nil {
 		return fmt.Errorf("could not create %s: %w", home, err)
 	}
 
 	// Stop any previous copy before replacing the file underneath it. On
 	// Windows a running exe cannot be overwritten at all; on Unix it can, but
-	// replacing a binary a live service is executing is still a bad idea.
+	// replacing a binary a live process is executing is still a bad idea.
 	stopService(say)
 
 	target := InstalledPath()
-	if err := copySelf(target); err != nil {
+	replaced, err := copySelf(target)
+	if err != nil {
+		created.rollBack()
 		return err
+	}
+	if !replaced {
+		created.track(target)
 	}
 	say("Installed to %s", target)
 
+	configPath := filepath.Join(home, "config.json")
+	if _, statErr := os.Stat(configPath); os.IsNotExist(statErr) {
+		created.track(configPath)
+	}
 	config := map[string]any{
 		"token":     setup.Token,
 		"serverUrl": setup.ServerURL,
 		"comfyPath": filepath.Join(home, "ComfyUI"),
 	}
-	// The deployment id is deliberately absent: the first check-in learns it
-	// from rippel, which is one fewer thing that can be pasted wrong.
-	if setup.AgentPort != 0 {
-		config["port"] = setup.AgentPort
+	// Unlike the old setup link, pairing tells us the deployment id up front, so
+	// it is written down now rather than learned on the first check-in.
+	if setup.DeploymentID != "" {
+		config["deploymentId"] = setup.DeploymentID
 	}
-	if setup.ComfyPort != 0 {
-		config["comfyPort"] = setup.ComfyPort
-	}
-	if err := writeConfigAt(filepath.Join(home, "config.json"), config); err != nil {
+	if err := writeConfigAt(configPath, config); err != nil {
+		created.rollBack()
 		return err
 	}
-	say("Wrote %s", filepath.Join(home, "config.json"))
+	say("Wrote %s", configPath)
 
 	warnAboutMissingTools(say)
 
-	if err := registerService(target, home, say); err != nil {
-		return err
-	}
-	return nil
+	// From here on nothing is rolled back: the agent is installed and works.
+	return registerService(target, home, say)
 }
 
-// verifySetup asks rippel whether this token is a deployment, before anything
-// is written to disk.
-//
-// This is the single most valuable thing the installer does for a
-// non-technical person. Without it, a mistyped address or a token from a
-// deployment that was since deleted produces a service that installs perfectly,
-// starts perfectly, and never appears in rippel — with the reason buried in a
-// log they will never open. Here it is a sentence on screen, before anything
-// happened.
-func verifySetup(setup Setup) error {
-	// No comfy state and no agent port: the installer has not started a server
-	// or looked at the disk yet, and rippel should keep what it already knew
-	// rather than being told nothing is there.
-	body, err := json.Marshal(checkinBody{
-		Version:  AgentVersion,
-		Platform: normalisePlatform(),
-	})
-	if err != nil {
-		return err
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
-		setup.ServerURL+"/api/deployments/checkin", bytes.NewReader(body))
-	if err != nil {
-		return err
-	}
-	req.Header.Set("content-type", "application/json")
-	req.Header.Set("X-Rippel-Agent-Token", setup.Token)
-
-	res, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return fmt.Errorf(
-			"Could not reach rippel.\n\n  %s\n\n"+
-				"Check that this machine is on the same network as rippel, and that the "+
-				"address in your setup link is right.",
-			friendlyNetworkError(setup.ServerURL, err))
-	}
-	defer res.Body.Close()
-	raw, _ := io.ReadAll(io.LimitReader(res.Body, 8*1024))
-
-	switch {
-	case res.StatusCode == http.StatusUnauthorized:
-		return fmt.Errorf(
-			"rippel does not recognise that setup code.\n\n" +
-				"It is probably out of date — codes stop working when the deployment is " +
-				"removed in rippel. Open rippel, go to Settings then Deployment, and copy " +
-				"the link for this machine again.")
-	case res.StatusCode == http.StatusNotFound:
-		return fmt.Errorf(
-			"There is no rippel at %s — something answered, but it was not rippel.\n\n"+
-				"Check the address in your setup link.", setup.ServerURL)
-	case res.StatusCode < 200 || res.StatusCode > 299:
-		return fmt.Errorf("rippel answered %d: %s", res.StatusCode,
-			strings.TrimSpace(string(raw)))
-	}
-	return nil
-}
-
-// copySelf writes this running executable to target.
-func copySelf(target string) error {
-	source, err := os.Executable()
-	if err != nil {
-		return fmt.Errorf("could not work out where this program is: %w", err)
+// copySelf writes this running executable to target. It reports whether it
+// replaced something that was already there, so an upgrade is not rolled back
+// as if this run had created it.
+func copySelf(target string) (replaced bool, err error) {
+	source, execErr := os.Executable()
+	if execErr != nil {
+		return false, fmt.Errorf("could not work out where this program is: %w", execErr)
 	}
 	if same, _ := sameFile(source, target); same {
 		// Already installed and re-run in place; nothing to copy.
-		return nil
+		return true, nil
 	}
+	_, statErr := os.Stat(target)
+	replaced = statErr == nil
 
 	data, err := os.ReadFile(source)
 	if err != nil {
-		return fmt.Errorf("could not read %s: %w", source, err)
+		return replaced, fmt.Errorf("could not read %s: %w", source, err)
 	}
 
 	if err := os.WriteFile(target, data, 0o755); err != nil {
@@ -182,15 +172,15 @@ func copySelf(target string) error {
 		aside := target + ".old"
 		_ = os.Remove(aside)
 		if renameErr := os.Rename(target, aside); renameErr != nil {
-			return fmt.Errorf(
+			return replaced, fmt.Errorf(
 				"Could not write %s.\n\n  %s\n\n"+
 					"If the agent is already running, stop it and try again.", target, err)
 		}
 		if err := os.WriteFile(target, data, 0o755); err != nil {
-			return fmt.Errorf("could not write %s: %w", target, err)
+			return replaced, fmt.Errorf("could not write %s: %w", target, err)
 		}
 	}
-	return os.Chmod(target, 0o755)
+	return replaced, os.Chmod(target, 0o755)
 }
 
 func sameFile(a, b string) (bool, error) {
@@ -206,7 +196,7 @@ func sameFile(a, b string) (bool, error) {
 }
 
 // writeConfigAt writes the config, merging over anything already there so an
-// upgrade keeps the deployment id and storage token it had learned.
+// upgrade keeps the storage token it had learned.
 func writeConfigAt(path string, patch map[string]any) error {
 	current := map[string]any{}
 	if raw, err := os.ReadFile(path); err == nil && len(strings.TrimSpace(string(raw))) > 0 {
@@ -246,11 +236,16 @@ func warnAboutMissingTools(say func(string, ...any)) {
 // ---------------------------------------------------------------- services
 
 func registerService(exe, home string, say func(string, ...any)) error {
+	if os.Getenv(skipServiceEnv) != "" {
+		say("%s is set, so no startup entry was registered.", skipServiceEnv)
+		say("Start it yourself with: %s run", exe)
+		return nil
+	}
 	switch runtime.GOOS {
 	case "darwin":
 		return registerLaunchAgent(exe, home, say)
 	case "windows":
-		return registerScheduledTask(exe, home, say)
+		return registerWindowsAutostart(exe, home, say)
 	default:
 		return registerSystemdUnit(exe, home, say)
 	}
@@ -266,7 +261,9 @@ func stopService(say func(string, ...any)) {
 			_ = quiet("launchctl", "unload", plist)
 		}
 	case "windows":
-		_ = quiet("schtasks", "/End", "/TN", serviceName)
+		// Nothing to "stop" for a Run key — the entry is not a service. Any
+		// running copy is ended so its file can be replaced.
+		_ = quiet("taskkill", "/IM", serviceName+".exe", "/F")
 	default:
 		if _, err := exec.LookPath("systemctl"); err == nil {
 			_ = quiet("systemctl", "--user", "stop", serviceName+".service")
@@ -297,7 +294,7 @@ func output(command string, args ...string) (string, error) {
 // someone is logged in.
 func registerSystemdUnit(exe, home string, say func(string, ...any)) error {
 	if _, err := exec.LookPath("systemctl"); err != nil {
-		say("No systemd here, so nothing was registered as a service.")
+		say("No systemd here, so nothing was registered to start automatically.")
 		say("Start it yourself with: %s run", exe)
 		return nil
 	}
@@ -330,16 +327,16 @@ WantedBy=default.target
 	}
 
 	if err := quiet("systemctl", "--user", "daemon-reload"); err != nil {
-		return fmt.Errorf("systemctl --user daemon-reload failed: %w", err)
+		return &AutostartError{Detail: "systemctl --user daemon-reload failed", Exe: exe}
 	}
 	if err := quiet("systemctl", "--user", "enable", serviceName+".service"); err != nil {
-		return fmt.Errorf("could not enable the service: %w", err)
+		return &AutostartError{Detail: "systemctl --user enable failed", Exe: exe}
 	}
 	// restart, not `enable --now`: on a re-run the service is already enabled,
 	// and --now would leave the old binary in memory having just replaced the
 	// file under it.
 	if out, err := output("systemctl", "--user", "restart", serviceName+".service"); err != nil {
-		return fmt.Errorf("could not start the service: %s", out)
+		return &AutostartError{Detail: out, Exe: exe}
 	}
 
 	if user := os.Getenv("USER"); user != "" {
@@ -391,7 +388,7 @@ func registerLaunchAgent(exe, home string, say func(string, ...any)) error {
 	}
 	_ = quiet("launchctl", "unload", plist)
 	if out, err := output("launchctl", "load", plist); err != nil {
-		return fmt.Errorf("could not start the LaunchAgent: %s", out)
+		return &AutostartError{Detail: out, Exe: exe}
 	}
 	say("Started as a LaunchAgent.")
 	say("Logs: %s", logPath)
@@ -403,52 +400,133 @@ func xmlEscape(text string) string {
 	return replacer.Replace(text)
 }
 
-// registerScheduledTask is the Windows supervision mechanism.
-//
-// A Scheduled Task for the current user with a logon trigger: the one mechanism
-// present on every Windows since 7, needing no service wrapper downloaded from
-// anywhere and no administrator rights. It is also the mechanism a Windows
-// administrator can see and stop without knowing anything about rippel.
-//
-// schtasks.exe rather than the PowerShell cmdlets, because schtasks has been on
-// every Windows for twenty years and does not depend on an execution policy.
-func registerScheduledTask(exe, home string, say func(string, ...any)) error {
-	// schtasks takes the command as one string, so the path is quoted here —
-	// this lands under C:\Users\<name>\, and a user folder with a space in it
-	// is the normal case, not the edge case.
-	command := `"` + exe + `" run`
-
-	_ = quiet("schtasks", "/Delete", "/TN", serviceName, "/F")
-
-	if out, err := output("schtasks", "/Create",
-		"/TN", serviceName,
-		"/TR", command,
-		"/SC", "ONLOGON",
-		"/RL", "LIMITED",
-		"/F",
-	); err != nil {
-		return fmt.Errorf(
-			"Could not register the startup task.\n\n  %s\n\n"+
-				"The agent is installed at %s — you can start it by "+
-				"double-clicking it, but it will not start again by itself after a restart.",
-			out, exe)
+// startupFolder is the per-user Startup folder, whose contents Explorer runs at
+// logon. %APPDATA% is the documented way to find it and is always set for an
+// interactive user.
+func startupFolder() string {
+	appData := os.Getenv("APPDATA")
+	if appData == "" {
+		return ""
 	}
-
-	if out, err := output("schtasks", "/Run", "/TN", serviceName); err != nil {
-		return fmt.Errorf(
-			"The startup task was registered but would not start.\n\n  %s\n\n"+
-				"Try restarting the machine.", out)
-	}
-
-	say("Registered the startup task %q and started it.", serviceName)
-	say("It will start again by itself whenever you log in.")
-	say("Logs: %s", filepath.Join(home, "agent.log"))
-	return nil
+	return filepath.Join(appData, "Microsoft", "Windows", "Start Menu", "Programs", "Startup")
 }
 
-// Uninstall removes the service and the installed binary, leaving the config
-// and any ComfyUI checkout alone — removing rippel's management of a machine
-// should not delete the thing it was managing.
+func startupShimPath() string {
+	folder := startupFolder()
+	if folder == "" {
+		return ""
+	}
+	return filepath.Join(folder, serviceName+".cmd")
+}
+
+// registerWindowsAutostart makes the agent start at logon, without elevation.
+//
+// **This is the bug.** The previous mechanism was `schtasks /Create`, and on the
+// owner's own machine it answered `ERROR: Access is denied` — after the agent
+// had already copied itself and written its config. Creating a Scheduled Task
+// can require administrator rights depending on how the machine is configured,
+// and asking a person setting up their own GPU box to find an elevated prompt is
+// exactly the step this whole feature exists to remove.
+//
+// So: the per-user Run key, and a Startup-folder script as the fallback.
+//
+//   - `HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run` is
+//     documented by Microsoft as a per-user Run key: entries under HKCU run
+//     when *that* user logs on, and writing to one's own HKCU hive needs no
+//     elevation, because it is that user's own registry. (Microsoft, "Run and
+//     RunOnce Registry Keys", learn.microsoft.com/windows/win32/setupapi/
+//     run-and-runonce-registry-keys — the HKEY_CURRENT_USER variants are listed
+//     alongside the HKEY_LOCAL_MACHINE ones, which *are* the ones that need
+//     administrator rights.)
+//   - The per-user Startup folder under %APPDATA% is the shell's own equivalent:
+//     Explorer runs what is in it at logon, and it is an ordinary directory in
+//     the user's roaming profile that the user can write to.
+//
+// `reg.exe` rather than a registry API binding, for the same reason the old code
+// used schtasks.exe: it is present on every Windows, it is pure exec with no
+// cgo, and its failure is a readable line of text rather than an HRESULT.
+//
+// A .cmd rather than a .lnk for the fallback, because writing a shortcut means
+// COM and IShellLink, which means cgo or a hand-rolled binary format — a .cmd is
+// a text file, and `start ""` launches the agent without leaving a console
+// window sitting on the desktop.
+//
+// **Unverified here.** Neither branch of this function can be executed on the
+// Linux box it was written and cross-compiled on. What is testable — and is
+// tested — is the command line built for reg.exe and the text of the .cmd.
+func registerWindowsAutostart(exe, home string, say func(string, ...any)) error {
+	command := windowsRunCommand(exe)
+	var problems []string
+
+	// The Run key first: it is the mechanism Windows itself documents for this,
+	// and it leaves nothing on the desktop or in a folder to be tidied away.
+	if out, err := output("reg", "add", windowsRunKey,
+		"/v", serviceName, "/t", "REG_SZ", "/d", command, "/f"); err != nil {
+		problems = append(problems, fmt.Sprintf("the registry: %s", out))
+	} else {
+		say("Registered to start at logon (per-user, no administrator needed).")
+		say("Logs: %s", filepath.Join(home, "agent.log"))
+		startNow(exe, say)
+		return nil
+	}
+
+	// Fallback: a one-line script in the user's own Startup folder.
+	if shim := startupShimPath(); shim != "" {
+		if err := os.MkdirAll(filepath.Dir(shim), 0o755); err != nil {
+			problems = append(problems, fmt.Sprintf("the Startup folder: %s", err))
+		} else if err := os.WriteFile(shim, []byte(startupShimBody(exe)), 0o644); err != nil {
+			problems = append(problems, fmt.Sprintf("the Startup folder: %s", err))
+		} else {
+			say("Registered to start at logon, from %s", shim)
+			say("Logs: %s", filepath.Join(home, "agent.log"))
+			startNow(exe, say)
+			return nil
+		}
+	} else {
+		problems = append(problems, "the Startup folder: APPDATA is not set for this account")
+	}
+
+	return &AutostartError{Detail: strings.Join(problems, "; "), Exe: exe}
+}
+
+// windowsRunKey is the per-user Run key. Per-user is the whole point: the
+// HKEY_LOCAL_MACHINE key of the same name is the one that needs elevation.
+const windowsRunKey = `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`
+
+// windowsRunCommand is the value written under the Run key.
+//
+// The path is quoted because this lands under C:\Users\<name>\, and a user
+// folder with a space in it is the normal case, not the edge case.
+func windowsRunCommand(exe string) string {
+	return `"` + exe + `" run`
+}
+
+// startupShimBody is the fallback script. `start ""` returns immediately and
+// gives the agent its own process, so the logon does not wait on it; the empty
+// quotes are start's title argument, without which it would read a quoted path
+// as the title and launch nothing.
+func startupShimBody(exe string) string {
+	return "@echo off\r\nstart \"\" /b \"" + exe + "\" run\r\n"
+}
+
+// startNow launches the agent immediately, so the person who just installed it
+// does not have to log out to see it appear in rippel.
+func startNow(exe string, say func(string, ...any)) {
+	cmd := exec.Command(exe, "run")
+	hideConsole(cmd)
+	detach(cmd)
+	if err := cmd.Start(); err != nil {
+		say("Note: the agent is registered but could not be started just now (%s).", err)
+		say("      It will start when you next log in.")
+		return
+	}
+	_ = cmd.Process.Release()
+	say("Started it.")
+}
+
+// Uninstall removes the startup entry and the installed binary, leaving the
+// config and any ComfyUI checkout alone — removing rippel's management of a
+// machine should not delete the thing it was managing.
 func Uninstall(say func(string, ...any)) error {
 	stopService(say)
 	switch runtime.GOOS {
@@ -458,8 +536,17 @@ func Uninstall(say func(string, ...any)) error {
 			say("Removed %s", plist)
 		}
 	case "windows":
+		// Both mechanisms, because either could have been the one that worked.
+		if err := quiet("reg", "delete", windowsRunKey, "/v", serviceName, "/f"); err == nil {
+			say("Removed the startup entry from the registry.")
+		}
+		if shim := startupShimPath(); shim != "" {
+			if err := os.Remove(shim); err == nil {
+				say("Removed %s", shim)
+			}
+		}
+		// A task left by a version of the agent that predates this one.
 		_ = quiet("schtasks", "/Delete", "/TN", serviceName, "/F")
-		say("Removed the startup task %q.", serviceName)
 	default:
 		if _, err := exec.LookPath("systemctl"); err == nil {
 			_ = quiet("systemctl", "--user", "disable", serviceName+".service")
@@ -479,11 +566,9 @@ func Uninstall(say func(string, ...any)) error {
 }
 
 // portInUse is the check behind the friendliest error the run path can give: a
-// second agent started by hand while the service is already up.
+// second agent started by hand while the first is already up.
 func portInUse(err error) bool {
 	text := strings.ToLower(err.Error())
 	return strings.Contains(text, "address already in use") ||
 		strings.Contains(text, "only one usage of each socket address")
 }
-
-var _ = strconv.Itoa
