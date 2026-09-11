@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { AgentTask, ComfyState, Deployment } from '@comfy/shared';
 import { ApiRequestError } from '../lib/api';
@@ -227,6 +227,73 @@ describe('DeploymentsSection', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Refresh' }));
     expect(await screen.findByText('studio-4090 did not answer within 15s.')).toBeInTheDocument();
     expect(screen.getByText('studio-4090')).toBeInTheDocument();
+  });
+
+  it('shows a successful Test as online immediately, then refreshes ComfyUI details', async () => {
+    let finishStatus!: (value: Awaited<ReturnType<DeploymentsApi['status']>>) => void;
+    const { api } = fakeApi([{ ...online, status: 'offline', comfy: null }], {
+      probe: vi.fn(async () => ({ ok: true, latencyMs: 8, version: '0.3.0', platform: 'win32' as const })),
+      status: vi.fn<DeploymentsApi['status']>(() => new Promise((resolve) => { finishStatus = resolve; })),
+    });
+    render(<DeploymentsSection api={api} />);
+    expect(await screen.findByText('offline')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Test' }));
+    expect(await screen.findByText('online')).toBeInTheDocument();
+    expect(screen.queryByText(/The agent has stopped answering/)).not.toBeInTheDocument();
+    expect(screen.getByText('Windows')).toBeInTheDocument();
+    expect(screen.getByText('agent 0.3.0')).toBeInTheDocument();
+    expect(api.status).toHaveBeenCalledWith('d1');
+    await act(async () => finishStatus({ comfy: COMFY, accelerator: 'cuda', tasks: [] }));
+    expect(screen.getByText(/running/, { selector: 'dd' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Restart ComfyUI' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Refresh' })).toBeEnabled();
+  });
+
+  it('marks a failed Test offline immediately and disables agent actions', async () => {
+    const { api } = fakeApi([online], {
+      probe: vi.fn(async () => ({ ok: false, latencyMs: 8, error: 'Connection refused' })),
+    });
+    render(<DeploymentsSection api={api} />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Test' }));
+    expect(await screen.findByText('offline')).toBeInTheDocument();
+    expect(screen.getByText(/The agent has stopped answering/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Refresh' })).toHaveAttribute('aria-disabled', 'true');
+    expect(api.status).not.toHaveBeenCalled();
+  });
+
+  it('keeps the successful ping and previous ComfyUI details if the detail refresh fails', async () => {
+    const { api } = fakeApi([{ ...online, status: 'offline' }], {
+      status: vi.fn(async () => { throw new Error('Status timed out.'); }),
+    });
+    render(<DeploymentsSection api={api} />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Test' }));
+    expect(await screen.findByText('online')).toBeInTheDocument();
+    expect(screen.getByText(/running/, { selector: 'dd' })).toBeInTheDocument();
+    expect(screen.getByText(/Showing the last reported details/)).toHaveTextContent('Status timed out.');
+  });
+
+  it('does not let an older fleet poll revert a successful Test', async () => {
+    const offline: Deployment = { ...online, status: 'offline' };
+    let finishList!: (value: Deployment[]) => void;
+    const list = vi.fn<DeploymentsApi['list']>()
+      .mockResolvedValueOnce([offline])
+      .mockImplementationOnce(() => new Promise((resolve) => { finishList = resolve; }));
+    const { api } = fakeApi([offline], { list });
+    vi.useFakeTimers();
+    try {
+      const { unmount } = render(<DeploymentsSection api={api} />);
+      await act(async () => {});
+      await act(async () => { vi.advanceTimersByTime(15_000); });
+      expect(list).toHaveBeenCalledTimes(2);
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Test' })); });
+      expect(screen.getByText('online')).toBeInTheDocument();
+      await act(async () => finishList([offline]));
+      expect(screen.getByText('online')).toBeInTheDocument();
+      expect(screen.queryByText('offline')).not.toBeInTheDocument();
+      unmount();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('gives the manual path a command carrying the token', async () => {

@@ -50,14 +50,18 @@ export function DeploymentsSection({ api = defaultApi }: { api?: DeploymentsApi 
   const [failed, setFailed] = useState<string | null>(null);
   const [adding, setAdding] = useState<null | 'ssh' | 'manual'>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const deploymentRevision = useRef(0);
 
   const load = useCallback(
     async (signal?: AbortSignal) => {
+      const revision = deploymentRevision.current;
       try {
-        setDeployments(await api.list(signal));
+        const next = await api.list(signal);
+        if (signal?.aborted || revision !== deploymentRevision.current) return;
+        setDeployments(next);
         setFailed(null);
       } catch (cause) {
-        if (signal?.aborted) return;
+        if (signal?.aborted || revision !== deploymentRevision.current) return;
         setFailed(cause instanceof Error ? cause.message : 'Could not load the deployments.');
       }
     },
@@ -83,6 +87,7 @@ export function DeploymentsSection({ api = defaultApi }: { api?: DeploymentsApi 
   }, [toast]);
 
   const onCreated = (deployment: Deployment) => {
+    deploymentRevision.current++;
     setDeployments((prev) =>
       [...(prev ?? []).filter((d) => d.id !== deployment.id), deployment].sort((a, b) =>
         a.name.localeCompare(b.name),
@@ -117,12 +122,14 @@ export function DeploymentsSection({ api = defaultApi }: { api?: DeploymentsApi 
             deployment={deployment}
             index={index}
             api={api}
-            onChange={(next) =>
-              setDeployments((prev) => (prev ?? []).map((d) => (d.id === next.id ? next : d)))
-            }
-            onRemoved={() =>
-              setDeployments((prev) => (prev ?? []).filter((d) => d.id !== deployment.id))
-            }
+            onChange={(next) => {
+              deploymentRevision.current++;
+              setDeployments((prev) => (prev ?? []).map((d) => (d.id === next.id ? next : d)));
+            }}
+            onRemoved={() => {
+              deploymentRevision.current++;
+              setDeployments((prev) => (prev ?? []).filter((d) => d.id !== deployment.id));
+            }}
             onError={setToast}
           />
         ))}
@@ -280,7 +287,31 @@ function DeploymentCard({
 
   const test = () =>
     act('test the agent', async () => {
-      setProbe(await api.probe(deployment.id));
+      setProbe(null);
+      const result = await api.probe(deployment.id);
+      setProbe(result);
+      if (!result.ok) {
+        onChange({ ...deployment, status: 'offline' });
+        return;
+      }
+
+      // A successful ping is already proof the agent is online. Show that
+      // immediately, while its more detailed ComfyUI status is being read.
+      const next: Deployment = {
+        ...deployment,
+        status: 'online',
+        agentVersion: result.version ?? deployment.agentVersion,
+        platform: result.platform ?? deployment.platform,
+        lastSeenAt: new Date().toISOString(),
+      };
+      onChange(next);
+      try {
+        const status = await api.status(deployment.id);
+        onChange({ ...next, comfy: status.comfy });
+      } catch (cause) {
+        const detail = cause instanceof Error ? ` ${cause.message}` : '';
+        onError(`The agent answered, but its ComfyUI status could not be refreshed. Showing the last reported details.${detail}`);
+      }
     });
 
   const install = () =>
