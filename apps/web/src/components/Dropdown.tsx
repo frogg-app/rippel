@@ -65,6 +65,8 @@ export interface DropdownProps {
   align?: 'start' | 'end';
   /** Drawn inside the trigger after the value — usually a chevron. */
   children?: ReactNode;
+  /** Content inside the trigger before its selected value. */
+  leading?: ReactNode;
 }
 
 /** How long a pause resets the type-ahead buffer, matching the OS menus. */
@@ -106,6 +108,7 @@ export function Dropdown({
   keepPlaceholder = false,
   align = 'start',
   children,
+  leading,
   'aria-label': ariaLabel,
   'aria-labelledby': ariaLabelledBy,
   'aria-describedby': ariaDescribedBy,
@@ -369,6 +372,7 @@ export function Dropdown({
         onKeyDown={onKeyDown}
         onClick={() => (open ? close() : openMenu())}
       >
+        {leading}
         <span className={styles.value}>{triggerLabel}</span>
         {children}
       </button>

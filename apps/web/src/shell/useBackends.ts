@@ -27,6 +27,11 @@ export interface BackendsState {
  */
 const listeners = new Set<() => void>();
 
+export function subscribeBackendChanges(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => { listeners.delete(listener); };
+}
+
 export function refreshBackends(): void {
   for (const listener of listeners) listener();
 }

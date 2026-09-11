@@ -1,0 +1,48 @@
+/* Epilogue's original 79% ascent / 24% descent places its visible letters
+ * above the centre of controls. Redistribute the same 103% line box so text
+ * and centred SVG icons share an optical centre, without shifting controls
+ * or adding padding. Keep metrics on this face only; fallbacks and mono
+ * numerals retain their own metrics. Local files avoid a late font swap. */
+@font-face {
+  font-family: 'Epilogue';
+  font-style: normal;
+  font-weight: 300;
+  font-display: swap;
+  src: url('/fonts/epilogue-300.ttf') format('truetype');
+  ascent-override: 90%;
+  descent-override: 13%;
+  line-gap-override: 0%;
+}
+
+@font-face {
+  font-family: 'Epilogue';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/epilogue-400.ttf') format('truetype');
+  ascent-override: 90%;
+  descent-override: 13%;
+  line-gap-override: 0%;
+}
+
+@font-face {
+  font-family: 'Epilogue';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('/fonts/epilogue-500.ttf') format('truetype');
+  ascent-override: 90%;
+  descent-override: 13%;
+  line-gap-override: 0%;
+}
+
+@font-face {
+  font-family: 'Epilogue';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('/fonts/epilogue-600.ttf') format('truetype');
+  ascent-override: 90%;
+  descent-override: 13%;
+  line-gap-override: 0%;
+}

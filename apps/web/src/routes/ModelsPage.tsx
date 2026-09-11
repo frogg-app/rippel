@@ -128,7 +128,7 @@ export function ModelsPage({ api = modelsApi, storageApi: storage = storageApi }
   // Default to the backend the shell's pill would show: an online one first,
   // because that is the one an install can actually run on.
   useEffect(() => {
-    if (backendId || library.backends.length === 0) return;
+    if (backendId && library.backends.some((candidate) => candidate.id === backendId)) return;
     const enabled = library.backends.filter((backend) => backend.enabled);
     const preferred =
       enabled.find((backend) => backend.status === 'online') ?? enabled[0] ?? library.backends[0];
@@ -351,28 +351,28 @@ export function ModelsPage({ api = modelsApi, storageApi: storage = storageApi }
         <div className={styles.spacer} />
 
         {library.backends.length > 0 ? (
-          <div className={styles.backendPicker}>
-            <span
-              className={`${styles.dot} ${backend?.status === 'online' ? styles.dotOn : ''}`}
-              aria-hidden
-            />
-            <label className={styles.backendLabel} id="models-backend-label" htmlFor="models-backend">
-              {tab === 'installed' ? 'Highlighting' : tab === 'storage' ? 'Files on' : 'Installing to'}
-            </label>
-            <Dropdown
-              id="models-backend"
-              aria-labelledby="models-backend-label"
-              className={styles.backendSelect}
-              value={backendId ?? ''}
-              options={library.backends.map((candidate) => ({
-                value: candidate.id,
-                label: `${candidate.name}${candidate.status === 'online' ? '' : ' (offline)'}`,
-              }))}
-              onChange={(next) => setBackendId(next || null)}
-            >
-              <ChevronIcon size={12} className={styles.backendChevron} />
-            </Dropdown>
-          </div>
+          <Dropdown
+            id="models-backend"
+            aria-label={tab === 'installed' ? 'Highlighting' : tab === 'storage' ? 'Files on' : 'Installing to'}
+            className={styles.backendPicker}
+            leading={<>
+              <span
+                className={`${styles.dot} ${backend?.status === 'online' ? styles.dotOn : ''}`}
+                aria-hidden
+              />
+              <span className={styles.backendLabel}>
+                {tab === 'installed' ? 'Highlighting' : tab === 'storage' ? 'Files on' : 'Installing to'}
+              </span>
+            </>}
+            value={backendId ?? ''}
+            options={library.backends.map((candidate) => ({
+              value: candidate.id,
+              label: `${candidate.name}${candidate.status === 'online' ? '' : ' (offline)'}`,
+            }))}
+            onChange={(next) => setBackendId(next || null)}
+          >
+            <ChevronIcon size={12} className={styles.backendChevron} />
+          </Dropdown>
         ) : null}
       </header>
 

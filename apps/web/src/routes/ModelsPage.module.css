@@ -15,12 +15,12 @@
 
 .topbar {
   flex-shrink: 0;
-  min-height: var(--page-header-height);
+  min-height: 64px;
   flex-wrap: wrap;
   display: flex;
   align-items: center;
-  gap: var(--space-4) var(--space-8);
-  padding: var(--space-4) var(--pane-pad-x);
+  gap: var(--gap) var(--space-6);
+  padding: var(--gap) var(--pane-pad-x);
   border-bottom: 1px solid var(--line);
 }
 
@@ -48,8 +48,8 @@
   display: flex;
   align-items: center;
   gap: 7px;
-  height: var(--control-height);
-  padding: 0 var(--space-4);
+  height: 34px;
+  padding: 0 14px;
   white-space: nowrap;
   border-radius: 999px;
   font-size: var(--text-base);
@@ -111,8 +111,10 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  height: 34px;
-  padding: 0 10px 0 13px;
+  min-height: 40px;
+  padding: 0 14px;
+  font-size: var(--text-sm);
+  color: var(--text-2);
   border-radius: 999px;
   background: var(--surface-3);
   border: 1px solid var(--line);
@@ -144,30 +146,6 @@
   color: var(--text-4);
 }
 
-.backendSelect {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 0;
-  background: none;
-  border: none;
-  font-size: var(--text-sm);
-  color: var(--text-2);
-  cursor: pointer;
-  max-width: 200px;
-}
-
-/* As on the family pill: the ring belongs on the pill, not around the text. */
-.backendSelect:focus-visible {
-  outline: none;
-  box-shadow: none;
-}
-
-.backendPicker:has(.backendSelect:focus-visible) {
-  border-color: var(--focus-line);
-  box-shadow: var(--focus-ring);
-}
-
 .backendChevron {
   flex-shrink: 0;
   color: var(--text-4);
@@ -191,7 +169,7 @@
   flex-grow: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: var(--space-6) var(--pane-pad-x) var(--space-8);
+  padding: var(--space-4) var(--pane-pad-x) var(--space-6);
   display: flex;
   flex-direction: column;
 }

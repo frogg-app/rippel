@@ -13,6 +13,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Backend, Model, ModelCatalogInfo, ModelRunnability, Uuid } from '@comfy/shared';
 import type { ModelsApi } from '../lib/api-models';
+import { subscribeBackendChanges } from '../shell/useBackends';
 
 export interface ModelLibraryState {
   backends: Backend[];
@@ -86,6 +87,7 @@ export function useModelLibrary(api: ModelsApi): ModelLibraryState {
   }, [api, nonce]);
 
   const refresh = useCallback(() => setNonce((n) => n + 1), []);
+  useEffect(() => subscribeBackendChanges(refresh), [refresh]);
   const remove = useCallback((id: Uuid) => {
     setModels((current) => current.filter((model) => model.id !== id));
   }, []);

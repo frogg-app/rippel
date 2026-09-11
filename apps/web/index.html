@@ -12,18 +12,13 @@
       be mush in a tab.
     -->
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <!--
-      Two faces: Epilogue for everything the app sets in a proportional face —
-      300 for the lockup and display sizes, 400/500 for UI text — and IBM Plex
-      Mono for every numeric (steps, seeds, VRAM, timings). Preconnect first so
-      the text is not held up; both have real fallbacks in `tokens.css`, because
-      the box this runs on may be offline.
-    -->
+    <!-- The local UI face is preloaded to keep controls stable at first paint. -->
+    <link rel="preload" href="/fonts/epilogue-400.ttf" as="font" type="font/ttf" crossorigin />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
       rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=Epilogue:wght@300;400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap"
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&display=swap"
     />
   </head>
   <body>

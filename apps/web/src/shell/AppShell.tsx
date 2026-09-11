@@ -98,12 +98,12 @@ export function AppShell() {
           </div>
           <div className={styles.status}>
             <QueueChip depth={totalQueueDepth(backends)} />
-            <BackendPill
+            {section !== 'models' ? <BackendPill
               backend={primary}
               loading={loading}
               unreachable={unreachable}
               extraCount={Math.max(0, backends.length - 1)}
-            />
+            /> : null}
           </div>
         </header>
 

@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { env } from './env.js';
-import { query, queryOne } from './db.js';
+import { query, queryOne, transaction } from './db.js';
 import { hashPassword } from './auth/password.js';
 
 /**
@@ -12,19 +12,27 @@ export async function seed(log: (msg: string) => void = console.log): Promise<vo
 }
 
 /**
- * Backends named in COMFY_BACKENDS are inserted if the name is new. An existing
- * backend is left alone — once it is in the database, the admin UI owns it, and
- * silently rewriting a URL someone changed by hand would be surprising.
+ * Bootstrap each configured name once. The history survives admin renames and
+ * removals so a restart cannot undo them.
  */
 async function seedBackends(log: (msg: string) => void): Promise<void> {
   for (const backend of env.backends) {
-    const existing = await queryOne(`SELECT id FROM backends WHERE name = $1`, [backend.name]);
-    if (existing) continue;
-    await query(`INSERT INTO backends (name, base_url) VALUES ($1, $2)`, [
-      backend.name,
-      backend.baseUrl,
-    ]);
-    log(`seed: registered backend ${backend.name} at ${backend.baseUrl}`);
+    const added = await transaction(async (client) => {
+      const claimed = await client.query(
+        `INSERT INTO backend_seed_history (name) VALUES ($1) ON CONFLICT DO NOTHING RETURNING name`,
+        [backend.name],
+      );
+      if (claimed.rowCount === 0) return false;
+      const result = await client.query(
+        `INSERT INTO backends (name, base_url)
+         SELECT $1, $2 WHERE NOT EXISTS (
+           SELECT 1 FROM backends WHERE name = $1 OR base_url = $2
+         ) ON CONFLICT (name) DO NOTHING RETURNING id`,
+        [backend.name, backend.baseUrl],
+      );
+      return result.rowCount !== 0;
+    });
+    if (added) log(`seed: registered backend ${backend.name} at ${backend.baseUrl}`);
   }
 }
 

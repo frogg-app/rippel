@@ -11,7 +11,7 @@
 
 .filters {
   flex-shrink: 0;
-  padding: var(--space-6) var(--pane-pad-x) 0;
+  padding: var(--space-4) var(--pane-pad-x) 0;
   display: flex;
   flex-direction: column;
   gap: 12px;

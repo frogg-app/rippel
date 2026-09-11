@@ -32,6 +32,7 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { refreshBackends } from '../shell/useBackends';
 import type { ReactNode } from 'react';
 import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom';
 import type { User } from '@comfy/shared';
@@ -921,6 +922,23 @@ describe('ModelsPage', () => {
   });
 
   describe('the pickers that used to be native selects', () => {
+    it('opens from the selector label and drops a removed backend after settings change', async () => {
+      const remaining = makeBackend({ id: 'backend-2', name: 'steve-pc' });
+      const api = makeStubApi({ backends: [makeBackend(), remaining] });
+      renderPage(api);
+      await ready();
+      const picker = screen.getByRole('combobox', { name: /highlighting/i });
+      expect(within(picker).getByText('Highlighting')).toBeInTheDocument();
+      await userEvent.click(within(picker).getByText('Highlighting'));
+      expect(screen.getByRole('option', { name: 'steve-pc' })).toBeInTheDocument();
+      await userEvent.keyboard('{Escape}');
+      api.backends = vi.fn().mockResolvedValue([remaining]);
+      act(() => refreshBackends());
+      await waitFor(() => expect(picker).toHaveTextContent('steve-pc'));
+      await userEvent.click(picker);
+      expect(screen.queryByRole('option', { name: 'desktop-6900xt' })).not.toBeInTheDocument();
+    });
+
     it('switches backend from the header picker, by keyboard alone', async () => {
       const api = makeStubApi({
         backends: [

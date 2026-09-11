@@ -94,8 +94,10 @@ export function ModelPicker({
   if (models.length === 0) {
     return (
       <p className={styles.note}>
-        No models are available on an online backend. Start a backend with models
-        installed, or <a className={styles.link} href="/models">manage models</a> to install one.
+        <span>
+          No models are available on an online backend. Start a backend with models
+          installed, or <a className={styles.link} href="/models">manage models</a> to install one.
+        </span>
       </p>
     );
   }
