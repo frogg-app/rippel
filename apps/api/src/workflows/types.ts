@@ -250,6 +250,8 @@ export interface LoraChainSpec {
 }
 
 export interface WorkflowManifest {
+  /** Explicit first-frame loader for library and newer built-in graphs. */
+  readonly initImageNodeId?: string;
   /** Stable id, recorded on jobs so an old job can be re-run byte-identically. */
   readonly id: string;
   /** Bumped whenever the graph changes shape; old jobs keep their old version. */

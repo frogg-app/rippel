@@ -154,7 +154,7 @@ export async function dispatch(job: JobRow, clientId: string): Promise<Dispatche
         backendUrl: backend.base_url,
         storageKey,
       });
-      graph = withInitImage(graph, transferred.reference);
+      graph = withInitImage(graph, transferred.reference, template.manifest.initImageNodeId);
     } catch (err) {
       // The backend refusing an upload is usually transient — it is the same
       // machine we are about to ask to run the job.

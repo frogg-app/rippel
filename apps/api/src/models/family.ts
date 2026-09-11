@@ -63,6 +63,7 @@ export const FAMILIES = {
   ltxVideo: 'ltx-video',
   svd: 'svd',
   wan: 'wan',
+  wan22Ti2v5b: 'wan2.2-ti2v-5b',
 } as const;
 
 export type ModelFamily = (typeof FAMILIES)[keyof typeof FAMILIES];
@@ -74,6 +75,7 @@ export type ModelFamily = (typeof FAMILIES)[keyof typeof FAMILIES];
  * Families absent from this map are treated as mutually exclusive.
  */
 const DERIVED_FROM: Partial<Record<ModelFamily, ModelFamily>> = {
+  [FAMILIES.wan22Ti2v5b]: FAMILIES.wan,
   [FAMILIES.pony]: FAMILIES.sdxl,
   [FAMILIES.illustrious]: FAMILIES.sdxl,
   [FAMILIES.sdxlTurbo]: FAMILIES.sdxl,
@@ -159,6 +161,7 @@ const RULES: readonly Rule[] = [
   },
   { family: FAMILIES.ltxVideo, pattern: /\bltx\b|\bltxv\b|\bltx video\b/, strength: 'strong' },
   { family: FAMILIES.svd, pattern: /\bsvd\b|\bstable video diffusion\b/, strength: 'strong' },
+  { family: FAMILIES.wan22Ti2v5b, pattern: /\bwan2 2 ti2v 5b\b|\bwan 2 2 ti2v 5b\b/, strength: 'strong' },
   // Anchored on the version: "wan" on its own is too short to trust.
   { family: FAMILIES.wan, pattern: /\bwan2 [12]\b|\bwan 2 [12]\b|\bwan2[12]\b/, strength: 'strong' },
 ];
@@ -203,6 +206,7 @@ const CATALOGUE_BASES: Record<string, ModelFamily | null> = {
   stablevideodiffusion: FAMILIES.svd,
   wan21: FAMILIES.wan,
   wan22: FAMILIES.wan,
+  wan22ti2v5b: FAMILIES.wan22Ti2v5b,
   wanvideo: FAMILIES.wan,
   // Not families. Present so they resolve to "no family" instead of falling
   // through to a guess made from a filename like `4x-UltraSharp`.
@@ -361,5 +365,9 @@ export function claimFromCatalogueBase(base: string | null | undefined): Catalog
  * `base` falls through to the name rather than blocking inference.
  */
 export function inferFamily(evidence: FamilyEvidence): ModelFamily | null {
-  return familyFromCatalogueBase(evidence.catalogueBase) ?? familyFromFilename(evidence.filename);
+  const catalogue = familyFromCatalogueBase(evidence.catalogueBase);
+  const filename = familyFromFilename(evidence.filename);
+  // A generic Wan catalogue entry does not distinguish incompatible 5B/14B graphs.
+  if (catalogue === FAMILIES.wan && filename === FAMILIES.wan22Ti2v5b) return filename;
+  return catalogue ?? filename;
 }

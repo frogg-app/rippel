@@ -1,3 +1,4 @@
+import { img2vidWan22Template } from './img2vid-wan22-5b.js';
 /**
  * The template registry.
  *
@@ -48,6 +49,7 @@ export const TEMPLATES: readonly WorkflowTemplate[] = [
   txt2vidLtxvDmTemplate,
   img2vidLtxvDmTemplate,
   img2vidSvdTemplate,
+  img2vidWan22Template,
   txt2vidHunyuanTemplate,
   ...SD_GENERIC_TEMPLATES,
 ];

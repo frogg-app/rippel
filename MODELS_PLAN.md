@@ -362,6 +362,13 @@ it instead.
   of hand-maintaining node class names. Snapshot/runnability tests: 24 passed.
   A fresh capture from desktop-6900xt remains pending LAN access.
 
+- **Task 3 implemented; GPU completion pending.** Added the explicit image-input
+  variant of the official Wan 2.2 TI2V 5B graph, 4n+1 frames, small 32-aligned
+  presets, correct UMT5/Wan 2.2 VAE requirements and a distinct 5B family. Dispatch
+  now honors an explicit first-frame loader id. 331 targeted tests and API
+  typecheck passed. Graph inputs match captured ComfyUI 0.34.0 specifications.
+  No weights were downloaded and no real Wan video was produced.
+
 ## Tasks
 
 Ordered by value. Tasks in the same run group can be done in one session.
