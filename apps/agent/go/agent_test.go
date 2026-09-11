@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -23,12 +24,15 @@ import (
 func testConfig(t *testing.T) *Config {
 	t.Helper()
 	home := t.TempDir()
+	stub := httptest.NewServer(http.NotFoundHandler())
+	t.Cleanup(stub.Close)
+	port := stub.Listener.Addr().(*net.TCPAddr).Port
 	return &Config{
 		Token:            "the-token",
 		Host:             "127.0.0.1",
 		Port:             18189,
 		ComfyPath:        filepath.Join(home, "ComfyUI"),
-		ComfyPort:        18188,
+		ComfyPort:        port,
 		HeartbeatSeconds: 20,
 		Platform:         "linux",
 		Home:             home,
@@ -232,7 +236,7 @@ func TestPingAndStatusSayWhatTheyKnow(t *testing.T) {
 		"running":         false,
 		"helperInstalled": false,
 		"helperReady":     false,
-		"port":            float64(18188),
+		"port":            float64(cfg.ComfyPort),
 	} {
 		if comfy[key] != want {
 			t.Fatalf("comfy.%s is %v, wanted %v", key, comfy[key], want)

@@ -212,7 +212,7 @@ func DetectAccelerator() string {
 	if probe("nvidia-smi", "-L") {
 		return "cuda"
 	}
-	if probe("rocminfo") {
+	if probe("rocminfo") || (runtime.GOOS == "windows" && strings.Contains(strings.ToLower(windowsGPUName()), "radeon")) {
 		return "rocm"
 	}
 	return "cpu"
@@ -260,6 +260,14 @@ func InstallComfy(cfg *Config, task *Task, accelerator string) (string, error) {
 	if accelerator == "" || accelerator == "auto" {
 		accelerator = DetectAccelerator()
 	}
+	gpuName := ""
+	if runtime.GOOS == "windows" && accelerator == "rocm" {
+		gpuName = windowsGPUName()
+	}
+	torchArgs, constraints, err := torchInstallArgs(runtime.GOOS, accelerator, gpuName)
+	if err != nil {
+		return "", err
+	}
 	task.Appendf("installing ComfyUI into %s for %s", cfg.ComfyPath, accelerator)
 
 	if err := os.MkdirAll(cfg.Home, 0o700); err != nil {
@@ -296,14 +304,26 @@ func InstallComfy(cfg *Config, task *Task, accelerator string) (string, error) {
 	if err := Run(task, "", os.Environ(), python, "-m", "pip", "install", "--upgrade", "pip", "wheel"); err != nil {
 		return "", err
 	}
-	if err := Run(task, "", os.Environ(), python, "-m", "pip", "install",
-		"torch", "torchvision", "torchaudio", "--index-url", torchIndex(accelerator)); err != nil {
+	if err := Run(task, "", os.Environ(), python, torchArgs...); err != nil {
 		return "", err
 	}
-	if err := Run(task, cfg.ComfyPath, os.Environ(), python, "-m", "pip", "install", "-r", "requirements.txt"); err != nil {
+	requirementsArgs := []string{"-m", "pip", "install", "-r", "requirements.txt"}
+	if constraints != "" {
+		constraintPath := filepath.Join(cfg.ComfyPath, ".rippel-torch-constraints.txt")
+		if err := os.WriteFile(constraintPath, []byte(constraints), 0600); err != nil {
+			return "", err
+		}
+		requirementsArgs = append(requirementsArgs, "-c", constraintPath)
+	}
+	if err := Run(task, cfg.ComfyPath, os.Environ(), python, requirementsArgs...); err != nil {
 		return "", err
 	}
 
+	if accelerator == "rocm" {
+		if err := Run(task, cfg.ComfyPath, os.Environ(), python, "-c", "import torch; assert torch.version.hip and torch.cuda.is_available(), 'ROCm cannot access an AMD GPU'; print(torch.cuda.get_device_name(0))"); err != nil {
+			return "", err
+		}
+	}
 	task.Append("ComfyUI installed.")
 	return accelerator, nil
 }
