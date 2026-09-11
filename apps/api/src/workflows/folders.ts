@@ -23,12 +23,19 @@ export const FOLDER_READ_BY: Readonly<Record<string, string>> = {
   CheckpointLoader: 'checkpoints',
   ImageOnlyCheckpointLoader: 'checkpoints',
   UNETLoader: 'diffusion_models',
+  UnetLoaderGGUF: 'diffusion_models',
+  UnetLoaderGGUFAdvanced: 'diffusion_models',
   LoraLoader: 'loras',
   LoraLoaderModelOnly: 'loras',
   VAELoader: 'vae',
   CLIPLoader: 'text_encoders',
   DualCLIPLoader: 'text_encoders',
   TripleCLIPLoader: 'text_encoders',
+  QuadrupleCLIPLoader: 'text_encoders',
+  CLIPLoaderGGUF: 'text_encoders',
+  DualCLIPLoaderGGUF: 'text_encoders',
+  TripleCLIPLoaderGGUF: 'text_encoders',
+  QuadrupleCLIPLoaderGGUF: 'text_encoders',
   ControlNetLoader: 'controlnet',
   DiffControlNetLoader: 'controlnet',
   UpscaleModelLoader: 'upscale_models',
@@ -109,4 +116,14 @@ export function folderOfInstalled(info: ObjectInfo | null, filename: string): st
     }
   }
   return null;
+}
+
+/** Installer defaults use the same loader table as preflight and verdicts.
+ * Wan and Hunyuan encoders are CLIPLoader/DualCLIPLoader types, not folders. */
+const DEFAULT_LOADER: Readonly<Record<string, string>> = {
+  checkpoint: 'CheckpointLoaderSimple', lora: 'LoraLoader', vae: 'VAELoader',
+  controlnet: 'ControlNetLoader', upscaler: 'UpscaleModelLoader', clip: 'CLIPLoader',
+};
+export function folderForType(type: string): string | null {
+  return FOLDER_READ_BY[DEFAULT_LOADER[type] ?? ''] ?? null;
 }

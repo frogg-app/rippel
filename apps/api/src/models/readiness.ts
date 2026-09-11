@@ -66,30 +66,7 @@ import type { ModelRequirement, WorkflowTemplate } from '../workflows/types.js';
 import { listBackendFolder, listBackendFolders } from './installs.js';
 import type { ModelTransport } from './transport.js';
 
-/**
- * Which ComfyUI folder each loader class reads from.
- *
- * This is the crux of the misfiled case: `CheckpointLoaderSimple` and
- * `UNETLoader` both load a diffusion model, and they read *different folders*.
- * A file in the wrong one is invisible to exactly one of them.
- *
- * `installs.ts` has a type -> folder map for a different purpose (deciding
- * where a download should have landed). This one is keyed by node class because
- * that is what a graph names, and a type is not enough to distinguish these two.
- */
-const FOLDER_FOR_LOADER: Record<string, string> = {
-  CheckpointLoaderSimple: 'checkpoints',
-  CheckpointLoader: 'checkpoints',
-  UNETLoader: 'diffusion_models',
-  CLIPLoader: 'text_encoders',
-  DualCLIPLoader: 'text_encoders',
-  TripleCLIPLoader: 'text_encoders',
-  VAELoader: 'vae',
-  LoraLoader: 'loras',
-  LoraLoaderModelOnly: 'loras',
-  ControlNetLoader: 'controlnet',
-  UpscaleModelLoader: 'upscale_models',
-};
+import { FOLDER_READ_BY } from '../workflows/folders.js';
 
 /**
  * Folders worth searching when a file the loader wants is not where it should
@@ -499,7 +476,7 @@ function buildReport(params: {
     return { ...common, status: 'satisfied' as const, resolved: params.resolved, misfiled: null };
   }
 
-  const requiredFolder = FOLDER_FOR_LOADER[site.nodeClass] ?? null;
+  const requiredFolder = FOLDER_READ_BY[site.nodeClass] ?? null;
   const elsewhere = params.wanted ? foundIn(params.wanted, params.folders) : [];
   const wrongFolders = requiredFolder
     ? elsewhere.filter((f) => f !== requiredFolder)

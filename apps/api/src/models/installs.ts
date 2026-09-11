@@ -1,3 +1,5 @@
+import { folderForType } from '../workflows/folders.js';
+export { folderForType } from '../workflows/folders.js';
 /**
  * The model install service.
  *
@@ -201,20 +203,6 @@ export async function listBackendFolders(baseUrl: string): Promise<string[]> {
 /** Last path segment, for either separator — the backend may be Windows. */
 function basename(path: string): string {
   return path.split(/[\\/]/).pop() ?? path;
-}
-
-/** Our model type -> the ComfyUI folder name that holds it. */
-const FOLDER_FOR_TYPE: Record<string, string> = {
-  checkpoint: 'checkpoints',
-  lora: 'loras',
-  vae: 'vae',
-  controlnet: 'controlnet',
-  upscaler: 'upscale_models',
-  clip: 'text_encoders',
-};
-
-export function folderForType(type: string): string | null {
-  return FOLDER_FOR_TYPE[type] ?? null;
 }
 
 /**

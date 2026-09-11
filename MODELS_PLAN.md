@@ -330,6 +330,10 @@ it instead.
   sizes and SHA-256 hashes in `docs/LTX_COMPANIONS.md`. Targeted API tests: 36
   passed; API TypeScript check passed. No model files downloaded.
 
+- **Task 12 implemented.** Readiness and installer defaults now use the shared
+  loader/folder table, including GGUF loaders. Wan/Hunyuan encoder types reuse
+  the native CLIP loaders. Targeted API tests: 62 passed; typecheck passed.
+
 ## Tasks
 
 Ordered by value. Tasks in the same run group can be done in one session.
