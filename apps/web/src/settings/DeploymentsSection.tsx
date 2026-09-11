@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import type {
   AgentPlatform,
   AgentProbe,
@@ -10,7 +10,11 @@ import { CheckIcon, CopyIcon, DownloadIcon, PlusIcon } from '../library/icons';
 import { Mark } from '../components/Mark';
 import { gb } from '../lib/format';
 import { ApiRequestError } from '../lib/api';
-import { deploymentsApi as defaultApi, type DeploymentsApi, type InstallInstructions } from '../lib/api-deployments';
+import {
+  deploymentsApi as defaultApi,
+  type DeploymentsApi,
+  type InstallInstructions,
+} from '../lib/api-deployments';
 import { refreshBackends } from '../shell/useBackends';
 import shared from './SettingsModal.module.css';
 import { Dropdown } from '../components/Dropdown';
@@ -174,7 +178,9 @@ const PLATFORM_LABEL: Record<AgentPlatform, string> = {
   linux: 'Linux',
   darwin: 'macOS',
   win32: 'Windows',
-  unknown: 'unknown platform',
+  // Not "unknown platform": nothing is wrong, the agent simply has not said
+  // yet. The card's next-action line explains what that means.
+  unknown: 'platform not known yet',
 };
 
 function DeploymentCard({
@@ -196,7 +202,9 @@ function DeploymentCard({
   const [task, setTask] = useState<AgentTask | null>(null);
   const [probe, setProbe] = useState<AgentProbe | null>(null);
   const [armed, setArmed] = useState(false);
-  const [showInstall, setShowInstall] = useState(false);
+  // A machine that has never been heard from has exactly one useful next step,
+  // so the panel holding it is already open rather than behind another click.
+  const [showInstall, setShowInstall] = useState(() => !deployment.lastSeenAt);
 
   useEffect(() => {
     if (!armed) return;
@@ -206,6 +214,20 @@ function DeploymentCard({
 
   const comfy = deployment.comfy;
   const online = deployment.status === 'online';
+
+  /**
+   * Why a control is refusing, in the words the card would use out loud.
+   *
+   * Every one of these buttons used to go simply grey, which answers nothing —
+   * "Install ComfyUI" greyed out on a brand-new machine looks like a bug
+   * rather than a machine that has not been set up yet.
+   */
+  const offlineReason = online
+    ? null
+    : deployment.lastSeenAt
+      ? 'The agent is not answering. Press Test to try it again.'
+      : 'Waiting for the agent to check in. Install the agent on this machine first.';
+  const busyReason = busy ? `Waiting for “${busy}” to finish.` : null;
 
   /** Follow an agent task to its end, appending only what is new each poll. */
   const follow = useCallback(
@@ -336,69 +358,79 @@ function DeploymentCard({
         </div>
       </div>
 
+      <NextAction deployment={deployment} />
       <ComfySummary deployment={deployment} />
 
       <div className={shared.cardActions}>
         <button type="button" className={shared.action} onClick={() => void test()} disabled={busy !== null}>
           {busy === 'test the agent' ? 'Testing…' : 'Test'}
         </button>
-        <button type="button" className={shared.action} onClick={() => void refresh()} disabled={busy !== null || !online}>
+        <ReasonedButton
+          className={shared.action}
+          reason={busyReason ?? offlineReason}
+          onClick={() => void refresh()}
+        >
           {busy === 'read the machine' ? 'Reading…' : 'Refresh'}
-        </button>
+        </ReasonedButton>
 
         {comfy?.installed ? (
           <>
-            <button
-              type="button"
+            <ReasonedButton
               className={shared.action}
+              reason={busyReason ?? offlineReason}
               onClick={() => void power(comfy.running ? 'restart' : 'start')}
-              disabled={busy !== null || !online}
             >
               {busy?.endsWith('ComfyUI') && busy.startsWith(comfy.running ? 'restart' : 'start')
                 ? 'Working…'
                 : comfy.running
                   ? 'Restart ComfyUI'
                   : 'Start ComfyUI'}
-            </button>
+            </ReasonedButton>
             {comfy.running ? (
-              <button type="button" className={shared.action} onClick={() => void power('stop')} disabled={busy !== null}>
+              <ReasonedButton className={shared.action} reason={busyReason} onClick={() => void power('stop')}>
                 Stop
-              </button>
+              </ReasonedButton>
             ) : null}
-            <button type="button" className={shared.action} onClick={() => void update()} disabled={busy !== null || !online}>
+            <ReasonedButton
+              className={shared.action}
+              reason={busyReason ?? offlineReason}
+              onClick={() => void update()}
+            >
               {busy === 'update ComfyUI' ? 'Updating…' : 'Update'}
-            </button>
+            </ReasonedButton>
           </>
         ) : (
-          <button
-            type="button"
+          <ReasonedButton
             className={`${shared.action} ${shared.actionPrimary}`}
+            reason={busyReason ?? offlineReason}
             onClick={() => void install()}
-            disabled={busy !== null || !online}
           >
             {busy === 'install ComfyUI' ? 'Installing…' : 'Install ComfyUI'}
-          </button>
+          </ReasonedButton>
         )}
 
         {comfy?.installed && !comfy.helperReady ? (
-          <button type="button" className={shared.action} onClick={() => void helper()} disabled={busy !== null || !online}>
+          <ReasonedButton
+            className={shared.action}
+            reason={busyReason ?? offlineReason}
+            onClick={() => void helper()}
+          >
             {busy === 'install the storage helper' ? 'Installing…' : 'Install storage helper'}
-          </button>
+          </ReasonedButton>
         ) : null}
 
         {comfy?.installed && !deployment.backendId ? (
-          <button
-            type="button"
+          <ReasonedButton
             className={`${shared.action} ${shared.actionPrimary}`}
+            reason={busyReason}
             onClick={() => void register()}
-            disabled={busy !== null}
           >
             {busy === 'register the backend' ? 'Adding…' : 'Add as backend'}
-          </button>
+          </ReasonedButton>
         ) : null}
 
         <button type="button" className={shared.action} onClick={() => setShowInstall((v) => !v)}>
-          {showInstall ? 'Hide install command' : 'Install command'}
+          {showInstall ? 'Hide Install Agent' : 'Install Agent'}
         </button>
 
         <button
@@ -440,13 +472,60 @@ function DeploymentCard({
   );
 }
 
+/**
+ * What this machine is waiting for, in one sentence with the next move in it.
+ *
+ * Three states, and the difference between the first two is the one the old
+ * panel hid: a machine that has never been heard from needs the agent
+ * installed, while one that checks in and has no ComfyUI needs a button on
+ * this very card. Saying only "waiting for the agent" left both looking alike.
+ */
+function NextAction({ deployment }: { deployment: Deployment }) {
+  const comfy = deployment.comfy;
+  const neverSeen = !deployment.lastSeenAt;
+
+  if (neverSeen) {
+    return (
+      <p className={`${styles.next} ${styles.nextWaiting}`}>
+        <span className={styles.nextText}>
+          <strong>Waiting for the agent to check in.</strong> Nothing has been heard from this
+          machine yet. Use <strong>Install Agent</strong> below to put the agent on it — once it
+          starts, this card fills in by itself.
+        </span>
+      </p>
+    );
+  }
+  if (deployment.status !== 'online') {
+    return (
+      <p className={`${styles.next} ${styles.nextWaiting}`}>
+        <span className={styles.nextText}>
+          <strong>The agent has stopped answering.</strong> It checked in before, so it is
+          installed — the machine may be asleep or the agent stopped. Press <strong>Test</strong> to
+          try it again.
+        </span>
+      </p>
+    );
+  }
+  if (comfy && !comfy.installed) {
+    return (
+      <p className={`${styles.next} ${styles.nextReady}`}>
+        <span className={styles.nextText}>
+          <strong>The agent is running.</strong> There is no ComfyUI on this machine yet — press{' '}
+          <strong>Install ComfyUI</strong> to put one there.
+        </span>
+      </p>
+    );
+  }
+  return null;
+}
+
 /** The ComfyUI on that machine, in one line per fact worth knowing. */
 function ComfySummary({ deployment }: { deployment: Deployment }) {
   const comfy = deployment.comfy;
   if (!comfy) {
     return (
       <p className={styles.summary}>
-        The agent has not reported yet. Once it checks in, what ComfyUI it has appears here.
+        Nothing reported yet. Once the agent checks in, what ComfyUI it has appears here.
       </p>
     );
   }
@@ -575,13 +654,102 @@ function CopyField({ label, value }: { label: string; value: string }) {
 
 const PLATFORM_ORDER: AgentPlatform[] = ['linux', 'darwin', 'win32'];
 
-/**
- * The assets carry a Node runtime, so they are megabytes, not kilobytes. Saying
- * "42000 KB" to someone about to start that download on a slow link is not the
- * honest way to put it.
- */
+/** One static binary, so this is single-digit megabytes and always will be. */
 function fileSize(bytes: number): string {
   return bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.round(bytes / 1024)} KB`;
+}
+
+/**
+ * Which agent build the person reading this screen would need.
+ *
+ * Detected from the *browser*, not from the deployment row. The row's platform
+ * is whatever the agent last reported, and on a machine that has never checked
+ * in it is "unknown" — which is precisely when this panel matters most. The
+ * person looking at it is usually the one who will run the file, so their own
+ * browser is the better evidence, and every other build stays one click away.
+ *
+ * Apple silicon versus Intel is the one genuinely hard case: a Mac reports
+ * "MacIntel" either way. `userAgentData` answers it properly where it exists
+ * (Chromium), and everywhere else the tie is broken towards Apple silicon —
+ * every Mac sold since 2020 — with the Intel build listed right beside it.
+ */
+export function detectTarget(nav: Navigator = navigator): string {
+  const data = (nav as Navigator & { userAgentData?: { platform?: string } }).userAgentData;
+  const platform = `${data?.platform ?? ''} ${nav.platform ?? ''} ${nav.userAgent ?? ''}`.toLowerCase();
+
+  if (platform.includes('win')) return 'windows-amd64';
+  if (platform.includes('linux') && !platform.includes('android')) return 'linux-amd64';
+  if (platform.includes('mac') || platform.includes('darwin') || platform.includes('iphone')) {
+    // A Mac with more than a handful of cores reporting "MacIntel" under a
+    // browser that will not tell us the architecture is, overwhelmingly, an
+    // Apple-silicon machine running a page that cannot see it.
+    return 'macos-arm64';
+  }
+  return 'linux-amd64';
+}
+
+// ---------------------------------------------------------------- why disabled
+
+/**
+ * A button that says why it cannot be used, instead of going quiet.
+ *
+ * A `disabled` button answers "why is this grey?" with nothing at all: it takes
+ * no hover, no focus and no tap, so a `title` attribute reaches a mouse and
+ * nobody else. This keeps the button in the tab order and marks it
+ * `aria-disabled` instead, which is the same promise to a screen reader without
+ * the silence — the same trade the model cards' TypeBadge makes.
+ *
+ * `reason` present means "refuse, and explain". `reason` absent means the
+ * button is simply live.
+ */
+function ReasonedButton({
+  reason,
+  className,
+  onClick,
+  children,
+  ...rest
+}: {
+  reason?: string | null;
+  className?: string;
+  onClick: () => void;
+  children: ReactNode;
+  'aria-label'?: string;
+}) {
+  const tipId = useId();
+  const [pinned, setPinned] = useState(false);
+
+  if (!reason) {
+    return (
+      <button type="button" className={className} onClick={onClick} {...rest}>
+        {children}
+      </button>
+    );
+  }
+
+  return (
+    <span className={styles.reasonWrap}>
+      <button
+        type="button"
+        className={`${className} ${styles.reasonButton}`}
+        aria-disabled
+        aria-describedby={tipId}
+        // A tap is the only way to reach this on a touch screen, so it reveals
+        // the sentence rather than doing nothing at all.
+        onClick={() => setPinned((open) => !open)}
+        onBlur={() => setPinned(false)}
+        {...rest}
+      >
+        {children}
+      </button>
+      <span
+        id={tipId}
+        role="tooltip"
+        className={pinned ? `${styles.reasonTip} ${styles.reasonTipOn}` : styles.reasonTip}
+      >
+        {reason}
+      </span>
+    </span>
+  );
 }
 
 /**
@@ -612,9 +780,12 @@ function plaintextToPublicHost(url: string): boolean {
 function InstallInstructionsPanel({ api, deployment }: { api: DeploymentsApi; deployment: Deployment }) {
   const [data, setData] = useState<InstallInstructions | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
+  // The command-line tabs still choose a platform; the download chooses a
+  // build, which is a finer thing (two of them are macOS).
   const [platform, setPlatform] = useState<AgentPlatform>(
     deployment.platform === 'unknown' ? 'linux' : deployment.platform,
   );
+  const target = useMemo(() => detectTarget(), []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -644,57 +815,119 @@ function InstallInstructionsPanel({ api, deployment }: { api: DeploymentsApi; de
     );
   }
 
-  const download = data.release.downloads.find((d) => d.platform === platform);
+  // Prefer a binary this rippel has on disk — its filename carries the address
+  // and token, so opening it is the whole install. Fall back to the GitHub
+  // release only when nothing is built here.
+  const chosen = data.downloads.find((d) => d.target === target) ?? data.downloads[0] ?? null;
+  const others = data.downloads.filter((d) => d.target !== chosen?.target);
 
   return (
     <div className={styles.panel}>
-      <div className={styles.tabs} role="tablist" aria-label="Platform">
-        {PLATFORM_ORDER.map((p) => (
-          <button
-            key={p}
-            type="button"
-            role="tab"
-            aria-selected={platform === p}
-            className={platform === p ? `${styles.tab} ${styles.tabOn}` : styles.tab}
-            onClick={() => setPlatform(p)}
-          >
-            {PLATFORM_LABEL[p]}
-          </button>
-        ))}
+      {/* ---------------------------------------------------- the easy path */}
+      <div className={`${styles.step} ${styles.stepLead}`}>
+        <div className={styles.stepHead}>
+          <h4 className={styles.stepTitle}>Send a setup link</h4>
+        </div>
+        <p className={styles.stepNote}>
+          The simplest way in, and it needs no rippel login at the other end. Send this to whoever
+          is sitting at <strong>{deployment.name}</strong>. They open it, click the button for their
+          computer, and open the file that downloads — the download is named after this
+          deployment&rsquo;s own setup code, so there is nothing to type and nothing to unpack.
+        </p>
+        <CopyField label="Setup link" value={data.setupLink} />
+        <div className={styles.downloadRow}>
+          <a className={shared.action} href={data.setupLink} target="_blank" rel="noreferrer">
+            Open the setup page
+          </a>
+        </div>
       </div>
 
-      <p className={shared.blurb}>
-        Run this on <strong>{deployment.name}</strong> as the account that should own the ComfyUI
-        install. It downloads the agent from this rippel, writes its configuration, and starts it as
-        a {platform === 'win32' ? 'scheduled task' : platform === 'darwin' ? 'LaunchAgent' : 'systemd user service'}.
-        Re-running it upgrades in place.
-      </p>
-
-      <CopyField label="Install command" value={data.commands[platform === 'darwin' ? 'darwin' : platform === 'win32' ? 'win32' : 'linux']} />
-
-      <p className={shared.blurb}>
-        The command points that machine at <code className="mono">{data.serverUrl}</code> — the
-        address you are reaching rippel on right now. The agent checks in there from then on, so it
-        has to be an address <strong>{deployment.name}</strong> can reach too. If it cannot, set
-        <code className="mono"> AGENT_SERVER_URL</code> on the rippel server to the address it
-        should use and copy the command again.
-      </p>
-      {plaintextToPublicHost(data.serverUrl) ? (
-        <p className={styles.warn}>
-          That address is plain <code className="mono">http</code> on a public host, and this
-          command carries the agent token in its URL. Anything on the path between the two machines
-          can read it. Reach rippel over https before running this, or install over SSH instead.
-        </p>
+      {/* ------------------------------------------- or download it yourself */}
+      {chosen ? (
+        <div className={styles.step}>
+          <div className={styles.stepHead}>
+            <h4 className={styles.stepTitle}>Or download the agent here</h4>
+          </div>
+          <p className={styles.stepNote}>
+            One file, about {fileSize(chosen.sizeBytes)}. Nothing needs to be installed first, and
+            there is nothing to unpack — run it and it registers itself with this rippel.
+          </p>
+          <div className={styles.downloadRow}>
+            <a
+              className={`${shared.action} ${shared.actionPrimary} ${styles.downloadPrimary}`}
+              href={chosen.url}
+              download={chosen.fileName}
+            >
+              <DownloadIcon size={14} />
+              Download for {chosen.label}
+              <span className="mono"> ({fileSize(chosen.sizeBytes)})</span>
+            </a>
+            {others.length ? (
+              <>
+                <span className={styles.otherLabel}>Another computer?</span>
+                {others.map((d) => (
+                  <a key={d.target} className={shared.action} href={d.url} download={d.fileName}>
+                    {d.label}
+                  </a>
+                ))}
+              </>
+            ) : null}
+          </div>
+        </div>
       ) : null}
 
+      {/* ------------------------------------------------ the command line */}
+      <details className={styles.details} open={!chosen}>
+        <summary>Install from a command line instead</summary>
+        <p className={styles.stepNote}>
+          For a machine nobody is sitting at — an SSH session, or a headless box that cannot click.
+          Run this on <strong>{deployment.name}</strong> as the account that should own the ComfyUI
+          install. It fetches the same single binary, writes its configuration, and starts it as a{' '}
+          {platform === 'win32' ? 'scheduled task' : platform === 'darwin' ? 'LaunchAgent' : 'systemd user service'}.
+          Re-running it upgrades in place.
+        </p>
+
+        <div className={styles.tabs} role="tablist" aria-label="Platform">
+          {PLATFORM_ORDER.map((p) => (
+            <button
+              key={p}
+              type="button"
+              role="tab"
+              aria-selected={platform === p}
+              className={platform === p ? `${styles.tab} ${styles.tabOn}` : styles.tab}
+              onClick={() => setPlatform(p)}
+            >
+              {PLATFORM_LABEL[p]}
+            </button>
+          ))}
+        </div>
+
+        <CopyField label="Install Agent" value={data.commands[platform === 'darwin' ? 'darwin' : platform === 'win32' ? 'win32' : 'linux']} />
+
+        <p className={styles.stepNote}>
+          The command points that machine at <code className="mono">{data.serverUrl}</code> — the
+          address you are reaching rippel on right now. The agent checks in there from then on, so
+          it has to be an address <strong>{deployment.name}</strong> can reach too. If it cannot,
+          set
+          <code className="mono"> AGENT_SERVER_URL</code> on the rippel server to the address it
+          should use and copy the command again.
+        </p>
+        {plaintextToPublicHost(data.serverUrl) ? (
+          <p className={styles.warn}>
+            That address is plain <code className="mono">http</code> on a public host, and this
+            command carries the agent token in its URL. Anything on the path between the two
+            machines can read it. Reach rippel over https before running this, or install over SSH
+            instead.
+          </p>
+        ) : null}
+      </details>
+
       <details className={styles.details}>
-        <summary>Set it up by hand instead</summary>
-        <p className={shared.blurb}>
-          The agent is a folder of JavaScript files, and the release below carries a Node.js runtime
-          with it, so the machine needs nothing preinstalled — that is why the download is tens of
-          megabytes. Unpack it, put these values in
-          <code className="mono"> ~/.rippel-agent/config.json</code>, then run{' '}
-          <code className="mono">./node/bin/node src/main.mjs</code> from the unpacked folder.
+        <summary>Configure it by hand instead</summary>
+        <p className={styles.stepNote}>
+          The agent reads its setup from its own filename, so this is only needed if the file was
+          renamed on the way. Run it once and it will ask for these, or put them in
+          <code className="mono"> ~/.rippel-agent/config.json</code>.
         </p>
         <CopyField label="rippel address" value={data.serverUrl} />
         <CopyField label="Deployment id" value={deployment.id} />
@@ -724,22 +957,17 @@ function InstallInstructionsPanel({ api, deployment }: { api: DeploymentsApi; de
             )}
           </div>
         </div>
-        {download ? (
-          <a className={shared.action} href={download.url} target="_blank" rel="noreferrer">
-            <DownloadIcon size={14} />
-            Download for {download.label}
-            {download.sizeBytes ? <span className="mono"> ({fileSize(download.sizeBytes)})</span> : null}
-          </a>
-        ) : null}
         <a className={shared.action} href={data.release.url} target="_blank" rel="noreferrer">
           All releases
         </a>
       </div>
-      <p className={styles.muted}>
-        The download carries a Node.js runtime as well as the agent — tens of megabytes rather than
-        a handful of kilobytes — so the machine needs nothing preinstalled. Unpack it and run the
-        install command above from inside that folder.
-      </p>
+      {!chosen ? (
+        <p className={styles.muted}>
+          This rippel has no agent binaries built, so the downloads above are not available. Run{' '}
+          <code className="mono">npm run build:release -w @comfy/agent</code> where rippel is
+          installed, or take the binary for this machine from the release page.
+        </p>
+      ) : null}
       {data.release.note ? <p className={styles.muted}>{data.release.note}</p> : null}
     </div>
   );
@@ -783,13 +1011,17 @@ function ManualInstall({
   };
 
   if (created) {
+    // The machine now has a card of its own, and because it has never checked
+    // in that card already has the setup link and the download open on it.
+    // Repeating the whole panel here would be the same thing twice on one
+    // screen — so this just says where it went.
     return (
       <div className={shared.form}>
         <p className={shared.blurb}>
-          <strong>{created.name}</strong> is registered and waiting. Run the command below on it; it
-          will appear as online here within a minute of the agent starting.
+          <strong>{created.name}</strong> is registered and waiting. Its card above has the setup
+          link and the download for it; it will appear as online here within a minute of the agent
+          starting.
         </p>
-        <InstallInstructionsPanel api={api} deployment={created} />
         <div className={shared.formActions}>
           <button type="button" className={`${shared.action} ${shared.actionPrimary}`} onClick={onCancel}>
             Done
@@ -1063,10 +1295,8 @@ function SshInstallForm({
 
       <p className={styles.muted}>
         The account needs no root: the agent installs into its own home directory and runs as a user
-        service. Deploying over SSH runs the installer on a machine that has not unpacked a release,
-        so this path does need Node.js 20 or newer already installed there, plus git and Python for
-        ComfyUI itself — the installer says so before it downloads anything. A machine with no Node
-        at all can be set up from the release download instead, which carries its own runtime.
+        service. The agent itself is one static binary and needs nothing preinstalled — only ComfyUI
+        does, so the installer checks for git and Python and says so before it downloads anything.
       </p>
 
       {error ? (

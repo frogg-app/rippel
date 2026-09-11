@@ -259,3 +259,145 @@
   resize: vertical;
   line-height: 1.5;
 }
+
+/* ------------------------------------------------------------ install agent
+
+   The easy path leads, so it gets the weight: a bordered block with the
+   accent on the primary download, and the command line below it reads as the
+   alternative it is. */
+
+.step {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--line);
+  background: var(--surface-1);
+}
+
+.stepLead {
+  border-color: var(--accent-line);
+  background: var(--accent-tint);
+}
+
+.stepHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.stepTitle {
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text);
+}
+
+.stepNote {
+  margin: 0;
+  font-size: var(--text-xs);
+  line-height: 1.55;
+  color: var(--text-4);
+}
+
+/* The detected platform's download, and the rest beside it. */
+.downloadRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.downloadPrimary {
+  font-weight: 600;
+}
+
+.otherLabel {
+  width: 100%;
+  margin: 2px 0 0;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+/* ------------------------------------------------------------ why disabled
+
+   Same shape as the model cards' TypeBadge: a real button that keeps focus and
+   a live element referenced by aria-describedby, because a `title` reaches a
+   mouse and nothing else. */
+
+.reasonWrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.reasonTip {
+  position: absolute;
+  bottom: calc(100% + 7px);
+  left: 0;
+  z-index: 5;
+  width: max-content;
+  max-width: min(260px, 68vw);
+  padding: 8px 10px;
+  border-radius: 9px;
+  border: 1px solid var(--line-strong);
+  background: var(--ground-sunken);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.45);
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--text-2);
+  opacity: 0;
+  transform: translateY(3px);
+  pointer-events: none;
+  transition: opacity var(--transition), transform var(--transition);
+}
+
+.reasonWrap:hover .reasonTip,
+.reasonButton:focus-visible + .reasonTip,
+.reasonTipOn {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Looks disabled, stays focusable — that is the whole point. */
+.reasonButton[aria-disabled='true'] {
+  opacity: 0.45;
+  cursor: help;
+}
+
+/* ------------------------------------------------------------ next action */
+
+.next {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--line);
+  background: var(--surface-2, var(--surface-1));
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--text-3);
+}
+
+.nextWaiting {
+  border-color: var(--warn-line);
+  background: var(--warn-tint, rgba(246, 193, 119, 0.1));
+}
+
+.nextReady {
+  border-color: var(--accent-line);
+  background: var(--accent-tint);
+}
+
+.nextText {
+  margin: 0;
+}
+
+.nextText strong {
+  color: var(--text);
+  font-weight: 600;
+}

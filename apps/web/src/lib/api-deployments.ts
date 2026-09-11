@@ -8,6 +8,7 @@
  * not once per poll.
  */
 import type {
+  AgentPlatform,
   AgentProbe,
   AgentRelease,
   AgentTask,
@@ -58,9 +59,40 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   return payload as T;
 }
 
+/**
+ * One agent binary this rippel has on disk, ready to hand to a browser.
+ *
+ * `target` is the thing to switch on, not `platform`: there are two macOS
+ * builds and they differ only by `arch`, so anything selecting by platform
+ * alone silently hands an Intel Mac the Apple-silicon binary.
+ *
+ * `fileName` carries the deployment's address and token encoded into the name
+ * itself, which is what makes opening the file the whole install.
+ */
+export interface AgentDownload {
+  target: string;
+  platform: AgentPlatform;
+  arch: 'amd64' | 'arm64';
+  label: string;
+  sizeBytes: number;
+  url: string;
+  fileName: string;
+}
+
 export interface InstallInstructions {
   serverUrl: string;
   token: string;
+  /**
+   * The one link to send to whoever is sitting at the machine. It serves a
+   * plain page with a download button per platform and needs no rippel login.
+   */
+  setupLink: string;
+  /**
+   * The binaries this rippel actually has built. Empty is a normal state — a
+   * rippel run from a checkout has none until the agent release is built — so
+   * the panel falls back to the GitHub release links.
+   */
+  downloads: AgentDownload[];
   commands: { linux: string; darwin: string; win32: string };
   release: AgentRelease;
 }

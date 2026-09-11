@@ -43,6 +43,47 @@ const online: Deployment = {
 const instructions: InstallInstructions = {
   serverUrl: 'http://192.168.1.9:4000',
   token: 'tok-secret',
+  setupLink: 'http://192.168.1.9:4000/api/deployments/setup/tok-secret',
+  // Four builds, not three: macOS is split by architecture, which is the whole
+  // reason picking a download by platform alone is wrong.
+  downloads: [
+    {
+      target: 'windows-amd64',
+      platform: 'win32',
+      arch: 'amd64',
+      label: 'Windows',
+      sizeBytes: 7599104,
+      url: 'http://192.168.1.9:4000/api/deployments/d1/agent/windows-amd64?token=tok-secret',
+      fileName: 'rippel-agent-setup-blob.exe',
+    },
+    {
+      target: 'macos-arm64',
+      platform: 'darwin',
+      arch: 'arm64',
+      label: 'macOS (Apple silicon)',
+      sizeBytes: 6964018,
+      url: 'http://192.168.1.9:4000/api/deployments/d1/agent/macos-arm64?token=tok-secret',
+      fileName: 'rippel-agent-setup-blob',
+    },
+    {
+      target: 'macos-amd64',
+      platform: 'darwin',
+      arch: 'amd64',
+      label: 'macOS (Intel)',
+      sizeBytes: 7528896,
+      url: 'http://192.168.1.9:4000/api/deployments/d1/agent/macos-amd64?token=tok-secret',
+      fileName: 'rippel-agent-setup-blob',
+    },
+    {
+      target: 'linux-amd64',
+      platform: 'linux',
+      arch: 'amd64',
+      label: 'Linux',
+      sizeBytes: 7372960,
+      url: 'http://192.168.1.9:4000/api/deployments/d1/agent/linux-amd64?token=tok-secret',
+      fileName: 'rippel-agent-setup-blob',
+    },
+  ],
   commands: {
     linux: "curl -fsSL 'http://192.168.1.9:4000/api/deployments/d1/install.sh?token=tok-secret' | bash",
     darwin: "curl -fsSL 'http://192.168.1.9:4000/api/deployments/d1/install.sh?token=tok-secret' | bash",
@@ -200,8 +241,79 @@ describe('DeploymentsSection', () => {
     await userEvent.click(screen.getByRole('tab', { name: 'Windows' }));
     expect(await screen.findByText(/powershell -ExecutionPolicy Bypass/)).toBeInTheDocument();
 
-    const release = screen.getByRole('link', { name: /Download for Windows/ });
-    expect(release).toHaveAttribute('href', 'https://example.test/win.zip');
+    // The download offered first comes from this rippel, not from GitHub: its
+    // filename carries the setup code, which is what makes it a one-click
+    // install rather than a file you then have to configure.
+    const primary = screen.getByRole('link', { name: /Download for/ });
+    expect(primary).toHaveAttribute(
+      'href',
+      expect.stringContaining('/api/deployments/d1/agent/'),
+    );
+    expect(primary).toHaveAttribute('download', expect.stringContaining('rippel-agent-setup-'));
+
+    // Every other build stays one click away, including both Macs.
+    for (const label of ['Windows', 'macOS (Apple silicon)', 'macOS (Intel)', 'Linux']) {
+      expect(screen.getByRole('link', { name: new RegExp(label.replace(/[()]/g, '\\$&')) })).toBeInTheDocument();
+    }
+  });
+
+  /**
+   * The easy path has to be the one you see first. The setup link is the only
+   * install that needs no terminal and no rippel login at the other end, and
+   * the old panel did not mention it at all.
+   */
+  it('leads with the setup link and the download, not the command line', async () => {
+    const { api } = fakeApi([]);
+    render(<DeploymentsSection api={api} />);
+    await userEvent.click(await screen.findByRole('button', { name: /Install by hand/ }));
+    await userEvent.type(screen.getByPlaceholderText('studio-4090'), 'garage-box');
+    await userEvent.type(screen.getByPlaceholderText('192.168.1.50'), '10.0.0.7');
+    await userEvent.click(screen.getByRole('button', { name: /Register and show the command/ }));
+
+    expect(await screen.findByText('http://192.168.1.9:4000/api/deployments/setup/tok-secret')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Open the setup page/ })).toBeInTheDocument();
+
+    // The command line is still there, but folded away as the alternative.
+    expect(screen.getByText('Install from a command line instead')).toBeInTheDocument();
+
+    // And nothing claims the agent is a folder of scripts needing a runtime.
+    // These are the exact sentences the old panel shipped; the agent is one
+    // static binary now, so every one of them would be a lie.
+    expect(screen.queryByText(/Node\.js runtime/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/folder of JavaScript files/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/node\/bin\/node/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Unpack it/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/tens of megabytes/)).not.toBeInTheDocument();
+  });
+
+  /**
+   * A greyed-out button that says nothing is the complaint that started this.
+   * It has to be reachable by keyboard and touch, so it stays focusable and
+   * carries its reason as real text rather than a `title`.
+   */
+  it('explains why Install ComfyUI cannot be pressed yet', async () => {
+    const waiting: Deployment = {
+      ...online,
+      id: 'd1',
+      name: 'steve-pc',
+      status: 'pending',
+      platform: 'unknown',
+      comfy: null,
+      agentVersion: null,
+      lastSeenAt: null,
+    };
+    const { api } = fakeApi([waiting]);
+    render(<DeploymentsSection api={api} />);
+
+    const install = await screen.findByRole('button', { name: 'Install ComfyUI' });
+    expect(install).toHaveAttribute('aria-disabled', 'true');
+
+    // The explanation is associated with the button, not hidden in a title.
+    const tip = document.getElementById(install.getAttribute('aria-describedby')!);
+    expect(tip).toHaveTextContent(/Waiting for the agent to check in/);
+
+    // The card says the same thing in its own words, with the next move in it.
+    expect(screen.getByText(/Nothing has been heard from this machine yet/)).toBeInTheDocument();
   });
 
   /**
