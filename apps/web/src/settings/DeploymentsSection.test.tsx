@@ -170,20 +170,38 @@ describe('DeploymentsSection', () => {
     expect(screen.getByText('Linux')).toBeInTheDocument();
     expect(screen.getByText('agent 0.1.0')).toBeInTheDocument();
     expect(screen.getByText(/running/)).toBeInTheDocument();
-    expect(screen.getByText('answering')).toBeInTheDocument();
-    expect(screen.getByText('not registered')).toBeInTheDocument();
+    expect(screen.getByText('ready')).toBeInTheDocument();
+    expect(screen.getByText('Not enabled')).toBeInTheDocument();
   });
 
-  it('offers Install ComfyUI when there is none, and the run controls when there is', async () => {
+  it.each([
+    { lastSeenAt: online.lastSeenAt, agentVersion: null },
+    { lastSeenAt: null, agentVersion: '0.3.0' },
+  ])('hides install options for a previously installed offline agent: %j', async (identity) => {
+    const { api } = fakeApi([{ ...online, ...identity, status: 'offline' }]);
+    render(<DeploymentsSection api={api} />);
+    await screen.findByText('studio-4090');
+    expect(screen.queryByRole('button', { name: 'Install Agent' })).not.toBeInTheDocument();
+    expect(api.instructions).not.toHaveBeenCalled();
+  });
+
+  it('uses amber when the agent is online but its engine is stopped', async () => {
+    const { api } = fakeApi([{ ...online, comfy: { ...COMFY, running: false } }]);
+    render(<DeploymentsSection api={api} />);
+    expect(await screen.findByText('Engine stopped')).toHaveAttribute('data-status', 'warning');
+    expect(screen.getByText('Agent online')).toBeInTheDocument();
+  });
+
+  it('offers Install engine when there is none, and the run controls when there is', async () => {
     const bare = { ...online, comfy: { ...COMFY, installed: false, running: false, helperInstalled: false, helperReady: false } };
     const { api } = fakeApi([bare]);
     const { unmount } = render(<DeploymentsSection api={api} />);
-    expect(await screen.findByRole('button', { name: 'Install ComfyUI' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Restart ComfyUI/ })).not.toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Install engine' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Restart engine/ })).not.toBeInTheDocument();
     unmount();
 
     render(<DeploymentsSection api={fakeApi().api} />);
-    expect(await screen.findByRole('button', { name: 'Restart ComfyUI' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Restart engine' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Stop' })).toBeInTheDocument();
     // A helper that is already answering needs no button offering to install it.
     expect(screen.queryByRole('button', { name: /storage helper/ })).not.toBeInTheDocument();
@@ -194,7 +212,7 @@ describe('DeploymentsSection', () => {
     const { api } = fakeApi([noHelper]);
     render(<DeploymentsSection api={api} />);
 
-    await userEvent.click(await screen.findByRole('button', { name: 'Install storage helper' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Enable file access' }));
     await waitFor(() => expect(api.installHelper).toHaveBeenCalledWith('d1'));
     expect(await screen.findByText(/ComfyUI installed\./)).toBeInTheDocument();
   });
@@ -202,15 +220,17 @@ describe('DeploymentsSection', () => {
   it('registers the ComfyUI as a backend', async () => {
     const { api } = fakeApi();
     render(<DeploymentsSection api={api} />);
-    await userEvent.click(await screen.findByRole('button', { name: 'Add as backend' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Enable generation' }));
     await waitFor(() => expect(api.registerBackend).toHaveBeenCalledWith('d1'));
-    expect(await screen.findByText('studio-4090', { selector: 'dd' })).toBeInTheDocument();
+    expect(await screen.findByText('Enabled', { selector: 'dd' })).toBeInTheDocument();
   });
 
   it('asks twice before removing a machine', async () => {
     const { api } = fakeApi();
     render(<DeploymentsSection api={api} />);
     const remove = await screen.findByRole('button', { name: 'Remove studio-4090' });
+    expect(remove.closest('footer')).not.toBeNull();
+    expect(remove.className).toContain('actionDanger');
     await userEvent.click(remove);
     expect(api.remove).not.toHaveBeenCalled();
     await userEvent.click(screen.getByRole('button', { name: 'Really remove studio-4090' }));
@@ -238,14 +258,15 @@ describe('DeploymentsSection', () => {
     render(<DeploymentsSection api={api} />);
     expect(await screen.findByText('offline')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Test' }));
-    expect(await screen.findByText('online')).toBeInTheDocument();
+    expect(await screen.findByText('Agent online')).toBeInTheDocument();
+    expect(screen.getByText('Setup needed')).toHaveAttribute('data-status', 'warning');
     expect(screen.queryByText(/The agent has stopped answering/)).not.toBeInTheDocument();
     expect(screen.getByText('Windows')).toBeInTheDocument();
     expect(screen.getByText('agent 0.3.0')).toBeInTheDocument();
     expect(api.status).toHaveBeenCalledWith('d1');
     await act(async () => finishStatus({ comfy: COMFY, accelerator: 'cuda', tasks: [] }));
     expect(screen.getByText(/running/, { selector: 'dd' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Restart ComfyUI' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Restart engine' })).toBeEnabled();
     expect(screen.getByRole('button', { name: 'Refresh' })).toBeEnabled();
   });
 
@@ -269,7 +290,7 @@ describe('DeploymentsSection', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Test' }));
     expect(await screen.findByText('online')).toBeInTheDocument();
     expect(screen.getByText(/running/, { selector: 'dd' })).toBeInTheDocument();
-    expect(screen.getByText(/Showing the last reported details/)).toHaveTextContent('Status timed out.');
+    expect(screen.getByText(/engine status could not be refreshed/)).toHaveTextContent('Status timed out.');
   });
 
   it('does not let an older fleet poll revert a successful Test', async () => {
@@ -380,7 +401,7 @@ describe('DeploymentsSection', () => {
    * It has to be reachable by keyboard and touch, so it stays focusable and
    * carries its reason as real text rather than a `title`.
    */
-  it('explains why Install ComfyUI cannot be pressed yet', async () => {
+  it('explains why Install engine cannot be pressed yet', async () => {
     const waiting: Deployment = {
       ...online,
       id: 'd1',
@@ -394,7 +415,7 @@ describe('DeploymentsSection', () => {
     const { api } = fakeApi([waiting]);
     render(<DeploymentsSection api={api} />);
 
-    const install = await screen.findByRole('button', { name: 'Install ComfyUI' });
+    const install = await screen.findByRole('button', { name: 'Install engine' });
     expect(install).toHaveAttribute('aria-disabled', 'true');
 
     // The explanation is associated with the button, not hidden in a title.
@@ -402,7 +423,7 @@ describe('DeploymentsSection', () => {
     expect(tip).toHaveTextContent(/Waiting for the agent to check in/);
 
     // The card says the same thing in its own words, with the next move in it.
-    expect(screen.getByText(/Nothing has been heard from this machine yet/)).toBeInTheDocument();
+    expect(screen.getByText(/Install the agent on this machine to continue/)).toBeInTheDocument();
   });
 
   /**
@@ -582,8 +603,8 @@ describe('DeploymentsSection', () => {
     it('is not offered to a machine that is already paired', async () => {
       const { api } = fakeApi([online]);
       render(<DeploymentsSection api={api} />);
-      await userEvent.click(await screen.findByRole('button', { name: 'Install Agent' }));
-      expect(await screen.findByText(/is paired/)).toBeInTheDocument();
+      await screen.findByText('studio-4090');
+      expect(screen.queryByRole('button', { name: 'Install Agent' })).not.toBeInTheDocument();
       expect(api.pairingCode).not.toHaveBeenCalled();
     });
   });
@@ -595,5 +616,81 @@ describe('DeploymentsSection', () => {
     await userEvent.click(screen.getByRole('tab', { name: 'Private key' }));
     expect(screen.getByPlaceholderText('-----BEGIN OPENSSH PRIVATE KEY-----')).toBeInTheDocument();
     expect(screen.queryByLabelText('Password')).not.toBeInTheDocument();
+  });
+});
+
+
+describe('agent update progress', () => {
+  it('waits for restart, then refreshes the version and engine automatically', async () => {
+    vi.useFakeTimers();
+    const poll = vi.fn()
+      .mockResolvedValueOnce({ task: done({ kind: 'update-agent' }), logOffset: 2 })
+      .mockRejectedValueOnce(new ApiRequestError(502, 'unreachable', 'Offline'))
+      .mockRejectedValue(new ApiRequestError(404, 'not_found', 'Task not found'));
+    const { api } = fakeApi([online], {
+      updateAgent: vi.fn(async () => done({ kind: 'update-agent', status: 'running' })),
+      task: poll,
+      probe: vi.fn(async () => ({ ok: true, version: '0.4.0', platform: 'linux' as const, latencyMs: 5 })),
+      status: vi.fn(async () => ({ comfy: { ...COMFY, running: false }, accelerator: 'cuda' as const, tasks: [] })),
+    });
+    const view = render(<DeploymentsSection api={api} />);
+    try {
+      await act(async () => {});
+      fireEvent.click(screen.getByRole('button', { name: 'Update agent' }));
+      await act(async () => {});
+      expect(screen.getByText('Updating agent…')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Test' })).toBeDisabled();
+      await act(async () => vi.advanceTimersByTimeAsync(2000));
+      expect(api.probe).not.toHaveBeenCalled();
+      expect(screen.queryByText('Agent updated.')).not.toBeInTheDocument();
+      await act(async () => vi.advanceTimersByTimeAsync(4000));
+      expect(screen.getByText('Agent updated.')).toBeInTheDocument();
+      expect(screen.getByText('agent 0.4.0')).toBeInTheDocument();
+      expect(screen.getByText('Engine stopped')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Test' })).not.toBeDisabled();
+    } finally { view.unmount(); vi.useRealTimers(); }
+  });
+
+  it('reports failed updates without claiming a restart succeeded', async () => {
+    const { api } = fakeApi([online], {
+      updateAgent: vi.fn(async () => done({ kind: 'update-agent', status: 'failed', error: 'checksum mismatch' })),
+    });
+    render(<DeploymentsSection api={api} />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Update agent' }));
+    expect(await screen.findByText('Agent update failed. Please try again.')).toBeInTheDocument();
+    expect(screen.queryByText('Agent updated.')).not.toBeInTheDocument();
+    expect(api.probe).not.toHaveBeenCalled();
+  });
+
+  it('stops update polling when settings closes', async () => {
+    vi.useFakeTimers();
+    const { api } = fakeApi([online], {
+      updateAgent: vi.fn(async () => done({ kind: 'update-agent', status: 'running' })),
+    });
+    const view = render(<DeploymentsSection api={api} />);
+    try {
+      await act(async () => {});
+      fireEvent.click(screen.getByRole('button', { name: 'Update agent' }));
+      await act(async () => {});
+      view.unmount();
+      await act(async () => vi.advanceTimersByTimeAsync(10000));
+      expect(api.task).not.toHaveBeenCalled();
+    } finally { view.unmount(); vi.useRealTimers(); }
+  });
+
+  it('ends the spinner if the agent never restarts', async () => {
+    vi.useFakeTimers();
+    const { api } = fakeApi([online], {
+      updateAgent: vi.fn(async () => done({ kind: 'update-agent' })),
+    });
+    const view = render(<DeploymentsSection api={api} />);
+    try {
+      await act(async () => {});
+      fireEvent.click(screen.getByRole('button', { name: 'Update agent' }));
+      await act(async () => vi.advanceTimersByTimeAsync(6 * 60_000));
+      expect(screen.getByText('The agent has not reconnected yet. Check that the machine is awake.')).toBeInTheDocument();
+      expect(screen.queryByText('Reconnecting…')).not.toBeInTheDocument();
+      expect(screen.queryByText('Agent updated.')).not.toBeInTheDocument();
+    } finally { view.unmount(); vi.useRealTimers(); }
   });
 });

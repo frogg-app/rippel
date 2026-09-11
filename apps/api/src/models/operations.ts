@@ -7,7 +7,7 @@ import { clearObjectInfoCache } from '../orchestrator/preflight.js';
 import { pollBackendNow } from '../lib/backend-poller.js';
 export type ModelOperationStep = { kind: 'move'; request: ModelMoveRequest } | { kind: 'download'; request: ModelDownloadRequest };
 export interface ModelOperation {
-  id: string; backend_id: string; model_id: string | null; workflow_id: string | null;
+  id: string; backend_id: string | null; model_id: string | null; workflow_id: string | null;
   steps: ModelOperationStep[]; step_index: number; agent_task_id: string | null;
   status: 'planned' | 'starting' | 'running' | 'done' | 'failed'; progress: unknown; error: string | null;
 }
@@ -32,6 +32,7 @@ async function target(backendId: string) {
 }
 async function dispatchStep(operation: ModelOperation) {
   try {
+    if (!operation.backend_id) throw new Error('This backend has been removed.');
     const step = operation.steps[operation.step_index];
     if (!step) throw new Error('Operation has no current step.');
     const host = await target(operation.backend_id);
@@ -49,7 +50,7 @@ async function recheck(backendId: string) {
   await pollBackendNow(backendId);
 }
 async function pollOperation(operation: ModelOperation) {
-  if (!operation.agent_task_id) return;
+  if (!operation.agent_task_id || !operation.backend_id) return;
   const { task } = await agentClient.task(await target(operation.backend_id), operation.agent_task_id, 0);
   if (task.status === 'running') {
     await query('UPDATE model_operations SET progress = $2::jsonb, updated_at = now() WHERE id = $1', [operation.id, JSON.stringify(task)]);

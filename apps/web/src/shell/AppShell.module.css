@@ -145,7 +145,7 @@
   line-height: 1;
   /* Optical correction for the wordmark’s descenders. */
   padding-top: 2px;
-  margin-left: 0;
+  margin-left: -16px;
 }
 
 .wordmark:hover {

@@ -466,3 +466,10 @@
   .copyRow { flex-wrap: wrap; }
   .code { flex-basis: 100%; }
 }
+
+.cardFooter {
+  display: flex;
+  justify-content: flex-end;
+  border-top: 1px solid var(--line);
+  padding-top: var(--gap-md);
+}

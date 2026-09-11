@@ -28,7 +28,7 @@ import type {
   Deployment,
   SshInstallInput,
 } from '@comfy/shared';
-import { query as defaultQuery, queryOne as defaultQueryOne } from '../db.js';
+import { query as defaultQuery, queryOne as defaultQueryOne, transaction as defaultTransaction } from '../db.js';
 import { env } from '../env.js';
 import { pollBackendNow } from '../lib/backend-poller.js';
 import { AgentError, agentClient as defaultAgentClient, type AgentClient, type AgentTarget } from './agent-client.js';
@@ -51,6 +51,7 @@ import { getRun, startSshInstall, type SshExec } from './ssh.js';
 export interface DeployDb {
   query: typeof defaultQuery;
   queryOne: typeof defaultQueryOne;
+  transaction?: typeof defaultTransaction;
 }
 
 export interface DeployDeps {
@@ -457,9 +458,25 @@ export function makeDeploymentRoutes(deps: DeployDeps = {}) {
       async (req, reply) => {
         const row = await loadOr404(req, reply);
         if (!row) return;
-        await db.query(`DELETE FROM deployments WHERE id = $1`, [row.id]);
-        // The backend row, if there is one, is left alone on purpose: removing
-        // rippel's management of a machine should not stop it generating.
+        const removed = await (db.transaction ?? defaultTransaction)(async (client) => {
+          if (row.backend_id) {
+            await client.query('SELECT id FROM backends WHERE id = $1 FOR UPDATE', [row.backend_id]);
+            const busy = await client.query(
+              `SELECT 1 FROM jobs WHERE backend_id = $1 AND status IN ('dispatched','running','uploading')
+               UNION ALL SELECT 1 FROM model_installs WHERE backend_id = $1 AND status IN ('queued','downloading')
+               UNION ALL SELECT 1 FROM model_operations WHERE backend_id = $1 AND status IN ('starting','running')
+               LIMIT 1`, [row.backend_id]);
+            if (busy.rows.length) return false;
+          }
+          await client.query('DELETE FROM deployments WHERE id = $1', [row.id]);
+          if (row.backend_id) {
+            await client.query(
+              `DELETE FROM backends WHERE id = $1
+               AND NOT EXISTS (SELECT 1 FROM deployments WHERE backend_id = $1)`, [row.backend_id]);
+          }
+          return true;
+        });
+        if (!removed) return reply.code(409).send({ error: 'busy', message: 'This backend is busy. Wait for its current work to finish before removing it.' });
         return reply.code(204).send();
       },
     );
@@ -581,6 +598,9 @@ export function makeDeploymentRoutes(deps: DeployDeps = {}) {
         try {
           return await agent.task(targetOf(row), req.params.taskId, Number(req.query.since ?? 0) || 0);
         } catch (cause) {
+          if (cause instanceof AgentError && cause.status === 404) {
+            return reply.code(404).send({ error: 'not_found', message: 'This task is no longer available.' });
+          }
           return agentFailure(reply, cause);
         }
       },

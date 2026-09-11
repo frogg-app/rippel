@@ -17,7 +17,7 @@ import { makeDeploymentRoutes, normaliseHost, type DeployDb } from './routes.js'
 import { bashInstaller, oneLiner, powershellInstaller } from './scripts.js';
 import { clearReleaseCache, latestAgentRelease } from './releases.js';
 import { AGENT_BINARIES, availableBinaries, downloadFileName, encodeSetup, setupLink } from './binaries.js';
-import type { AgentClient } from './agent-client.js';
+import { AgentError, type AgentClient } from './agent-client.js';
 import { AgentError } from './agent-client.js';
 
 const ADMIN = { id: '11111111-1111-4111-8111-111111111111', role: 'admin' as const };
@@ -72,9 +72,16 @@ function row(over: Partial<Row> = {}): Row {
   };
 }
 
-function fakeDb(rows: Row[], backends: { id: string; name: string; base_url: string }[] = []): DeployDb {
+function fakeDb(rows: Row[], backends: { id: string; name: string; base_url: string }[] = [], busy = false): DeployDb {
   let next = 0;
   const query = (async (sql: string, params: unknown[] = []) => {
+    if (sql.includes('SELECT 1 FROM jobs')) return busy ? [{ busy: true }] : [];
+    if (sql.includes('FROM backends WHERE id = $1 FOR UPDATE')) return backends.filter((b) => b.id === params[0]);
+    if (sql.startsWith('DELETE FROM backends')) {
+      const i = backends.findIndex((b) => b.id === params[0]);
+      if (i >= 0 && !rows.some((r) => r.backend_id === params[0])) backends.splice(i, 1);
+      return [];
+    }
     if (sql.includes('FROM deployments d') && sql.includes('d.id = $1')) {
       return rows.filter((r) => r.id === params[0]);
     }
@@ -145,6 +152,7 @@ function fakeDb(rows: Row[], backends: { id: string; name: string; base_url: str
   return {
     query,
     queryOne: (async (sql, params) => (await query(sql, params))[0] ?? null) as DeployDb['queryOne'],
+    transaction: async (fn) => fn({ query: async (sql: string, params: unknown[]) => ({ rows: await query(sql, params) }) } as never),
   };
 }
 
@@ -193,6 +201,7 @@ async function server(
     backends?: { id: string; name: string; base_url: string }[];
     agent?: AgentClient;
     fetchImpl?: typeof fetch;
+    busy?: boolean;
   } = {},
 ) {
   const app = Fastify();
@@ -212,7 +221,7 @@ async function server(
   });
   await app.register(
     makeDeploymentRoutes({
-      db: fakeDb(opts.rows ?? [], opts.backends ?? []),
+      db: fakeDb(opts.rows ?? [], opts.backends ?? [], opts.busy),
       agent: opts.agent ?? fakeAgent(),
       fetchImpl: opts.fetchImpl,
       pollNow: async () => {},
@@ -491,14 +500,40 @@ describe('managing a deployment', () => {
     expect(res.statusCode).toBe(409);
   });
 
-  it('removes the deployment without touching its backend', async () => {
+  it('preserves a vanished agent task as404 so update polling can detect restart', async () => {
+    const agent = fakeAgent();
+    agent.task = async () => { throw new AgentError('refused', 'Task missing', 404); };
+    const app = await server(ADMIN, { rows: [row()], agent });
+    expect((await app.inject({ method: 'GET', url: `/deployments/${D1}/tasks/old-task` })).statusCode).toBe(404);
+  });
+
+  it('removes the machine and its linked generation backend together', async () => {
     const rows = [row({ backend_id: 'existing' })];
     const backends = [{ id: 'existing', name: 'desktop', base_url: 'http://192.168.1.50:8188' }];
     const app = await server(ADMIN, { rows, backends });
     expect((await app.inject({ method: 'DELETE', url: `/deployments/${D1}` })).statusCode).toBe(204);
     expect(rows).toHaveLength(0);
+    expect(backends).toHaveLength(0);
+  });
+  it('refuses removal while the linked backend has active work', async () => {
+    const rows = [row({ backend_id: 'existing' })];
+    const backends = [{ id: 'existing', name: 'desktop', base_url: 'http://gpu:8188' }];
+    const app = await server(ADMIN, { rows, backends, busy: true });
+    const response = await app.inject({ method: 'DELETE', url: `/deployments/${D1}` });
+    expect(response.statusCode).toBe(409);
+    expect(rows).toHaveLength(1);
     expect(backends).toHaveLength(1);
   });
+
+  it('retains a generation backend still managed by another agent record', async () => {
+    const rows = [row({ backend_id: 'existing' }), row({ id: 'other', backend_id: 'existing' })];
+    const backends = [{ id: 'existing', name: 'desktop', base_url: 'http://gpu:8188' }];
+    const app = await server(ADMIN, { rows, backends });
+    expect((await app.inject({ method: 'DELETE', url: `/deployments/${D1}` })).statusCode).toBe(204);
+    expect(rows).toHaveLength(1);
+    expect(backends).toHaveLength(1);
+  });
+
 });
 
 // ---------------------------------------------------------------- scripts

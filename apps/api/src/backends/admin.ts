@@ -198,28 +198,12 @@ export function makeBackendAdminRoutes(deps: AdminDeps = {}) {
   };
 
   return async function backendAdminRoutes(app: FastifyInstance) {
-    app.post<{ Body: unknown }>('/backends', { onRequest: [app.requireAdmin] }, async (req, reply) => {
-      const checked = validateInput(req.body, false);
-      if (!checked.ok) {
-        return reply.code(400).send({ error: 'invalid_input', message: checked.error.message, field: checked.error.field });
-      }
-      const { name, baseUrl, enabled = true, vramLimitMb = null } = checked.value as BackendInput;
-
-      const taken = await db.queryOne<{ id: string }>(`SELECT id FROM backends WHERE lower(name) = lower($1)`, [name]);
-      if (taken) {
-        return reply.code(409).send({ error: 'conflict', message: `There is already a backend called "${name}".`, field: 'name' });
-      }
-
-      const row = await db.queryOne<BackendRow>(
-        `INSERT INTO backends (name, base_url, enabled, vram_limit_mb)
-         VALUES ($1, $2, $3, $4)
-         RETURNING id, name, base_url, enabled, status, device_name, vram_free, vram_total,
-                   ram_free, ram_total, vram_limit_mb, last_seen_at`,
-        [name, baseUrl, enabled, vramLimitMb],
-      );
-      kick(row!.id);
-      return reply.code(201).send({ backend: toBackend(row!) });
-    });
+    app.post('/backends', { onRequest: [app.requireAdmin] }, async (_req, reply) =>
+      reply.code(409).send({
+        error: 'agent_required',
+        message: 'Connect a machine through Settings → Backends first.',
+      }),
+    );
 
     app.patch<{ Params: { id: string }; Body: unknown }>(
       '/backends/:id',

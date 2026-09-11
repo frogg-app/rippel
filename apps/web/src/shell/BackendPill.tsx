@@ -46,7 +46,7 @@ export function BackendPill({
     return (
       <div
         className={`${styles.pill} ${styles.quiet}`}
-        title="No ComfyUI backend is registered yet. An administrator adds one before anything can be generated."
+        title="Connect a machine through Settings → Backends to start generating."
       >
         <span className={styles.dot} data-status="unknown" />
         <span className={styles.name}>No backend</span>

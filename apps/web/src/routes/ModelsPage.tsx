@@ -146,6 +146,8 @@ export function ModelsPage({ api = modelsApi, storageApi: storage = storageApi }
   });
 
   const installs = useInstalls({ api, backendId, enabled: isAdmin });
+  const backendWarning = backend?.status !== 'online' ||
+    (tab === 'discover' && ['unsupported', 'error', 'offline'].includes(catalogue.state.kind));
   const now = useNow(installs.live.length > 0);
 
   // ------------------------------------------------------------- workflows
@@ -357,7 +359,8 @@ export function ModelsPage({ api = modelsApi, storageApi: storage = storageApi }
             className={styles.backendPicker}
             leading={<>
               <span
-                className={`${styles.dot} ${backend?.status === 'online' ? styles.dotOn : ''}`}
+                className={`${styles.dot} ${backendWarning ? styles.dotWarning : styles.dotOn}`}
+                title={backendWarning ? 'Backend needs attention' : 'Backend ready'}
                 aria-hidden
               />
               <span className={styles.backendLabel}>
@@ -664,16 +667,12 @@ function CatalogueBody({
       return <Notice tone="warning" title="Backend is offline" message={state.message} />;
 
     case 'unsupported':
-      // The 501 message names the fix, so it is rendered exactly as the API
-      // wrote it. This is the state a stock ComfyUI is in, which is most of
-      // them, and it is the difference between "nothing here" and "here is
-      // what to install to make this work".
       return (
         <Notice
           tone="warning"
-          title="This backend cannot install models"
-          message={state.message}
-          footnote="Models already on its disk are still listed under Installed."
+          title="Model installation unavailable"
+          message="This machine’s model installer isn’t ready."
+          footnote="You can still use models that are already installed."
         />
       );
 

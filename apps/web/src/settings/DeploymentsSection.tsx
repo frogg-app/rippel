@@ -28,20 +28,7 @@ const PLATFORM_OPTIONS = [
   { value: 'win32', label: 'Windows (OpenSSH)' },
 ];
 
-/**
- * Deployment, for administrators.
- *
- * A *backend* is an address rippel sends prompts to. A *deployment* is a
- * machine rippel can act on — install ComfyUI, update it, restart it, put the
- * storage helper back. This panel is the second of those, and it links to the
- * first with one button once the machine has a ComfyUI worth generating on.
- *
- * There are two ways in and they install exactly the same thing. Managed hands
- * rippel an SSH credential and lets it run the installer for you; manual gives
- * you the one line that installer would have been fetched by, to paste on a
- * machine rippel cannot SSH to — a Windows desktop, a box behind a bastion, or
- * one where you would simply rather read the script first.
- */
+/** Agent-managed machines shown to users as backends. */
 
 const POLL_MS = 2000;
 
@@ -62,7 +49,7 @@ export function DeploymentsSection({ api = defaultApi }: { api?: DeploymentsApi 
         setFailed(null);
       } catch (cause) {
         if (signal?.aborted || revision !== deploymentRevision.current) return;
-        setFailed(cause instanceof Error ? cause.message : 'Could not load the deployments.');
+        setFailed(cause instanceof Error ? cause.message : 'Could not load backends.');
       }
     },
     [api],
@@ -98,8 +85,7 @@ export function DeploymentsSection({ api = defaultApi }: { api?: DeploymentsApi 
   return (
     <div className={shared.section}>
       <p className={shared.blurb}>
-        Machines rippel manages through the rippel agent — it installs ComfyUI, runs it, and keeps
-        the storage helper in place.
+        Your generation machines, managed by the rippel agent.
       </p>
 
       {failed ? (
@@ -111,7 +97,7 @@ export function DeploymentsSection({ api = defaultApi }: { api?: DeploymentsApi 
       {deployments === null && !failed ? (
         <div className={shared.loading} role="status">
           <Mark size={20} ripple="loop" />
-          Reading the fleet…
+          Loading backends…
         </div>
       ) : null}
 
@@ -137,7 +123,7 @@ export function DeploymentsSection({ api = defaultApi }: { api?: DeploymentsApi 
 
       {deployments !== null && deployments.length === 0 && !adding ? (
         <p className={shared.empty}>
-          No machines are managed yet. Deploy an agent onto the box ComfyUI should run on.
+          No backends yet. Install the rippel agent on a machine to get started.
         </p>
       ) : null}
 
@@ -209,10 +195,13 @@ function DeploymentCard({
   const [task, setTask] = useState<AgentTask | null>(null);
   const [probe, setProbe] = useState<AgentProbe | null>(null);
   const [armed, setArmed] = useState(false);
-  const [agentUpdate, setAgentUpdate] = useState(false);
+  const [agentUpdate, setAgentUpdate] = useState<'updating' | 'reconnecting' | 'done' | null>(null);
+  const updateController = useRef<AbortController | null>(null);
+  useEffect(() => () => updateController.current?.abort(), []);
   // A machine that has never been heard from has exactly one useful next step,
   // so the panel holding it is already open rather than behind another click.
-  const [showInstall, setShowInstall] = useState(() => !deployment.lastSeenAt);
+  const agentInstalled = Boolean(deployment.lastSeenAt || deployment.agentVersion || deployment.status === 'online');
+  const [showInstall, setShowInstall] = useState(() => !agentInstalled);
 
   useEffect(() => {
     if (!armed) return;
@@ -222,6 +211,8 @@ function DeploymentCard({
 
   const comfy = deployment.comfy;
   const online = deployment.status === 'online';
+  const backendStatus = online ? (comfy?.running ? 'online' : 'warning') : deployment.status === 'pending' ? 'unknown' : 'offline';
+  const backendLabel = online ? (comfy?.running ? 'online' : comfy?.installed ? 'Engine stopped' : 'Setup needed') : deployment.status === 'pending' ? 'waiting for the agent' : 'offline';
 
   /**
    * Why a control is refusing, in the words the card would use out loud.
@@ -232,7 +223,7 @@ function DeploymentCard({
    */
   const offlineReason = online
     ? null
-    : deployment.lastSeenAt
+    : agentInstalled
       ? 'The agent is not answering. Press Test to try it again.'
       : 'Waiting for the agent to check in. Install the agent on this machine first.';
   const busyReason = busy ? `Waiting for “${busy}” to finish.` : null;
@@ -310,7 +301,80 @@ function DeploymentCard({
         onChange({ ...next, comfy: status.comfy });
       } catch (cause) {
         const detail = cause instanceof Error ? ` ${cause.message}` : '';
-        onError(`The agent answered, but its ComfyUI status could not be refreshed. Showing the last reported details.${detail}`);
+        onError(`The agent answered, but its engine status could not be refreshed.${detail}`);
+      }
+    });
+
+  const updateAgent = () =>
+    act('update the agent', async () => {
+      const controller = new AbortController();
+      updateController.current = controller;
+      const { signal } = controller;
+      setAgentUpdate('updating');
+      setProbe(null);
+      // The old process can answer successfully while it is still staging the
+      // binary. Only a vanished task followed by a live status proves restart.
+      try {
+        const started = await api.updateAgent(deployment.id);
+        const deadline = Date.now() + 6 * 60_000;
+        let current = started;
+        let since = started.log.length;
+        while (!signal.aborted && Date.now() < deadline) {
+          if (current.status === 'failed') {
+            throw new Error('Agent update failed. Please try again.');
+          }
+          if (current.status === 'done') setAgentUpdate('reconnecting');
+          await new Promise<void>((resolve) => {
+            const finish = () => {
+              clearTimeout(timer);
+              signal.removeEventListener('abort', finish);
+              resolve();
+            };
+            const timer = setTimeout(finish, POLL_MS);
+            signal.addEventListener('abort', finish, { once: true });
+          });
+          if (signal.aborted) return;
+          let restarted = false;
+          try {
+            const next = await api.task(deployment.id, started.id, since);
+            if (signal.aborted) return;
+            since = next.logOffset;
+            current = next.task;
+          } catch (cause) {
+            if (signal.aborted) return;
+            if (cause instanceof ApiRequestError && (cause.status === 401 || cause.status === 403)) throw cause;
+            restarted = cause instanceof ApiRequestError && cause.status === 404;
+            setAgentUpdate('reconnecting');
+          }
+          if (!restarted) continue;
+          try {
+            const result = await api.probe(deployment.id);
+            if (signal.aborted) return;
+            if (!result.ok) continue;
+            const status = await api.status(deployment.id);
+            if (signal.aborted) return;
+            onChange({
+              ...deployment,
+              status: 'online',
+              agentVersion: result.version ?? deployment.agentVersion,
+              platform: result.platform ?? deployment.platform,
+              lastSeenAt: new Date().toISOString(),
+              comfy: status.comfy,
+            });
+            setAgentUpdate('done');
+            refreshBackends();
+            return;
+          } catch {
+            // A fresh process may answer ping before its other routes settle.
+          }
+        }
+        if (!signal.aborted) throw new Error('The agent has not reconnected yet. Check that the machine is awake.');
+      } catch (cause) {
+        if (signal.aborted) return;
+        setAgentUpdate(null);
+        throw cause;
+      } finally {
+        if (updateController.current === controller) updateController.current = null;
       }
     });
 
@@ -358,27 +422,29 @@ function DeploymentCard({
       setArmed(true);
       return;
     }
-    await act('remove the deployment', async () => {
+    await act('remove the backend', async () => {
       await api.remove(deployment.id);
       onRemoved();
+      refreshBackends();
     });
   };
 
   return (
     <li className={shared.card} style={{ '--i': index } as React.CSSProperties}>
       <div className={shared.cardMain}>
-        <span className={shared.dot} data-status={deployment.status === 'pending' ? 'unknown' : deployment.status} aria-hidden />
+        <span className={shared.dot} data-status={backendStatus} aria-hidden />
         <div className={shared.cardText}>
           <div className={shared.cardName}>
             {deployment.name}
-            <span className={shared.cardStatus} data-status={deployment.status === 'pending' ? 'unknown' : deployment.status}>
-              {deployment.status === 'pending' ? 'waiting for the agent' : deployment.status}
+            <span className={shared.cardStatus} data-status={backendStatus}>
+              {backendLabel}
             </span>
           </div>
           <div className={`mono ${shared.cardUrl}`}>
             {deployment.host}:{deployment.agentPort}
           </div>
           <div className={shared.cardMeta}>
+            <span>{online ? 'Agent online' : agentInstalled ? 'Agent offline' : 'Agent not connected'}</span>
             <span>{PLATFORM_LABEL[deployment.platform]}</span>
             {deployment.agentVersion ? <span className="mono">agent {deployment.agentVersion}</span> : null}
             {comfy?.diskTotal ? (
@@ -392,11 +458,16 @@ function DeploymentCard({
 
       <NextAction deployment={deployment} />
       <ComfySummary deployment={deployment} />
-      {agentUpdate ? <p role="status">Agent update requested. The agent will restart; use Refresh to check its version.</p> : null}
+      {agentUpdate ? (
+        <div className={shared.loading} role="status" aria-live="polite">
+          {agentUpdate !== 'done' ? <Mark size={16} ripple="loop" /> : <CheckIcon size={16} />}
+          {agentUpdate === 'updating' ? 'Updating agent…' : agentUpdate === 'reconnecting' ? 'Reconnecting…' : 'Agent updated.'}
+        </div>
+      ) : null}
 
       <div className={shared.cardActions}>
         <ReasonedButton className={shared.action} reason={busyReason ?? offlineReason}
-          onClick={() => void act('update the agent', async () => { await api.updateAgent(deployment.id); setAgentUpdate(true); })}>
+          onClick={() => void updateAgent()}>
           Update agent
         </ReasonedButton>
         <button type="button" className={shared.action} onClick={() => void test()} disabled={busy !== null}>
@@ -420,8 +491,8 @@ function DeploymentCard({
               {busy?.endsWith('ComfyUI') && busy.startsWith(comfy.running ? 'restart' : 'start')
                 ? 'Working…'
                 : comfy.running
-                  ? 'Restart ComfyUI'
-                  : 'Start ComfyUI'}
+                  ? 'Restart engine'
+                  : 'Start engine'}
             </ReasonedButton>
             {comfy.running ? (
               <ReasonedButton className={shared.action} reason={busyReason} onClick={() => void power('stop')}>
@@ -433,7 +504,7 @@ function DeploymentCard({
               reason={busyReason ?? offlineReason}
               onClick={() => void update()}
             >
-              {busy === 'update ComfyUI' ? 'Updating…' : 'Update'}
+              {busy === 'update ComfyUI' ? 'Updating…' : 'Update engine'}
             </ReasonedButton>
           </>
         ) : (
@@ -442,7 +513,7 @@ function DeploymentCard({
             reason={busyReason ?? offlineReason}
             onClick={() => void install()}
           >
-            {busy === 'install ComfyUI' ? 'Installing…' : 'Install ComfyUI'}
+            {busy === 'install ComfyUI' ? 'Installing…' : 'Install engine'}
           </ReasonedButton>
         )}
 
@@ -452,35 +523,26 @@ function DeploymentCard({
             reason={busyReason ?? offlineReason}
             onClick={() => void helper()}
           >
-            {busy === 'install the storage helper' ? 'Installing…' : 'Install storage helper'}
+            {busy === 'install the storage helper' ? 'Installing…' : 'Enable file access'}
           </ReasonedButton>
         ) : null}
 
         {comfy?.installed && !deployment.backendId ? (
           <ReasonedButton
             className={`${shared.action} ${shared.actionPrimary}`}
-            reason={busyReason}
+            reason={busyReason ?? offlineReason}
             onClick={() => void register()}
           >
-            {busy === 'register the backend' ? 'Adding…' : 'Add as backend'}
+            {busy === 'register the backend' ? 'Enabling…' : 'Enable generation'}
           </ReasonedButton>
         ) : null}
 
-        <button type="button" className={shared.action} onClick={() => setShowInstall((v) => !v)}>
-          {/* "Hide Install Agent" parsed as a verb phrase — an instruction to
-              hide the agent, rather than the toggle for this section. */}
-          {showInstall ? 'Hide install options' : 'Install Agent'}
-        </button>
+        {!agentInstalled ? (
+          <button type="button" className={shared.action} onClick={() => setShowInstall((v) => !v)}>
+            {showInstall ? 'Hide install options' : 'Install Agent'}
+          </button>
+        ) : null}
 
-        <button
-          type="button"
-          className={armed ? `${shared.action} ${shared.actionDanger}` : shared.action}
-          onClick={() => void remove()}
-          disabled={busy !== null}
-          aria-label={armed ? `Really remove ${deployment.name}` : `Remove ${deployment.name}`}
-        >
-          {armed ? 'Really remove?' : 'Remove'}
-        </button>
       </div>
 
       {probe ? (
@@ -505,8 +567,19 @@ function DeploymentCard({
         </span>
       ) : null}
 
-      {showInstall ? <InstallInstructionsPanel api={api} deployment={deployment} /> : null}
+      {showInstall && !agentInstalled ? <InstallInstructionsPanel api={api} deployment={deployment} /> : null}
       {task ? <TaskLog task={task} onDismiss={() => setTask(null)} /> : null}
+      <footer className={styles.cardFooter}>
+        <button
+          type="button"
+          className={`${shared.action} ${shared.actionDanger}`}
+          onClick={() => void remove()}
+          disabled={busy !== null}
+          aria-label={armed ? `Really remove ${deployment.name}` : `Remove ${deployment.name}`}
+        >
+          {armed ? 'Really remove?' : 'Remove'}
+        </button>
+      </footer>
     </li>
   );
 }
@@ -521,15 +594,13 @@ function DeploymentCard({
  */
 function NextAction({ deployment }: { deployment: Deployment }) {
   const comfy = deployment.comfy;
-  const neverSeen = !deployment.lastSeenAt;
+  const neverSeen = !deployment.lastSeenAt && !deployment.agentVersion && deployment.status !== 'online';
 
   if (neverSeen) {
     return (
       <p className={`${styles.next} ${styles.nextWaiting}`}>
         <span className={styles.nextText}>
-          <strong>Waiting for the agent to check in.</strong> Nothing has been heard from this
-          machine yet. Use <strong>Install Agent</strong> below to put the agent on it — once it
-          starts, this card fills in by itself.
+          <strong>Waiting for the agent to check in.</strong> Install the agent on this machine to continue.
         </span>
       </p>
     );
@@ -538,9 +609,7 @@ function NextAction({ deployment }: { deployment: Deployment }) {
     return (
       <p className={`${styles.next} ${styles.nextWaiting}`}>
         <span className={styles.nextText}>
-          <strong>The agent has stopped answering.</strong> It checked in before, so it is
-          installed — the machine may be asleep or the agent stopped. Press <strong>Test</strong> to
-          try it again.
+          <strong>The agent has stopped answering.</strong> Wake the machine, then press <strong>Test</strong>.
         </span>
       </p>
     );
@@ -549,8 +618,7 @@ function NextAction({ deployment }: { deployment: Deployment }) {
     return (
       <p className={`${styles.next} ${styles.nextReady}`}>
         <span className={styles.nextText}>
-          <strong>The agent is running.</strong> There is no ComfyUI on this machine yet — press{' '}
-          <strong>Install ComfyUI</strong> to put one there.
+          <strong>The agent is running.</strong> Choose <strong>Install engine</strong> to set up generation.
         </span>
       </p>
     );
@@ -564,14 +632,14 @@ function ComfySummary({ deployment }: { deployment: Deployment }) {
   if (!comfy) {
     return (
       <p className={`${styles.summary} ${styles.summaryEmpty}`}>
-        Nothing reported yet. Once the agent checks in, what ComfyUI it has appears here.
+        Machine details will appear when the agent connects.
       </p>
     );
   }
   return (
     <dl className={styles.summary}>
       <div>
-        <dt>ComfyUI</dt>
+        <dt>Generation engine</dt>
         <dd>
           {comfy.installed ? (
             <>
@@ -586,26 +654,26 @@ function ComfySummary({ deployment }: { deployment: Deployment }) {
         </dd>
       </div>
       <div>
-        <dt>Storage helper</dt>
+        <dt>File access</dt>
         <dd>
           <span data-state={comfy.helperReady ? 'on' : comfy.helperInstalled ? 'warn' : 'off'} className={styles.pip} />
           {comfy.helperReady
-            ? 'answering'
+            ? 'ready'
             : comfy.helperInstalled
-              ? 'installed, not answering — restart ComfyUI'
+              ? 'restart engine to enable'
               : 'not installed'}
         </dd>
       </div>
       <div>
-        <dt>Backend</dt>
+        <dt>Generation</dt>
         <dd>
-          {deployment.backendName ? (
+          {deployment.backendId ? (
             <>
               <span data-state="on" className={styles.pip} />
-              {deployment.backendName}
+              Enabled
             </>
           ) : (
-            'not registered'
+            'Not enabled'
           )}
         </dd>
       </div>
@@ -1144,7 +1212,7 @@ function ManualInstall({
       if (cause instanceof ApiRequestError) {
         setError({ field: (cause as ApiRequestError & { field?: string }).field, message: cause.message });
       } else {
-        onError(cause instanceof Error ? cause.message : 'Could not create the deployment.');
+        onError(cause instanceof Error ? cause.message : 'Could not add the backend.');
       }
     } finally {
       setBusy(false);

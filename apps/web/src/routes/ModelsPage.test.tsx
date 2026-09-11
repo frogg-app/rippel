@@ -146,10 +146,10 @@ describe('ModelsPage', () => {
       await ready();
       await openTab(/Discover/);
 
-      // Verbatim: it names the fix, and a paraphrase would lose it.
-      expect(await screen.findByText(message)).toBeInTheDocument();
+      expect(await screen.findByText('This machine’s model installer isn’t ready.')).toBeInTheDocument();
+      expect(screen.getByTitle('Backend needs attention')).toBeInTheDocument();
       expect(
-        screen.getByRole('heading', { name: 'This backend cannot install models' }),
+        screen.getByRole('heading', { name: 'Model installation unavailable' }),
       ).toBeInTheDocument();
       // And it must not read as "there is nothing here".
       expect(screen.queryByLabelText('Search the catalogue')).not.toBeInTheDocument();

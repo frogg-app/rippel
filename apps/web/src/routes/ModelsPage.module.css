@@ -141,6 +141,11 @@
   box-shadow: var(--ok-glow);
 }
 
+.dotWarning {
+  background: var(--warn);
+  box-shadow: 0 0 8px var(--models-warn-tint);
+}
+
 .backendLabel {
   font-size: var(--text-sm);
   color: var(--text-4);

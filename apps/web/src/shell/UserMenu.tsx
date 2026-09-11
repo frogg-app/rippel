@@ -5,7 +5,7 @@ import { SettingsIcon, SignOutIcon } from '../components/icons';
 import { SettingsModal } from '../settings/SettingsModal';
 import styles from './UserMenu.module.css';
 
-/** The avatar chip, and what is behind it: Settings for an administrator, and sign out. */
+/** Dedicated settings shortcut above the account menu. */
 export function UserMenu({ placement = 'bar' }: { placement?: 'bar' | 'rail' }) {
   const { user, signOut } = useAuth();
   const [open, setOpen] = useState(false);
@@ -32,6 +32,19 @@ export function UserMenu({ placement = 'bar' }: { placement?: 'bar' | 'rail' }) 
 
   return (
     <div className={placement === 'rail' ? `${styles.wrap} ${styles.rail}` : styles.wrap} ref={container}>
+      {user.role === 'admin' ? (
+        <button
+          type="button"
+          className={styles.settingsButton}
+          aria-label="Settings"
+          title="Settings"
+          aria-haspopup="dialog"
+          aria-expanded={settingsOpen}
+          onClick={() => { setOpen(false); setSettingsOpen(true); }}
+        >
+          <SettingsIcon size={20} />
+        </button>
+      ) : null}
       <button
         type="button"
         className={styles.avatar}
@@ -50,20 +63,6 @@ export function UserMenu({ placement = 'bar' }: { placement?: 'bar' | 'rail' }) 
             {user.displayName ? <div className={styles.email}>{user.email}</div> : null}
             {user.role === 'admin' ? <div className={styles.role}>Administrator</div> : null}
           </div>
-          {user.role === 'admin' ? (
-            <button
-              type="button"
-              role="menuitem"
-              className={styles.item}
-              onClick={() => {
-                setOpen(false);
-                setSettingsOpen(true);
-              }}
-            >
-              <SettingsIcon size={15} />
-              Settings
-            </button>
-          ) : null}
           <button type="button" role="menuitem" className={styles.item} onClick={() => void signOut()}>
             <SignOutIcon size={15} />
             Sign out

@@ -40,8 +40,8 @@ function storageDriver(): 'local' | 's3' {
 }
 
 /**
- * Backends are seeded from `COMFY_BACKENDS=name=url,name2=url2`. After first
- * boot they live in the database and this is ignored for names already present.
+ * Legacy COMFY_BACKENDS values are parsed for compatibility only. Machines
+ * are now connected through their agents; startup does not create backends.
  */
 function parseBackends(raw: string): { name: string; baseUrl: string }[] {
   return raw

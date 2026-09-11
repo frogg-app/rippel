@@ -15,53 +15,32 @@ against a real ComfyUI server. Generation itself is next.
 ```bash
 git clone <this repo> && cd rippel
 cp .env.example .env
-# Edit .env: set AUTH_SECRET and point COMFY_BACKENDS at your ComfyUI server.
+# Edit .env: set AUTH_SECRET and your database/storage settings.
 docker compose up -d
 ```
 
 Then open the app and register — **the first account created becomes the
 administrator**, so a fresh install is never locked out of itself.
 
-### Pointing it at ComfyUI
+## Connecting a backend
 
-ComfyUI runs outside this stack, so `localhost` inside a container is not your
-ComfyUI. Use the machine's LAN address:
+Open **Settings → Backends** to connect a machine through the rippel agent.
+A backend is an agent-managed machine; its generation engine is ComfyUI.
+The agent installs and updates the engine, starts and stops it, and enables
+file access for Rippel's storage tools.
 
-```
-COMFY_BACKENDS=desktop-4090=http://192.168.1.50:8188
-```
+Choose **Deploy over SSH** or **Install by hand** to connect a machine.
+Once the agent is online, install the generation engine and choose
+**Enable generation**. Rippel gets the engine address from the agent.
+Standalone ComfyUI addresses and `COMFY_BACKENDS` startup seeding are no
+longer used to add machines. Existing records are preserved.
 
-If ComfyUI runs on the *same* host as this stack, uncomment the `extra_hosts`
-block in `docker-compose.yml` and use `http://host.docker.internal:8188`.
+The agent is a standalone binary. ComfyUI itself needs Python and git;
+the agent manages setup on supported platforms.
 
-Start ComfyUI with `--listen 0.0.0.0` so it accepts connections from off the box.
-ComfyUI has no authentication of its own — keep it on your LAN. This app never
-connects the browser to it directly; every call goes through the API server.
-
-## Deploying a machine
-
-Pointing rippel at a ComfyUI someone already installed is the section above.
-Getting a ComfyUI onto a bare machine in the first place is **Settings →
-Deployment**, which installs the *rippel agent* — a dependency-free Node process
-that installs and updates ComfyUI, starts and stops it, and keeps the storage
-helper in place.
-
-Two ways in, installing exactly the same thing:
-
-- **Deploy over SSH.** rippel connects once, runs the installer, and streams the
-  output back. The credential is used for that connection and never stored.
-- **Install by hand.** rippel gives you a one-line command with the machine's
-  address and token already in it, to paste on the target — for Windows, for a
-  box rippel cannot SSH to, or when you would rather read the script first.
-  Download links for the agent's GitHub releases are on the same panel.
-
-Neither needs root: the agent installs into its own home directory and runs as a
-user service. The target needs Node.js 20 or newer, plus git and Python for
-ComfyUI itself.
-
-Once ComfyUI is installed there, **Add as backend** registers it — the address is
-built from what the agent reported rather than typed, so there is no fourth
-place to make a typo.
+Removing a backend disconnects it from Rippel and its generation list.
+It does not uninstall the agent or delete files on that machine. Removal is
+blocked while generation or model downloads are active.
 
 The install command carries the address the agent will check in to, and that
 address is the one you are reaching rippel on when you copy the command — open

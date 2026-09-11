@@ -42,6 +42,11 @@
   box-shadow: var(--ok-glow);
 }
 
+.pill[data-status='offline'] .dot,
+.pill[data-status='unknown'] .dot {
+  background: var(--warn);
+}
+
 /* A slow ring breathing out of the live dot: the server is there, right now. */
 .dot[data-status='online']::after {
   content: '';

@@ -139,37 +139,13 @@ describe('gating', () => {
 });
 
 describe('create', () => {
-  it('validates the name and the address', async () => {
-    const { app } = await server(ADMIN);
-    const noName = await app.inject({ method: 'POST', url: '/backends', payload: { baseUrl: 'http://gpu2:8188' } });
-    expect(noName.statusCode).toBe(400);
-    expect(noName.json().field).toBe('name');
-    for (const baseUrl of ['gpu2:8188', 'ftp://gpu2', 'http://gpu2:8188/api', 'http://gpu2:8188/?x=1', '']) {
-      const bad = await app.inject({ method: 'POST', url: '/backends', payload: { name: 'second', baseUrl } });
-      expect(bad.statusCode, baseUrl).toBe(400);
-      expect(bad.json().field).toBe('baseUrl');
-    }
-  });
-
-  it('refuses a duplicate name, case-insensitively', async () => {
-    const { app } = await server(ADMIN);
-    const dup = await app.inject({ method: 'POST', url: '/backends', payload: { name: 'Desktop', baseUrl: 'http://gpu2:8188' } });
-    expect(dup.statusCode).toBe(409);
-    expect(dup.json().error).toBe('conflict');
-  });
-
-  it('creates, normalises the address, and asks for an immediate poll', async () => {
+  it('requires an agent-managed machine instead of a standalone address', async () => {
     const { app, rows, polled } = await server(ADMIN);
-    const res = await app.inject({
-      method: 'POST',
-      url: '/backends',
-      payload: { name: '  laptop ', baseUrl: 'http://192.168.1.20:8188/', vramLimitMb: 8192 },
-    });
-    expect(res.statusCode).toBe(201);
-    const backend = res.json().backend;
-    expect(backend).toMatchObject({ name: 'laptop', baseUrl: 'http://192.168.1.20:8188', enabled: true, status: 'unknown', vramLimitMb: 8192 });
-    expect(rows).toHaveLength(2);
-    expect(polled).toEqual([backend.id]);
+    const res = await app.inject({ method: 'POST', url: '/backends', payload: { name: 'new', baseUrl: 'http://gpu:8188' } });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error).toBe('agent_required');
+    expect(rows).toHaveLength(1);
+    expect(polled).toEqual([]);
   });
 });
 

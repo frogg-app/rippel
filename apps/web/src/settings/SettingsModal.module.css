@@ -604,3 +604,11 @@
   .cardActions { gap: var(--gap-sm); }
   .toast { left: var(--space-4); right: var(--space-4); bottom: var(--space-4); max-width: none; }
 }
+
+.dot[data-status='warning'] {
+  background: var(--warn);
+}
+
+.cardStatus[data-status='warning'] {
+  color: var(--warn);
+}
