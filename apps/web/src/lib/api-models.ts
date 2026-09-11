@@ -162,6 +162,7 @@ export interface CatalogueResult {
 }
 
 export interface ModelsApi {
+  approveHost?(backendId: Uuid, installId: Uuid, hostname: string, approve: boolean): Promise<void>;
   backends(signal?: AbortSignal): Promise<Backend[]>;
   installed(signal?: AbortSignal): Promise<InstalledModels>;
   catalogue(backendId: Uuid, signal?: AbortSignal): Promise<CatalogueResult>;
@@ -195,6 +196,9 @@ export interface ModelsApi {
 }
 
 export const modelsApi: ModelsApi = {
+  approveHost: async (backendId, installId, hostname, approve) => {
+    await request(`/backends/${backendId}/models/installs/${installId}/host-approval`, { method: 'POST', body: { hostname, approve } });
+  },
   backends: async (signal) =>
     (await request<{ backends: Backend[] }>('/backends', { signal })).backends ?? [],
 

@@ -606,6 +606,24 @@ export function makeDeploymentRoutes(deps: DeployDeps = {}) {
       },
     );
 
+    app.post<{ Params: { id: string }; Body: { mode?: string } }>('/deployments/:id/memory', { onRequest: [app.requireAdmin] }, async (req, reply) => {
+      const row = await loadOr404(req, reply);
+      if (!row) return;
+      const mode = req.body?.mode;
+      if (mode !== 'auto' && mode !== 'ram') return reply.code(400).send({ error: 'invalid_input', message: 'Choose a memory setting.' });
+      if (row.backend_id) {
+        const busy = await db.query(`SELECT 1 FROM jobs WHERE backend_id = $1 AND status IN ('dispatched','running','uploading')
+          UNION ALL SELECT 1 FROM model_installs WHERE backend_id = $1 AND status IN ('queued','downloading')
+          UNION ALL SELECT 1 FROM model_operations WHERE backend_id = $1 AND status IN ('starting','running') LIMIT 1`, [row.backend_id]);
+        if (busy.length) return reply.code(409).send({ error: 'busy', message: 'Wait for generation and downloads to finish before changing memory usage.' });
+      }
+      try {
+        const status = await agent.status(targetOf(row));
+        if (!status.comfy.memoryMode) return reply.code(409).send({ error: 'update_required', message: 'Update the agent to change memory usage.' });
+        return { task: await agent.setMemoryMode(targetOf(row), mode) };
+      } catch (cause) { return agentFailure(reply, cause); }
+    });
+
     app.post<{ Params: { id: string } }>('/deployments/:id/agent-update', { onRequest: [app.requireAdmin] }, async (req, reply) => {
       const row = await loadOr404(req,reply);
       if (!row) return;

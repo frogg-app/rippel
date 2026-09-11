@@ -10,6 +10,7 @@
 
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { hostApprovalRoutes } from './host-approval.js';
 import type {
   BackendReadiness,
   ModelCatalogEntry,
@@ -43,6 +44,7 @@ interface BackendUrlRow {
 }
 
 export default async function modelInstallRoutes(app: FastifyInstance) {
+  await hostApprovalRoutes(app);
   /** Reject anything but an admin, and hand back the backend's URL. */
   async function adminBackend(backendId: string): Promise<BackendUrlRow | null> {
     return queryOne<BackendUrlRow>(

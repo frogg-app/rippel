@@ -72,6 +72,7 @@ export interface InstallRequest {
 export type InstallState = 'queued' | 'downloading' | 'complete' | 'failed';
 
 export interface InstallProgress {
+  approvalRequired?: { hostname: string } | null;
   state: InstallState;
   /**
    * Whatever the transport actually said. Deliberately a string and not a

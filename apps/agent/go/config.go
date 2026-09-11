@@ -14,7 +14,7 @@ import (
 // AgentVersion is reported on every ping and check-in. rippel stores it against
 // the deployment, so it is the one string an operator sees when asking "what is
 // actually running on that box".
-const AgentVersion = "0.3.0"
+const AgentVersion = "0.3.1"
 
 // Config is the agent's settings, and the directory they came from.
 //
@@ -24,16 +24,18 @@ const AgentVersion = "0.3.0"
 // never lands in a shell history), while a person debugging by hand overrides
 // one value on the command line without editing a file.
 type Config struct {
-	Token            string `json:"token,omitempty"`
-	ServerURL        string `json:"serverUrl,omitempty"`
-	DeploymentID     string `json:"deploymentId,omitempty"`
-	Port             int    `json:"port,omitempty"`
-	Host             string `json:"host,omitempty"`
-	ComfyPath        string `json:"comfyPath,omitempty"`
-	ComfyPort        int    `json:"comfyPort,omitempty"`
-	ComfyArgs        string `json:"comfyArgs,omitempty"`
-	StorageToken     string `json:"storageToken,omitempty"`
-	HeartbeatSeconds int    `json:"heartbeatSeconds,omitempty"`
+	ApprovedModelHosts []string `json:"approvedModelHosts,omitempty"`
+	Token              string   `json:"token,omitempty"`
+	ServerURL          string   `json:"serverUrl,omitempty"`
+	DeploymentID       string   `json:"deploymentId,omitempty"`
+	Port               int      `json:"port,omitempty"`
+	Host               string   `json:"host,omitempty"`
+	ComfyPath          string   `json:"comfyPath,omitempty"`
+	ComfyPort          int      `json:"comfyPort,omitempty"`
+	ComfyArgs          string   `json:"comfyArgs,omitempty"`
+	MemoryMode         string   `json:"memoryMode,omitempty"`
+	StorageToken       string   `json:"storageToken,omitempty"`
+	HeartbeatSeconds   int      `json:"heartbeatSeconds,omitempty"`
 
 	// Derived at load time, never written back.
 	Platform string `json:"-"`
@@ -149,14 +151,16 @@ func LoadConfig() (*Config, error) {
 	}
 
 	cfg := &Config{
-		Token:        envString("RIPPEL_AGENT_TOKEN", file.Token, ""),
-		ServerURL:    strings.TrimRight(envString("RIPPEL_SERVER_URL", file.ServerURL, ""), "/"),
-		DeploymentID: envString("RIPPEL_DEPLOYMENT_ID", file.DeploymentID, ""),
-		Host:         envString("RIPPEL_AGENT_HOST", file.Host, "0.0.0.0"),
-		ComfyArgs:    envString("RIPPEL_COMFY_ARGS", file.ComfyArgs, ""),
-		StorageToken: envString("RIPPEL_STORAGE_TOKEN", file.StorageToken, ""),
-		Platform:     normalisePlatform(),
-		Home:         home,
+		ApprovedModelHosts: append([]string(nil), file.ApprovedModelHosts...),
+		Token:              envString("RIPPEL_AGENT_TOKEN", file.Token, ""),
+		ServerURL:          strings.TrimRight(envString("RIPPEL_SERVER_URL", file.ServerURL, ""), "/"),
+		DeploymentID:       envString("RIPPEL_DEPLOYMENT_ID", file.DeploymentID, ""),
+		Host:               envString("RIPPEL_AGENT_HOST", file.Host, "0.0.0.0"),
+		ComfyArgs:          envString("RIPPEL_COMFY_ARGS", file.ComfyArgs, ""),
+		MemoryMode:         envString("RIPPEL_MEMORY_MODE", file.MemoryMode, "auto"),
+		StorageToken:       envString("RIPPEL_STORAGE_TOKEN", file.StorageToken, ""),
+		Platform:           normalisePlatform(),
+		Home:               home,
 	}
 
 	if cfg.Port, err = envInt("RIPPEL_AGENT_PORT", file.Port, 8189); err != nil {
@@ -175,6 +179,9 @@ func LoadConfig() (*Config, error) {
 	}
 	cfg.ComfyPath = comfyPath
 
+	if cfg.MemoryMode != "auto" && cfg.MemoryMode != "ram" {
+		return nil, fmt.Errorf("memoryMode must be auto or ram")
+	}
 	if cfg.Port < 1 || cfg.Port > 65535 {
 		return nil, fmt.Errorf("the agent's port must be between 1 and 65535, got %d", cfg.Port)
 	}

@@ -47,6 +47,8 @@ export interface ModelMoveRequest { from: string; to: string }
 export interface ModelDownloadRequest { url: string; path: string; sha256: string; sizeBytes?: number }
 
 export interface AgentClient {
+  approveModelHost(target: AgentTarget, taskId: string, body: { hostname: string; approve: boolean }): Promise<{ ok: true }>;
+  setMemoryMode(target: AgentTarget, mode: 'auto' | 'ram'): Promise<AgentTask>;
   updateAgent(target: AgentTarget, sha256: string): Promise<AgentTask>;
   moveModel(target: AgentTarget, body: ModelMoveRequest): Promise<AgentTask>;
   downloadModel(target: AgentTarget, body: ModelDownloadRequest): Promise<AgentTask>;
@@ -125,6 +127,8 @@ export function makeAgentClient(opts: { fetchImpl?: typeof fetch; timeoutMs?: nu
   }
 
   return {
+    approveModelHost: (target, taskId, body) => call(target, `/agent/tasks/${encodeURIComponent(taskId)}/host-approval`, { method: 'POST', body }),
+    setMemoryMode: async (target, mode) => (await call<{ task: AgentTask }>(target, '/agent/memory', { method: 'POST', body: { mode } })).task,
     updateAgent: async (target, sha256) => (await call<{ task: AgentTask }>(target, '/agent/update', { method: 'POST', body: { sha256 } })).task,
     moveModel: async (target, body) =>
       (await call<{ task: AgentTask }>(target, '/agent/models/move', { method: 'POST', body })).task,

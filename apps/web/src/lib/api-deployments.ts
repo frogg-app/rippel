@@ -153,6 +153,7 @@ export interface DeploymentsApi {
   releases(signal?: AbortSignal): Promise<AgentRelease>;
   installComfy(id: Uuid, accelerator: string): Promise<AgentTask>;
   updateComfy(id: Uuid): Promise<AgentTask>;
+  setMemoryMode(id: Uuid, mode: 'auto' | 'ram'): Promise<AgentTask>;
   updateAgent(id: Uuid): Promise<AgentTask>;
   power(id: Uuid, action: 'start' | 'stop' | 'restart'): Promise<unknown>;
   installHelper(id: Uuid): Promise<AgentTask>;
@@ -188,6 +189,7 @@ export const deploymentsApi: DeploymentsApi = {
         body: { accelerator },
       })
     ).task,
+  setMemoryMode: async (id, mode) => (await request<{ task: AgentTask }>(`/deployments/${id}/memory`, { method: 'POST', body: { mode } })).task,
   updateAgent: async (id) => (await request<{ task: AgentTask }>(`/deployments/${id}/agent-update`, { method: 'POST' })).task,
   updateComfy: async (id) =>
     (await request<{ task: AgentTask }>(`/deployments/${id}/comfyui/update`, { method: 'POST' })).task,

@@ -28,6 +28,7 @@ import type { InstallRequest, ModelTransport } from './transport.js';
 import { TransportError, TransportUnavailable } from './transport.js';
 
 export interface InstallRow {
+  approval_required?: { hostname: string } | null;
   id: string;
   transport_kind?: string;
   backend_id: string;
@@ -51,6 +52,7 @@ export interface InstallRow {
 
 export function toModelInstall(row: InstallRow): ModelInstall {
   return {
+    approvalRequired: row.approval_required ?? null,
     id: row.id,
     backendId: row.backend_id,
     requestedBy: row.requested_by,
@@ -61,7 +63,8 @@ export function toModelInstall(row: InstallRow): ModelInstall {
     url: row.url,
     status: row.status,
     detail: row.detail,
-    error: row.error,
+    error: row.error?.includes('not an approved model host')
+      ? 'Download host needs approval. Try again to review it.' : row.error,
     createdAt: row.created_at.toISOString(),
     startedAt: row.started_at?.toISOString() ?? null,
     finishedAt: row.finished_at?.toISOString() ?? null,
@@ -295,7 +298,7 @@ export async function refreshInstall(row: InstallRow, baseUrl: string): Promise<
   // whole queue drains — which is the right way to be wrong: reporting a
   // half-written checkpoint as ready would hand it to the job scheduler.
   if (progress.state === 'downloading') {
-    return update(row, 'downloading', progress.detail, bytesReceived);
+    return update(row, 'downloading', progress.detail, bytesReceived, progress.approvalRequired ?? null);
   }
 
   if (row.transport_kind === 'rippel-agent' && progress.state !== 'complete') {
@@ -334,16 +337,17 @@ async function update(
   status: ModelInstallStatus,
   detail: string | null,
   bytesReceived: number | null,
+  approval: { hostname: string } | null = null,
 ): Promise<ModelInstall> {
   const rows = await query<InstallRow>(
     `UPDATE model_installs
         SET status = $2,
-            detail = $3,
+            detail = $3, approval_required = $5::jsonb,
             bytes_received = COALESCE($4, bytes_received),
             started_at = COALESCE(started_at, CASE WHEN $2 = 'downloading' THEN now() END)
       WHERE id = $1
       RETURNING *`,
-    [row.id, status, detail, bytesReceived],
+    [row.id, status, detail, bytesReceived, JSON.stringify(approval)],
   );
   return toModelInstall(rows[0] ?? row);
 }
@@ -357,7 +361,7 @@ async function finish(
   const row = await queryOne<InstallRow>(
     `UPDATE model_installs
         SET status = $2, detail = $3, bytes_received = COALESCE($4, bytes_received),
-            finished_at = now(), error = NULL
+            finished_at = now(), error = NULL, approval_required = NULL
       WHERE id = $1
       RETURNING *`,
     [id, status, detail, bytesReceived],
@@ -368,7 +372,7 @@ async function finish(
 async function fail(id: string, error: string): Promise<ModelInstall> {
   const row = await queryOne<InstallRow>(
     `UPDATE model_installs
-        SET status = 'failed', error = $2, finished_at = now()
+        SET status = 'failed', error = $2, finished_at = now(), approval_required = NULL
       WHERE id = $1
       RETURNING *`,
     [id, error],
@@ -484,7 +488,7 @@ export async function startInstall(params: {
     await params.transport.install(requestFromRow(row));
   } catch (err) {
     await query(
-      `UPDATE model_installs SET status = 'failed', error = $2, finished_at = now() WHERE id = $1`,
+      `UPDATE model_installs SET status = 'failed', error = $2, finished_at = now(), approval_required = NULL WHERE id = $1`,
       [row.id, err instanceof Error ? err.message : String(err)],
     );
     throw err;

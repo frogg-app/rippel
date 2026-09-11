@@ -473,3 +473,8 @@
   border-top: 1px solid var(--line);
   padding-top: var(--gap-md);
 }
+
+.memorySettings { display: grid; gap: 10px; padding: 16px 0; }
+.memoryLabel { font-size: 13px; font-weight: 600; }
+.memorySelect { min-height: 40px; padding: 0 12px; color: inherit; background: var(--surface, #182126); border: 1px solid var(--border, #334047); border-radius: 10px; font: inherit; }
+.memoryNote { margin: 0; font-size: 12px; color: var(--text-muted, #8c9fa7); line-height: 1.5; }

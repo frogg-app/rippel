@@ -53,7 +53,8 @@ export interface InstallProgressProps {
 }
 
 export function InstallProgress({ install, now, compact = false }: InstallProgressProps) {
-  const live = install.status === 'queued' || install.status === 'downloading';
+  const paused = !!install.approvalRequired;
+  const live = !paused && (install.status === 'queued' || install.status === 'downloading');
   const since = install.startedAt ?? install.createdAt;
   const until = install.finishedAt ? Date.parse(install.finishedAt) : now;
 
@@ -96,7 +97,7 @@ export function InstallProgress({ install, now, compact = false }: InstallProgre
           // moves on its own, and the operator may not be watching it.
           role="status"
         >
-          {STATUS_WORDS[install.status]}
+          {paused ? 'Approval needed' : STATUS_WORDS[install.status]}
         </span>
         <span className={`mono ${styles.progressElapsed}`}>{elapsed(since, until)}</span>
       </div>
@@ -143,7 +144,7 @@ export function InstallProgress({ install, now, compact = false }: InstallProgre
         </p>
       ) : null}
 
-      {detail ? <p className={styles.progressDetail}>{detail}</p> : null}
+      {detail && !paused ? <p className={styles.progressDetail}>{detail}</p> : null}
       {install.error ? (
         <p className={styles.progressError} role="alert">
           {install.error}

@@ -68,3 +68,10 @@ it('fails interrupted setup without replaying a download', async () => {
   expect(await transport().progress(request)).toMatchObject({ state: 'failed' });
   expect(startOperation).not.toHaveBeenCalled();
 });
+it('keeps host approval paused across transport recreation and clears it on failure', async () => {
+  vi.mocked(queryOne).mockResolvedValue({ operation_id: 'operation' });
+  vi.mocked(getOperation).mockResolvedValue({ status: 'running', progress: { status: 'running', approvalRequired: { hostname: 'cdn.example.com' } }, error: null } as never);
+  expect(await transport().progress(request)).toMatchObject({ state: 'downloading', detail: 'Approval needed', approvalRequired: { hostname: 'cdn.example.com' } });
+  vi.mocked(getOperation).mockResolvedValue({ status: 'failed', progress: { status: 'failed' }, error: 'Download host approval declined.' } as never);
+  expect(await transport().progress(request)).toMatchObject({ state: 'failed', approvalRequired: null, error: 'Download host approval declined.' });
+});

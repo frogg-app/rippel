@@ -39,20 +39,27 @@ const keepFinished = time.Hour
 // a log a goroutine is still writing to, and handing that struct to
 // json.Marshal would both race with the writer and copy a mutex. A view is
 // taken under the lock and is then nobody's but the caller's.
+type HostApproval struct {
+	Hostname string `json:"hostname"`
+}
+
 type TaskView struct {
-	BytesReceived int64    `json:"bytesReceived"`
-	BytesTotal    int64    `json:"bytesTotal"`
-	ID            string   `json:"id"`
-	Kind          string   `json:"kind"`
-	Status        string   `json:"status"`
-	StartedAt     string   `json:"startedAt"`
-	FinishedAt    *string  `json:"finishedAt"`
-	Log           []string `json:"log"`
-	Error         *string  `json:"error"`
+	ApprovalRequired *HostApproval `json:"approvalRequired,omitempty"`
+	BytesReceived    int64         `json:"bytesReceived"`
+	BytesTotal       int64         `json:"bytesTotal"`
+	ID               string        `json:"id"`
+	Kind             string        `json:"kind"`
+	Status           string        `json:"status"`
+	StartedAt        string        `json:"startedAt"`
+	FinishedAt       *string       `json:"finishedAt"`
+	Log              []string      `json:"log"`
+	Error            *string       `json:"error"`
 }
 
 // Task is one piece of long-running work, as the agent holds it.
 type Task struct {
+	approval      *HostApproval
+	approvalReply chan bool
 	bytesReceived int64
 	bytesTotal    int64
 	ID            string
@@ -76,8 +83,14 @@ func (t *Task) snapshot(logTail int) TaskView {
 	if logTail >= 0 && len(lines) > logTail {
 		lines = lines[len(lines)-logTail:]
 	}
+	var approval *HostApproval
+	if t.approval != nil {
+		copy := *t.approval
+		approval = &copy
+	}
 	return TaskView{
-		BytesReceived: t.bytesReceived, BytesTotal: t.bytesTotal,
+		ApprovalRequired: approval,
+		BytesReceived:    t.bytesReceived, BytesTotal: t.bytesTotal,
 		ID:         t.ID,
 		Kind:       t.Kind,
 		Status:     t.status,

@@ -18,7 +18,6 @@ import { bashInstaller, oneLiner, powershellInstaller } from './scripts.js';
 import { clearReleaseCache, latestAgentRelease } from './releases.js';
 import { AGENT_BINARIES, availableBinaries, downloadFileName, encodeSetup, setupLink } from './binaries.js';
 import { AgentError, type AgentClient } from './agent-client.js';
-import { AgentError } from './agent-client.js';
 
 const ADMIN = { id: '11111111-1111-4111-8111-111111111111', role: 'admin' as const };
 const USER = { id: '22222222-2222-4222-8222-222222222222', role: 'user' as const };
@@ -187,6 +186,7 @@ function fakeAgent(over: Partial<AgentClient> = {}): AgentClient {
     power: async () => ({ started: true }),
     installHelper: async () => task({ kind: 'install-helper' }),
     comfyLog: async () => [],
+    setMemoryMode: async () => task(),
     updateAgent: async () => task(),
     moveModel: async () => task(),
     downloadModel: async () => task(),
@@ -718,5 +718,31 @@ describe('the agent release lookup', () => {
     // /latest/download link rather than disappearing from the page.
     expect(release.downloads.find((d) => d.platform === 'win32')!.url).toContain('/latest/download/');
     clearReleaseCache();
+  });
+});
+
+describe('memory usage', () => {
+  it('requires admin access and rejects invalid settings', async () => {
+    const app = await server(USER, { rows: [row()] });
+    expect((await app.inject({method:'POST',url:`/deployments/${D1}/memory`,payload:{mode:'ram'}})).statusCode).toBe(403);
+    await app.close();
+    const admin = await server(ADMIN, { rows: [row()] });
+    expect((await admin.inject({method:'POST',url:`/deployments/${D1}/memory`,payload:{mode:'other'}})).statusCode).toBe(400);
+    await admin.close();
+  });
+  it('refuses active jobs and older agents', async () => {
+    const change = vi.fn(async () => task());
+    const busy = await server(ADMIN, { rows:[row({backend_id:'b1'})], busy:true, agent:fakeAgent({setMemoryMode:change}) });
+    expect((await busy.inject({method:'POST',url:`/deployments/${D1}/memory`,payload:{mode:'ram'}})).statusCode).toBe(409);
+    expect(change).not.toHaveBeenCalled(); await busy.close();
+    const old = await server(ADMIN, {rows:[row()]});
+    expect((await old.inject({method:'POST',url:`/deployments/${D1}/memory`,payload:{mode:'ram'}})).json().error).toBe('update_required');
+    await old.close();
+  });
+  it('forwards the setting and returns the tracked task', async () => {
+    const change = vi.fn(async () => task());
+    const app = await server(ADMIN, {rows:[row()],agent:fakeAgent({setMemoryMode:change,status:async()=>({ok:true,version:'0.3.1',platform:'win32',hostname:'desktop',comfy:{...COMFY,memoryMode:'auto'},accelerator:'rocm',tasks:[]})})});
+    const res=await app.inject({method:'POST',url:`/deployments/${D1}/memory`,payload:{mode:'ram'}});
+    expect(res.statusCode).toBe(200);expect(res.json().task).toBeDefined();expect(change).toHaveBeenCalledWith(expect.anything(),'ram');await app.close();
   });
 });

@@ -160,7 +160,11 @@ func downloadModel(cfg *Config, task *Task, body ModelDownload, client *http.Cli
 	defer func() { file.Close(); root.Remove(temp) }()
 	response, err := client.Get(body.URL)
 	if err != nil {
-		return err
+		var approvalErr modelApprovalError
+		if errors.As(err, &approvalErr) {
+			return approvalErr
+		}
+		return fmt.Errorf("model download failed; check connectivity or download host approval")
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
@@ -231,6 +235,12 @@ func (a *Agent) modelOperation(w http.ResponseWriter, r *http.Request, move bool
 			writeError(w, 400, "bad_request", err.Error())
 			return
 		}
-		a.begin(w, "model-files", func(t *Task) error { err := downloadModel(cfg, t, body, modelHTTPClient(nil)); a.changed(); return err })
+		a.begin(w, "model-files", func(t *Task) error {
+			client := a.approvalModelClient(t)
+			defer client.CloseIdleConnections()
+			err := downloadModel(cfg, t, body, client)
+			a.changed()
+			return err
+		})
 	}
 }

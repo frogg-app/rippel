@@ -144,6 +144,7 @@ function fakeApi(initial: Deployment[] = [online], over: Partial<DeploymentsApi>
     })),
     releases: vi.fn(async () => instructions.release),
     installComfy: vi.fn(async () => done()),
+    setMemoryMode: vi.fn(async () => done({kind: 'set-memory'})),
     updateAgent: vi.fn(),
     updateComfy: vi.fn(async () => done({ kind: 'update-comfyui' })),
     power: vi.fn(async () => ({ started: true })),
@@ -693,4 +694,30 @@ describe('agent update progress', () => {
       expect(screen.queryByText('Agent updated.')).not.toBeInTheDocument();
     } finally { view.unmount(); vi.useRealTimers(); }
   });
+});
+
+it('requires an agent update for memory settings on older agents', async () => {
+ const {api}=fakeApi();render(<DeploymentsSection api={api}/>);
+ expect(await screen.findByLabelText('Memory usage')).toBeDisabled();
+ expect(screen.getByText('Update the agent to change memory usage.')).toBeInTheDocument();
+});
+
+it('applies memory usage and refreshes engine state automatically', async () => {
+ const comfy={...COMFY,memoryMode:'auto' as const};
+ const {api}=fakeApi([{...online,comfy}],{status:vi.fn(async()=>({comfy:{...COMFY,memoryMode:'ram' as const},accelerator:'cuda' as const,tasks:[]}))});
+ render(<DeploymentsSection api={api}/>);
+ const select=await screen.findByLabelText('Memory usage');
+ await userEvent.selectOptions(select,'ram');
+ await userEvent.click(screen.getByRole('button',{name:'Apply and restart'}));
+ await waitFor(()=>expect(api.setMemoryMode).toHaveBeenCalledWith('d1','ram'));
+ await waitFor(()=>expect(api.status).toHaveBeenCalled());
+ expect(select).toHaveValue('ram');
+});
+
+it('saves memory settings without offering a restart for a stopped engine', async () => {
+ const {api}=fakeApi([{...online,comfy:{...COMFY,running:false,memoryMode:'auto'}}]);
+ render(<DeploymentsSection api={api}/>);
+ await userEvent.selectOptions(await screen.findByLabelText('Memory usage'),'ram');
+ expect(screen.getByRole('button',{name:'Apply'})).toBeEnabled();
+ expect(screen.queryByRole('button',{name:'Apply and restart'})).not.toBeInTheDocument();
 });

@@ -43,6 +43,7 @@ const HelperDir = "comfyui-rippel-storage"
 // ComfyState is the wire shape rippel's ComfyState type expects. The JSON tags
 // are the contract; do not rename them without changing packages/shared.
 type ComfyState struct {
+	MemoryMode      string  `json:"memoryMode"`
 	Installed       bool    `json:"installed"`
 	Running         bool    `json:"running"`
 	Path            *string `json:"path"`
@@ -187,6 +188,7 @@ func ComfyStatus(cfg *Config) ComfyState {
 
 	state := ComfyState{
 		Installed:       installed,
+		MemoryMode:      memoryMode(cfg),
 		Running:         stats != nil,
 		Port:            cfg.ComfyPort,
 		HelperInstalled: helperInstalled,
@@ -385,7 +387,7 @@ func StartComfy(cfg *Config) (PowerResult, error) {
 	defer logFile.Close()
 
 	args := []string{"main.py", "--listen", "0.0.0.0", "--port", strconv.Itoa(cfg.ComfyPort)}
-	args = append(args, strings.Fields(cfg.ComfyArgs)...)
+	args = append(args, comfyMemoryArgs(cfg)...)
 
 	cmd := exec.Command(venvPython(cfg), args...)
 	cmd.Dir = cfg.ComfyPath

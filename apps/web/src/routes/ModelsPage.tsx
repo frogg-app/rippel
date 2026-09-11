@@ -59,6 +59,7 @@ import {
   type RunFilter,
 } from '../models/catalogue';
 import { useCatalogue } from '../models/useCatalogue';
+import { HostApproval } from '../models/HostApproval';
 import { useInstalls } from '../models/useInstalls';
 import { useModelLibrary } from '../models/useModelLibrary';
 import { useNow } from '../models/useNow';
@@ -564,6 +565,7 @@ export function ModelsPage({ api = modelsApi, storageApi: storage = storageApi }
         )}
       </div>
 
+      {isAdmin ? <HostApproval installs={installs.live} api={api} /> : null}
       {sheet ? (
         <WorkflowSheet
           api={api}

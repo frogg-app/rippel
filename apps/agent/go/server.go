@@ -51,6 +51,7 @@ func (a *Agent) config() *Config {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 	snapshot := *a.cfg
+	snapshot.ApprovedModelHosts = append([]string(nil), a.cfg.ApprovedModelHosts...)
 	return &snapshot
 }
 
@@ -110,7 +111,7 @@ func readBody(r *http.Request, into any) error {
 func (a *Agent) begin(w http.ResponseWriter, kind string, work func(*Task) error) {
 	a.taskStartMu.Lock()
 	defer a.taskStartMu.Unlock()
-	if a.tasks.IsRunning(kind) {
+	if a.tasks.IsRunning(kind) || a.tasks.IsRunning("set-memory") || (kind == "set-memory" && a.hasRunningTasks()) {
 		writeError(w, http.StatusConflict, "busy",
 			fmt.Sprintf("A %s is already running on this machine.", kind))
 		return
@@ -145,6 +146,11 @@ func (a *Agent) route(w http.ResponseWriter, r *http.Request) {
 				"Set one in config.json and restart it."
 		}
 		writeError(w, http.StatusUnauthorized, "unauthorized", message)
+		return
+	}
+
+	if r.Method == http.MethodPost && strings.HasPrefix(path, "/agent/tasks/") && strings.HasSuffix(path, "/host-approval") {
+		a.approveModelHost(w, r, strings.TrimSuffix(strings.TrimPrefix(path, "/agent/tasks/"), "/host-approval"))
 		return
 	}
 
@@ -248,6 +254,11 @@ func (a *Agent) route(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if r.Method == http.MethodPost && path == "/agent/memory" {
+		a.setMemory(w, r)
+		return
+	}
+
 	if r.Method == http.MethodPost && path == "/agent/config" {
 		a.updateConfig(w, r)
 		return
@@ -258,6 +269,12 @@ func (a *Agent) route(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *Agent) power(w http.ResponseWriter, action string) {
+	a.taskStartMu.Lock()
+	defer a.taskStartMu.Unlock()
+	if a.tasks.IsRunning("set-memory") {
+		writeError(w, http.StatusConflict, "busy", "Memory settings are being applied.")
+		return
+	}
 	cfg := a.config()
 	var result PowerResult
 	var err error
@@ -336,6 +353,12 @@ func (a *Agent) installHelper(w http.ResponseWriter, r *http.Request) {
 // wire: one needs a restart to mean anything, and the other would let a stolen
 // token rotate itself and lock the operator out.
 func (a *Agent) updateConfig(w http.ResponseWriter, r *http.Request) {
+	a.taskStartMu.Lock()
+	defer a.taskStartMu.Unlock()
+	if a.tasks.IsRunning("set-memory") {
+		writeError(w, http.StatusConflict, "busy", "Memory settings are being applied.")
+		return
+	}
 	var body struct {
 		ServerURL        *string `json:"serverUrl"`
 		DeploymentID     *string `json:"deploymentId"`

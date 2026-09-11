@@ -210,6 +210,8 @@ function DeploymentCard({
   }, [armed]);
 
   const comfy = deployment.comfy;
+  const [memory, setMemory] = useState<'auto' | 'ram'>(comfy?.memoryMode ?? 'auto');
+  useEffect(() => { setMemory(comfy?.memoryMode ?? 'auto'); }, [comfy?.memoryMode]);
   const online = deployment.status === 'online';
   const backendStatus = online ? (comfy?.running ? 'online' : 'warning') : deployment.status === 'pending' ? 'unknown' : 'offline';
   const backendLabel = online ? (comfy?.running ? 'online' : comfy?.installed ? 'Engine stopped' : 'Setup needed') : deployment.status === 'pending' ? 'waiting for the agent' : 'offline';
@@ -385,6 +387,13 @@ function DeploymentCard({
       if (status) onChange({ ...deployment, comfy: status.comfy });
     });
 
+  const applyMemory = () => act('apply memory settings', async () => {
+    await follow(await api.setMemoryMode(deployment.id, memory));
+    const status = await api.status(deployment.id);
+    onChange({ ...deployment, comfy: status.comfy });
+    refreshBackends();
+  });
+
   const update = () =>
     act('update ComfyUI', async () => {
       await follow(await api.updateComfy(deployment.id));
@@ -458,6 +467,25 @@ function DeploymentCard({
 
       <NextAction deployment={deployment} />
       <ComfySummary deployment={deployment} />
+      {comfy?.installed ? (
+        <div className={styles.memorySettings}>
+          <label className={styles.memoryLabel} htmlFor={`memory-${deployment.id}`}>Memory usage</label>
+          <div className={shared.cardActions}>
+            <select id={`memory-${deployment.id}`} className={styles.memorySelect} value={memory}
+              disabled={!comfy.memoryMode || !online || busy !== null}
+              onChange={(event) => setMemory(event.target.value as 'auto' | 'ram')}>
+              <option value="auto">Automatic</option>
+              <option value="ram">Use more system RAM</option>
+            </select>
+            <button className={shared.action} type="button" onClick={() => void applyMemory()}
+              disabled={!comfy.memoryMode || !online || busy !== null || memory === comfy.memoryMode}>
+              {busy === 'apply memory settings' ? 'Applying…' : comfy.running ? 'Apply and restart' : 'Apply'}
+            </button>
+          </div>
+          <p className={styles.memoryNote}>{comfy.memoryMode ? 'System RAM can help larger models fit, but generation may be slower.' : 'Update the agent to change memory usage.'}</p>
+          {busy === 'apply memory settings' ? <div className={shared.loading} role="status"><Mark size={16} ripple="loop" />Applying memory settings…</div> : null}
+        </div>
+      ) : null}
       {agentUpdate ? (
         <div className={shared.loading} role="status" aria-live="polite">
           {agentUpdate !== 'done' ? <Mark size={16} ripple="loop" /> : <CheckIcon size={16} />}

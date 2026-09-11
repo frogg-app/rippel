@@ -106,7 +106,8 @@ export class AgentModelTransport implements ModelTransport {
     if (!operation) return { state: 'failed', detail: null, error: 'Download record is missing.' };
     const task = operation.progress as AgentTask | null;
     return { state: operation.status === 'done' ? 'complete' : operation.status === 'failed' ? 'failed' : 'downloading',
-      detail: operation.status === 'done' ? 'Download verified' : 'Downloading model',
+      detail: task?.approvalRequired ? 'Approval needed' : operation.status === 'done' ? 'Download verified' : 'Downloading model',
+      approvalRequired: task?.status === 'running' ? task.approvalRequired ?? null : null,
       bytesReceived: task?.bytesReceived, error: operation.error ?? undefined };
   }
 }

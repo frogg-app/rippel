@@ -1,0 +1,10 @@
+.dialog { width: min(440px, calc(100vw - 32px)); box-sizing: border-box; padding: 28px; border: 1px solid #354348; border-radius: 20px; background: #131b1f; color: #cedfe3; box-shadow: 0 24px 80px #0008; }
+.dialog::backdrop { background: #05090bb3; }
+.dialog h2 { font-size: 19px; margin: 0 0 20px; }
+.dialog p { font-size: 13px; line-height: 1.6; color: #a4b8bf; margin: 12px 0; }
+.hostname { padding: 12px 16px; background: #0c1316; border-radius: 10px; overflow-wrap: anywhere; font-family: monospace; font-size: 14px; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; margin-top: 24px; }
+.actions button, .review { min-height: 40px; padding: 0 14px; border: 1px solid #354348; border-radius: 10px; background: #1a2428; color: #cedfe3; font: inherit; font-size: 12px; cursor: pointer; }
+.actions .approve { background: #a2cbd3; color: #10191d; }
+.actions button:disabled { opacity: .55; cursor: wait; }
+.review { position: fixed; bottom: 84px; right: 24px; z-index: 20; border-color: #a88b55; }

@@ -610,6 +610,7 @@ export type ModelInstallStatus =
  * one — the fallback is bytes-so-far and elapsed time, which are still true.
  */
 export interface ModelInstall {
+  approvalRequired?: { hostname: string } | null;
   id: Uuid;
   backendId: Uuid;
   /** Who asked for it. Installs are admin-only, but we still record who. */
@@ -901,6 +902,7 @@ export type AgentPlatform = 'linux' | 'darwin' | 'win32' | 'unknown';
 
 /** What the agent reports about the ComfyUI it manages. */
 export interface ComfyState {
+  memoryMode?: 'auto' | 'ram';
   /** Whether an install exists at the agent's ComfyUI path. */
   installed: boolean;
   /** Whether that install is running and answering on its port. */
@@ -967,6 +969,7 @@ export interface AgentProbe {
 export type AgentTaskStatus = 'running' | 'done' | 'failed';
 
 export interface AgentTask {
+  approvalRequired?: { hostname: string } | null;
   bytesReceived?: number;
   bytesTotal?: number;
   id: string;
