@@ -28,6 +28,13 @@
   display: contents;
 }
 
+/* The same box holding a sentence instead of the facts grid. A grid whose
+   first column is max-content will not wrap a paragraph, so this state alone
+   was forcing the card — and the whole sheet — wider than a narrow screen. */
+.summaryEmpty {
+  display: block;
+}
+
 .summary dt {
   color: var(--text-muted);
   font-size: var(--text-xs);
@@ -191,6 +198,45 @@
   /* The install one-liner is long and must stay one selectable line. */
   overflow-x: auto;
   white-space: pre;
+}
+
+/* The code is read off the screen and typed on another machine, so it is set
+   large and widely tracked — the two jobs a password field never has to do. */
+.codeBig {
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  color: var(--text);
+  padding: 10px 13px;
+  white-space: nowrap;
+}
+
+.codeMeta {
+  margin: 0;
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+/* An expired code is not an error, but it must not read as a live one. */
+.codeDead {
+  color: var(--warn-text, var(--text-3));
+}
+
+/* A button that behaves like the sentence it sits in. */
+.linkButton {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.linkButton:hover {
+  color: var(--text);
 }
 
 .details {
@@ -365,6 +411,17 @@
 .reasonButton[aria-disabled='true'] {
   opacity: 0.45;
   cursor: help;
+}
+
+/* The tip is anchored to its button's left edge, which hangs it off the sheet
+   once the sheet is only as wide as the phone. Anchor it to the right there
+   and let it use the width that is actually available. */
+@media (max-width: 560px) {
+  .reasonTip {
+    left: auto;
+    right: 0;
+    max-width: min(260px, calc(100vw - 44px));
+  }
 }
 
 /* ------------------------------------------------------------ next action */

@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { AgentTask, ComfyState, Deployment } from '@comfy/shared';
+import { ApiRequestError } from '../lib/api';
 import type { DeploymentsApi, InstallInstructions } from '../lib/api-deployments';
 import { DeploymentsSection } from './DeploymentsSection';
 
@@ -43,7 +44,6 @@ const online: Deployment = {
 const instructions: InstallInstructions = {
   serverUrl: 'http://192.168.1.9:4000',
   token: 'tok-secret',
-  setupLink: 'http://192.168.1.9:4000/api/deployments/setup/tok-secret',
   // Four builds, not three: macOS is split by architecture, which is the whole
   // reason picking a download by platform alone is wrong.
   downloads: [
@@ -138,6 +138,10 @@ function fakeApi(initial: Deployment[] = [online], over: Partial<DeploymentsApi>
     probe: vi.fn(async () => ({ ok: true, latencyMs: 11, version: '0.1.0', hostname: 'studio' })),
     status: vi.fn(async () => ({ comfy: COMFY, accelerator: 'cuda' as const, tasks: [] })),
     instructions: vi.fn(async () => instructions),
+    pairingCode: vi.fn(async () => ({
+      code: 'K7M4P2QR',
+      expiresAt: new Date(Date.now() + 10 * 60_000).toISOString(),
+    })),
     releases: vi.fn(async () => instructions.release),
     installComfy: vi.fn(async () => done()),
     updateComfy: vi.fn(async () => done({ kind: 'update-comfyui' })),
@@ -258,16 +262,11 @@ describe('DeploymentsSection', () => {
   });
 
   /**
-   * Order is the product decision here, so it is asserted rather than left to
-   * whoever edits the JSX next.
-   *
-   * The download is first because it is the ordinary case: in self-hosting the
-   * person who opened Deployment is almost always sitting at the GPU box, and
-   * for them the button *is* the install. The setup link solves a different and
-   * rarer problem — somebody else is at that machine — so it comes second
-   * despite being the more clever mechanism.
+   * The whole primary surface, asserted as one thing: a download, and the two
+   * values a person reads to the agent. Everything else on this panel is an
+   * alternative to it and belongs behind a fold.
    */
-  it('leads with the download, then the setup link, then the command line', async () => {
+  it('leads with the download, the server URL and a one-time code', async () => {
     const { api } = fakeApi([]);
     render(<DeploymentsSection api={api} />);
     await userEvent.click(await screen.findByRole('button', { name: /Install by hand/ }));
@@ -275,20 +274,28 @@ describe('DeploymentsSection', () => {
     await userEvent.type(screen.getByPlaceholderText('192.168.1.50'), '10.0.0.7');
     await userEvent.click(screen.getByRole('button', { name: /Register and show the command/ }));
 
-    expect(await screen.findByText('http://192.168.1.9:4000/api/deployments/setup/tok-secret')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /Open the setup page/ })).toBeInTheDocument();
+    // One block, named for the machine — not a menu of three mechanisms.
+    expect(await screen.findByRole('heading', { level: 4 })).toHaveTextContent('Set up garage-box');
+    expect(screen.getAllByRole('heading', { level: 4 })).toHaveLength(1);
 
-    // The download leads; the setup link follows it.
-    expect(screen.getAllByRole('heading', { level: 4 }).map((h) => h.textContent)).toEqual([
-      'Download the agent here',
-      'Send a setup link',
-    ]);
+    // The two copyable fields, each with its own copy button.
+    expect(await screen.findByText('K7M4P2QR')).toBeInTheDocument();
+    expect(screen.getByText('http://192.168.1.9:4000')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Copy Pairing code' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Copy Server URL' })).toBeInTheDocument();
 
-    // The setup link is honest that it is only as reachable as its address.
-    expect(screen.getByText(/only as reachable as the address inside it/)).toBeInTheDocument();
+    // The setup-link mechanism is gone, not merely demoted.
+    expect(screen.queryByText(/Send a setup link/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Open the setup page/ })).not.toBeInTheDocument();
+    expect(screen.queryByText(/only as reachable as the address inside it/)).not.toBeInTheDocument();
+
+    // And so is the token the code replaces.
+    expect(screen.queryByText(/Configure it by hand instead/)).not.toBeInTheDocument();
+    expect(screen.queryByText('tok-secret')).not.toBeInTheDocument();
 
     // The command line is still there, but folded away as the alternative.
-    expect(screen.getByText('Install from a command line instead')).toBeInTheDocument();
+    const details = screen.getByText('Install from a command line instead').closest('details');
+    expect(details).not.toHaveAttribute('open');
 
     // And nothing claims the agent is a folder of scripts needing a runtime.
     // These are the exact sentences the old panel shipped; the agent is one
@@ -331,12 +338,12 @@ describe('DeploymentsSection', () => {
   });
 
   /**
-   * The command bakes in an address the agent then uses forever, and it is now
-   * derived from how rippel was opened rather than configured once. So the
-   * panel has to say which address that is before anyone runs it — and say
-   * something louder when the token would cross the internet in the clear.
+   * The install command still carries a token in its URL, so the one warning
+   * worth keeping is the one about sending that in the clear to a public host.
+   * The paragraph explaining which address it is went with the rest of the
+   * development notes — the Server URL field says it, once.
    */
-  it('says which address the agent will check in to, and warns about plaintext to a public host', async () => {
+  it('warns about plaintext to a public host, and only then', async () => {
     const { api } = fakeApi([]);
     const { unmount } = render(<DeploymentsSection api={api} />);
     await userEvent.click(await screen.findByRole('button', { name: /Install by hand/ }));
@@ -344,8 +351,7 @@ describe('DeploymentsSection', () => {
     await userEvent.type(screen.getByPlaceholderText('192.168.1.50'), '10.0.0.7');
     await userEvent.click(screen.getByRole('button', { name: /Register and show the command/ }));
 
-    const line = await screen.findByText(/the address you are reaching rippel on right now/);
-    expect(line).toHaveTextContent('http://192.168.1.9:4000');
+    expect(await screen.findByText('http://192.168.1.9:4000')).toBeInTheDocument();
     // A LAN address in plaintext is how everyone runs this; no warning.
     expect(screen.queryByText(/carries the agent token in its URL/)).not.toBeInTheDocument();
     unmount();
@@ -444,6 +450,74 @@ describe('DeploymentsSection', () => {
     await waitFor(() =>
       expect(api.sshInstall).toHaveBeenCalledWith(expect.objectContaining({ platform: 'darwin' })),
     );
+  });
+
+  /**
+   * A code that is single-use and short-lived has to look like one on screen.
+   * These four cases are the states it can be in, and each of them offers the
+   * one move that gets out of it.
+   */
+  describe('the pairing code', () => {
+    const waiting: Deployment = {
+      ...online,
+      name: 'steve-pc',
+      status: 'pending',
+      platform: 'unknown',
+      comfy: null,
+      agentVersion: null,
+      lastSeenAt: null,
+    };
+
+    it('shows when it expires, and that it works once', async () => {
+      const { api } = fakeApi([waiting]);
+      render(<DeploymentsSection api={api} />);
+      expect(await screen.findByText('K7M4P2QR')).toBeInTheDocument();
+      expect(screen.getByText(/works once/)).toBeInTheDocument();
+      expect(screen.getByText(/Expires in/)).toBeInTheDocument();
+    });
+
+    it('issues a fresh one on request', async () => {
+      const { api } = fakeApi([waiting]);
+      render(<DeploymentsSection api={api} />);
+      await screen.findByText('K7M4P2QR');
+      await userEvent.click(screen.getByRole('button', { name: 'New code' }));
+      await waitFor(() => expect(api.pairingCode).toHaveBeenCalledTimes(2));
+    });
+
+    it('says so rather than leaving a dead code looking valid', async () => {
+      const { api } = fakeApi([waiting], {
+        pairingCode: vi.fn(async () => ({
+          code: 'K7M4P2QR',
+          expiresAt: new Date(Date.now() - 1000).toISOString(),
+        })),
+      });
+      render(<DeploymentsSection api={api} />);
+      expect(await screen.findByText(/That code expired/)).toBeInTheDocument();
+      expect(screen.queryByText('K7M4P2QR')).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'New code' })).toBeInTheDocument();
+    });
+
+    /** The route is being built in parallel; its absence is not a broken screen. */
+    it('keeps the download and the command line when the route is missing', async () => {
+      const { api } = fakeApi([waiting], {
+        pairingCode: vi.fn(async () => {
+          throw new ApiRequestError(404, 'not_found', 'Not found');
+        }),
+      });
+      render(<DeploymentsSection api={api} />);
+      expect(await screen.findByText(/cannot issue pairing codes yet/)).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: /Download for/ })).toBeInTheDocument();
+      expect(screen.getByText('Install from a command line instead')).toBeInTheDocument();
+    });
+
+    /** A machine that has checked in has already spent a code. */
+    it('is not offered to a machine that is already paired', async () => {
+      const { api } = fakeApi([online]);
+      render(<DeploymentsSection api={api} />);
+      await userEvent.click(await screen.findByRole('button', { name: 'Install Agent' }));
+      expect(await screen.findByText(/is paired/)).toBeInTheDocument();
+      expect(api.pairingCode).not.toHaveBeenCalled();
+    });
   });
 
   it('takes a private key instead of a password', async () => {

@@ -14,6 +14,7 @@ import {
   deploymentsApi as defaultApi,
   type DeploymentsApi,
   type InstallInstructions,
+  type PairingCode,
 } from '../lib/api-deployments';
 import { refreshBackends } from '../shell/useBackends';
 import shared from './SettingsModal.module.css';
@@ -92,9 +93,8 @@ export function DeploymentsSection({ api = defaultApi }: { api?: DeploymentsApi 
   return (
     <div className={shared.section}>
       <p className={shared.blurb}>
-        Machines rippel manages through the rippel agent. The agent installs and updates ComfyUI,
-        starts and stops it, and keeps the storage helper in place — so a new GPU box is a form
-        rather than an afternoon.
+        Machines rippel manages through the rippel agent — it installs ComfyUI, runs it, and keeps
+        the storage helper in place.
       </p>
 
       {failed ? (
@@ -526,7 +526,7 @@ function ComfySummary({ deployment }: { deployment: Deployment }) {
   const comfy = deployment.comfy;
   if (!comfy) {
     return (
-      <p className={styles.summary}>
+      <p className={`${styles.summary} ${styles.summaryEmpty}`}>
         Nothing reported yet. Once the agent checks in, what ComfyUI it has appears here.
       </p>
     );
@@ -625,7 +625,19 @@ function TaskLog({ task, onDismiss }: { task: AgentTask; onDismiss: () => void }
 
 // ---------------------------------------------------------------- copy button
 
-function CopyField({ label, value }: { label: string; value: string }) {
+function CopyField({
+  label,
+  value,
+  big,
+  meta,
+}: {
+  label: string;
+  value: string;
+  /** The pairing code is meant to be read off the screen and typed. */
+  big?: boolean;
+  /** A line under the field — an expiry, a way to get another one. */
+  meta?: ReactNode;
+}) {
   const [copied, setCopied] = useState(false);
   const copy = async () => {
     try {
@@ -642,13 +654,148 @@ function CopyField({ label, value }: { label: string; value: string }) {
     <div className={styles.copyField}>
       <span className="label">{label}</span>
       <div className={styles.copyRow}>
-        <code className={`mono ${styles.code}`}>{value}</code>
+        <code className={big ? `mono ${styles.code} ${styles.codeBig}` : `mono ${styles.code}`}>{value}</code>
         <button type="button" className={shared.action} onClick={() => void copy()} aria-label={`Copy ${label}`}>
           {copied ? <CheckIcon size={14} /> : <CopyIcon size={14} />}
           {copied ? 'Copied' : 'Copy'}
         </button>
       </div>
+      {meta ? <p className={styles.codeMeta}>{meta}</p> : null}
     </div>
+  );
+}
+
+// ---------------------------------------------------------------- pairing
+
+/** Minutes and seconds, for a code that is only good for a few of them. */
+function countdown(ms: number): string {
+  const total = Math.max(0, Math.ceil(ms / 1000));
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
+}
+
+/**
+ * The one-time code, with the lifecycle it actually has.
+ *
+ * A code is single-use and expires in minutes, so leaving one on screen
+ * looking valid is the failure worth designing against: it runs down visibly,
+ * says plainly when it is spent or stale, and getting another is one press.
+ * Issuing a new one invalidates the old one, which is why "New code" is a
+ * deliberate button rather than something that happens on every render.
+ */
+function PairingPanel({ api, deployment }: { api: DeploymentsApi; deployment: Deployment }) {
+  type State =
+    | { kind: 'loading' }
+    | { kind: 'ready'; code: PairingCode }
+    | { kind: 'unsupported' }
+    | { kind: 'error'; message: string };
+
+  const [state, setState] = useState<State>({ kind: 'loading' });
+  const [now, setNow] = useState(() => Date.now());
+  // A machine that has checked in has already redeemed a code; showing it
+  // another by default would be offering a solution to a solved problem.
+  const [paired, setPaired] = useState(() => Boolean(deployment.lastSeenAt));
+
+  const issue = useCallback(
+    async (signal?: AbortSignal) => {
+      setState({ kind: 'loading' });
+      try {
+        const code = await api.pairingCode(deployment.id, signal);
+        setNow(Date.now());
+        setState({ kind: 'ready', code });
+      } catch (cause) {
+        if (signal?.aborted) return;
+        // The route is still being built. A rippel without it should lose the
+        // code and keep the download and the command line, not break.
+        if (cause instanceof ApiRequestError && cause.status === 404) {
+          setState({ kind: 'unsupported' });
+          return;
+        }
+        setState({
+          kind: 'error',
+          message: cause instanceof Error ? cause.message : 'Could not get a pairing code.',
+        });
+      }
+    },
+    [api, deployment.id],
+  );
+
+  useEffect(() => {
+    if (paired) return;
+    const controller = new AbortController();
+    void issue(controller.signal);
+    return () => controller.abort();
+  }, [issue, paired]);
+
+  // Tick only while a live code is on screen — an expired one has nothing left
+  // to count, and every other state is static.
+  useEffect(() => {
+    if (state.kind !== 'ready') return;
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [state.kind]);
+
+  const fresh = (
+    <button type="button" className={styles.linkButton} onClick={() => void issue()}>
+      New code
+    </button>
+  );
+
+  if (paired) {
+    return (
+      <p className={styles.stepNote}>
+        <strong>{deployment.name} is paired.</strong>{' '}
+        {/* Dropping the paired flag is what asks for a code: the effect above
+            issues one as soon as there is a reason to have it. */}
+        <button type="button" className={styles.linkButton} onClick={() => setPaired(false)}>
+          New code
+        </button>{' '}
+        to pair it again after a reinstall.
+      </p>
+    );
+  }
+  if (state.kind === 'loading') {
+    return (
+      <div className={shared.loading} role="status">
+        <Mark size={16} ripple="loop" />
+        Getting a code…
+      </div>
+    );
+  }
+  if (state.kind === 'unsupported') {
+    return (
+      <p className={styles.stepNote}>
+        This rippel cannot issue pairing codes yet. Use the command line below.
+      </p>
+    );
+  }
+  if (state.kind === 'error') {
+    return (
+      <div className={shared.notice} role="alert">
+        {state.message} {fresh}
+      </div>
+    );
+  }
+
+  const left = new Date(state.code.expiresAt).getTime() - now;
+  if (left <= 0) {
+    return (
+      <p className={`${styles.stepNote} ${styles.codeDead}`} role="status">
+        That code expired. {fresh}
+      </p>
+    );
+  }
+
+  return (
+    <CopyField
+      label="Pairing code"
+      value={state.code.code}
+      big
+      meta={
+        <>
+          Expires in <span className="mono">{countdown(left)}</span>, and works once. {fresh}
+        </>
+      }
+    />
   );
 }
 
@@ -825,18 +972,15 @@ function InstallInstructionsPanel({ api, deployment }: { api: DeploymentsApi; de
 
   return (
     <div className={styles.panel}>
-      {/* ---------------------------------------------------- the easy path */}
-      {chosen ? (
-        <div className={`${styles.step} ${styles.stepLead}`}>
-          <div className={styles.stepHead}>
-            <h4 className={styles.stepTitle}>Download the agent here</h4>
-          </div>
-          <p className={styles.stepNote}>
-            Usually the whole job: whoever opened this screen is usually sitting at the machine
-            ComfyUI should run on. One file, about {fileSize(chosen.sizeBytes)} — nothing needs to
-            be installed first and there is nothing to unpack. Run it and it registers itself with
-            this rippel.
-          </p>
+      {/* ------------------------------------------------ download, then pair */}
+      <div className={`${styles.step} ${styles.stepLead}`}>
+        <div className={styles.stepHead}>
+          <h4 className={styles.stepTitle}>Set up {deployment.name}</h4>
+        </div>
+        <p className={styles.stepNote}>
+          Download the agent, run it, and give it these two.
+        </p>
+        {chosen ? (
           <div className={styles.downloadRow}>
             <a
               className={`${shared.action} ${shared.actionPrimary} ${styles.downloadPrimary}`}
@@ -858,42 +1002,17 @@ function InstallInstructionsPanel({ api, deployment }: { api: DeploymentsApi; de
               </>
             ) : null}
           </div>
-        </div>
-      ) : null}
-
-      {/* --------------------------- when somebody else is at that machine */}
-      <div className={styles.step}>
-        <div className={styles.stepHead}>
-          <h4 className={styles.stepTitle}>Send a setup link</h4>
-        </div>
-        <p className={styles.stepNote}>
-          <strong>Needs no rippel login at the other end.</strong> Use this when somebody else is
-          sitting at <strong>{deployment.name}</strong>, or when you would rather not sign in to
-          rippel from there. They open it, click the button for their computer, and open the file
-          that downloads — nothing to type and nothing to unpack.
-        </p>
-        <p className={styles.stepNote}>
-          The link is only as reachable as the address inside it: it points at{' '}
-          <code className="mono">{data.serverUrl}</code>, so it will not open for someone who cannot
-          reach that address — send them the downloaded file instead.
-        </p>
-        <CopyField label="Setup link" value={data.setupLink} />
-        <div className={styles.downloadRow}>
-          <a className={shared.action} href={data.setupLink} target="_blank" rel="noreferrer">
-            Open the setup page
-          </a>
-        </div>
+        ) : null}
+        <CopyField label="Server URL" value={data.serverUrl} />
+        <PairingPanel api={api} deployment={deployment} />
       </div>
 
       {/* ------------------------------------------------ the command line */}
-      <details className={styles.details} open={!chosen}>
+      <details className={styles.details}>
         <summary>Install from a command line instead</summary>
         <p className={styles.stepNote}>
-          For a machine nobody is sitting at — an SSH session, or a headless box that cannot click.
-          Run this on <strong>{deployment.name}</strong> as the account that should own the ComfyUI
-          install. It fetches the same single binary, writes its configuration, and starts it as a{' '}
-          {platform === 'win32' ? 'scheduled task' : platform === 'darwin' ? 'LaunchAgent' : 'systemd user service'}.
-          Re-running it upgrades in place.
+          For a machine nobody is sitting at. Run it on <strong>{deployment.name}</strong> as the
+          account that should own the ComfyUI install; re-running it upgrades in place.
         </p>
 
         <div className={styles.tabs} role="tablist" aria-label="Platform">
@@ -913,14 +1032,6 @@ function InstallInstructionsPanel({ api, deployment }: { api: DeploymentsApi; de
 
         <CopyField label="Install Agent" value={data.commands[platform === 'darwin' ? 'darwin' : platform === 'win32' ? 'win32' : 'linux']} />
 
-        <p className={styles.stepNote}>
-          The command points that machine at <code className="mono">{data.serverUrl}</code> — the
-          address you are reaching rippel on right now. The agent checks in there from then on, so
-          it has to be an address <strong>{deployment.name}</strong> can reach too. If it cannot,
-          set
-          <code className="mono"> AGENT_SERVER_URL</code> on the rippel server to the address it
-          should use and copy the command again.
-        </p>
         {plaintextToPublicHost(data.serverUrl) ? (
           <p className={styles.warn}>
             That address is plain <code className="mono">http</code> on a public host, and this
@@ -929,22 +1040,6 @@ function InstallInstructionsPanel({ api, deployment }: { api: DeploymentsApi; de
             instead.
           </p>
         ) : null}
-      </details>
-
-      <details className={styles.details}>
-        <summary>Configure it by hand instead</summary>
-        <p className={styles.stepNote}>
-          The agent reads its setup from its own filename, so this is only needed if the file was
-          renamed on the way. Run it once and it will ask for these, or put them in
-          <code className="mono"> ~/.rippel-agent/config.json</code>.
-        </p>
-        <CopyField label="rippel address" value={data.serverUrl} />
-        <CopyField label="Deployment id" value={deployment.id} />
-        <CopyField label="Agent token" value={data.token} />
-        <p className={styles.warn}>
-          That token lets whoever holds it install software on this machine. Treat it the way you
-          would an SSH key, and remove the deployment here if it ever leaks.
-        </p>
       </details>
 
       <div className={styles.release}>
@@ -1021,15 +1116,14 @@ function ManualInstall({
 
   if (created) {
     // The machine now has a card of its own, and because it has never checked
-    // in that card already has the setup link and the download open on it.
+    // in that card already has the download and a pairing code open on it.
     // Repeating the whole panel here would be the same thing twice on one
     // screen — so this just says where it went.
     return (
       <div className={shared.form}>
         <p className={shared.blurb}>
-          <strong>{created.name}</strong> is registered and waiting. Its card above has the setup
-          link and the download for it; it will appear as online here within a minute of the agent
-          starting.
+          <strong>{created.name}</strong> is registered. Its card above has the download and a
+          pairing code.
         </p>
         <div className={shared.formActions}>
           <button type="button" className={`${shared.action} ${shared.actionPrimary}`} onClick={onCancel}>
@@ -1043,8 +1137,7 @@ function ManualInstall({
   return (
     <form className={shared.form} onSubmit={(event) => void submit(event)} aria-label="Install the agent by hand">
       <p className={shared.blurb}>
-        Register the machine first so rippel can generate a command with its address and token
-        already filled in. Nothing is installed until you run that command on the machine itself.
+        Register the machine first. Nothing is installed until you run the agent on it.
       </p>
       <div className={shared.formRow}>
         <label className={shared.field}>

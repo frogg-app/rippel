@@ -17,9 +17,13 @@
   animation: fade var(--dur-slow) var(--ease-out) both;
 }
 
+/* A proportion of the viewport with a ceiling, rather than a fixed box that
+   ignored the screen it was on. The caps stop a wide monitor stretching the
+   settings prose past a comfortable measure; the vw/vh terms are what make it
+   fill a laptop screen the way it never used to. */
 .sheet {
-  width: min(880px, 100%);
-  height: min(620px, 100%);
+  width: min(1180px, 94vw);
+  height: min(840px, 88vh);
   display: flex;
   border-radius: 20px;
   border: 1px solid var(--glass-line);
@@ -500,6 +504,76 @@
   margin-top: 6px;
   font-size: var(--text-sm);
   color: var(--text-4);
+}
+
+/* ------------------------------------------------------------ narrow
+
+   The sheet had no media rules at all, so below about 900px the 200px rail ate
+   the pane it sits beside. Under that width the rail stops being a column and
+   becomes a row of tabs above the content; under 560px the sheet gives up its
+   margins and corners and takes the whole screen, which is the only way the
+   copy fields and their buttons still fit side by side. */
+
+@media (max-width: 900px) {
+  .backdrop {
+    padding: 16px;
+  }
+
+  .sheet {
+    flex-direction: column;
+    width: 100%;
+    height: min(840px, 92vh);
+  }
+
+  .railCol {
+    width: 100%;
+    flex-direction: row;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border-right: none;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .railHead {
+    padding: 0 4px 0 6px;
+  }
+
+  .sections {
+    flex-direction: row;
+    gap: 4px;
+    /* More sections than fit is a scroll, not a wrap that steals height. */
+    overflow-x: auto;
+  }
+
+  .sectionTab {
+    white-space: nowrap;
+  }
+}
+
+@media (max-width: 560px) {
+  .backdrop {
+    padding: 0;
+  }
+
+  .sheet {
+    width: 100%;
+    height: 100%;
+    border-radius: 0;
+    border: none;
+  }
+
+  .paneHead {
+    padding: 0 8px 0 14px;
+  }
+
+  .paneBody {
+    padding: 14px 14px 20px;
+  }
+
+  .formRow {
+    grid-template-columns: 1fr;
+  }
 }
 
 .toast {
