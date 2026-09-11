@@ -335,3 +335,51 @@ so a valid token cannot fetch another machine's script.
 `checkin` is also how a deployment learns the address it is really reachable at:
 what the agent says about itself, and the address the request came from, beat
 what an operator typed into a form.
+
+---
+
+## Pairing a deployment
+
+Replaces the per-deployment binary and the setup page. The agent is now one
+generic build per platform, and a machine joins by being told two things a
+person can read aloud: **where rippel is**, and **a one-time code**.
+
+Why the old way is going: a binary whose *filename* carried the address and
+token meant every rippel had to serve its own executable, produced names like
+`rippel-agent-setup-eyJzIjoiaHR0cHM6...exe`, and broke the moment anything
+renamed the download. A code the person types cannot be broken by a browser.
+
+    POST /deployments/:id/pairing-code     admin -> { code, expiresAt }
+    POST /deployments/pair                 no auth -> { deploymentId, token, serverUrl }
+
+**The code.** Short enough to read over the phone and type without cursing:
+8 characters from an unambiguous alphabet (no O/0, I/1/l). Case-insensitive on
+redemption. Single use, and short-lived — minutes, not days. Issuing a new one
+for a deployment invalidates any outstanding code for it, so a code read aloud
+in a meeting cannot be used tomorrow.
+
+**Redemption is unauthenticated by necessity** — the machine being set up has
+no rippel login, which is the whole point. The code *is* the credential, so it
+must behave like one: rate-limited per IP and per deployment, constant-time
+compared, never logged, and single-use even under concurrent redemption (two
+agents racing the same code means exactly one wins). A redeemed code is spent
+whether or not the agent then succeeds.
+
+**The agent never asks for a deployment id.** A person types a URL and a code;
+the id comes back from redemption and is stored in the agent's config. Anything
+the human has to copy correctly is a place the setup fails.
+
+### What the agent does
+
+Run with no arguments it asks for the server URL, then the code, then pairs and
+installs. Both prompts accept a paste. Run with `--server` and `--code` it does
+the same without asking, for scripted installs.
+
+### Windows startup must not need administrator
+
+`schtasks /Create` failed on a real machine with `ERROR: Access is denied`,
+after the agent had already installed itself and written its config — so the
+install *half* succeeded, which is worse than failing outright. Registering a
+per-user startup entry does not require elevation; use a mechanism that does
+not, and if the chosen mechanism fails, say plainly what did and did not
+happen and how to finish by hand.
