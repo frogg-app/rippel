@@ -342,6 +342,12 @@ it instead.
   for directory-scoped link operations. Hugging Face's named HTTPS blob hosts
   are accepted only as redirects; unknown CDN destinations are refused.
 
+- **Task 5 implemented.** The library reader caches by backend and reported
+  installed library version; explicit imports reject a changed version. The
+  unmodified PyPI 0.11.55 index fixture verifies 538 total / 66 image-to-video /
+  14 open-source image-to-video entries. Tests and API typecheck passed.
+  Agent race tests and a Windows cross-compile also passed for Task 13.
+
 ## Tasks
 
 Ordered by value. Tasks in the same run group can be done in one session.
