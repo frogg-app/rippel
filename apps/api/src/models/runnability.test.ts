@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 /**
  * The "will it run?" verdict.
  *
@@ -11,13 +12,13 @@
 
 import { describe, expect, it } from 'vitest';
 import type { ObjectInfo } from '../lib/comfy.js';
+const nodeSnapshot = JSON.parse(readFileSync(new URL('../library/workflows/fixtures/object-info.json', import.meta.url), 'utf8')) as ObjectInfo;
 import { findTemplateById } from '../workflows/registry.js';
 import { folderForSavePath, isUsable, runnabilityFor } from './runnability.js';
 
 /**
- * Every node class our shipped templates use. Classes with no file-valued input
- * are declared with empty inputs, which is what a real backend does too — the
- * check only ever looks at combo-valued file inputs.
+ * Start from a captured ComfyUI 0.34.0 node snapshot, then vary installed
+ * files per scenario. The capture is CPU-only, not the LAN machine.
  */
 function objectInfo(options: {
   checkpoints: string[];
@@ -28,34 +29,8 @@ function objectInfo(options: {
   vaes?: string[];
   omit?: string[];
 }): ObjectInfo {
-  const classes = [
-    'BasicGuider',
-    'BasicScheduler',
-    'CLIPTextEncode',
-    'EmptyHunyuanLatentVideo',
-    'EmptyLTXVLatentVideo',
-    'EmptyLatentImage',
-    'FluxGuidance',
-    'KSampler',
-    'KSamplerSelect',
-    'LTXVConditioning',
-    'LTXVImgToVideo',
-    'LTXVPreprocess',
-    'LTXVScheduler',
-    'LoadImage',
-    'ModelSamplingSD3',
-    'RandomNoise',
-    'SamplerCustom',
-    'SamplerCustomAdvanced',
-    'SaveImage',
-    'SVD_img2vid_Conditioning',
-    'SaveWEBM',
-    'VAEDecode',
-    'VAEDecodeTiled',
-    'VAEEncode',
-    'VideoLinearCFGGuidance',
-  ];
   const info: ObjectInfo = {
+    ...structuredClone(nodeSnapshot),
     CheckpointLoaderSimple: { input: { required: { ckpt_name: [options.checkpoints, {}] } } },
     ImageOnlyCheckpointLoader: { input: { required: { ckpt_name: [options.checkpoints, {}] } } },
     CLIPLoader: { input: { required: { clip_name: [options.clips, {}] } } },
@@ -65,10 +40,7 @@ function objectInfo(options: {
     UNETLoader: { input: { required: { unet_name: [options.unets ?? [], {}] } } },
     VAELoader: { input: { required: { vae_name: [options.vaes ?? ['pixel_space'], {}] } } },
   };
-  for (const nodeClass of classes) {
-    if (options.omit?.includes(nodeClass)) continue;
-    info[nodeClass] = { input: { required: {} } };
-  }
+  for (const nodeClass of options.omit ?? []) delete info[nodeClass];
   return info;
 }
 

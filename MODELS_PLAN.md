@@ -356,6 +356,12 @@ it instead.
   image errors; none completed. See `docs/WORKFLOW_VALIDATION_LOCAL.json`.
   Converter tests: 11 passed; API typecheck passed.
 
+- **Task 22 implemented with an explicit local-source limitation.** The refresh
+  command fetched 899 actual node specs from local CPU ComfyUI 0.34.0. Runnability
+  tests now use that generated snapshot and vary file lists per scenario instead
+  of hand-maintaining node class names. Snapshot/runnability tests: 24 passed.
+  A fresh capture from desktop-6900xt remains pending LAN access.
+
 ## Tasks
 
 Ordered by value. Tasks in the same run group can be done in one session.
