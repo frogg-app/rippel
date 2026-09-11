@@ -1,3 +1,4 @@
+import { LTXV_VAE_REQUIREMENT } from './txt2vid-ltxv-dm.js';
 /**
  * Companion-model requirements: do they address real inputs, and does
  * resolution pick the file a real backend actually has?
@@ -98,20 +99,20 @@ describe('resolveRequirements', () => {
     expect(resolved!.filename).toBe('t5\\t5xxl_fp8_e4m3fn.safetensors');
   });
 
-  it('prefers the fp16 build when a backend has several', () => {
+  it('prefers the smaller fp8 build when a backend has several', () => {
     const info = infoWithEncoders(
       't5/t5xxl_fp8_e4m3fn.safetensors',
       't5/t5xxl_fp16.safetensors',
       'clip_l.safetensors',
     );
     const [resolved] = resolveRequirements(txt2vidLtxvTemplate, info);
-    expect(resolved!.filename).toBe('t5/t5xxl_fp16.safetensors');
+    expect(resolved!.filename).toBe('t5/t5xxl_fp8_e4m3fn.safetensors');
     // `clip_l` is a text encoder but not a T5, so it is not a candidate.
     expect(resolved!.candidates).not.toContain('clip_l.safetensors');
   });
 
   it('is stable: the same backend resolves to the same file every time', () => {
-    const files = ['t5/b_t5xxl_x.safetensors', 't5/a_t5xxl_y.safetensors'];
+    const files = ['b/t5xxl_fp8_e4m3fn.safetensors', 'a/t5xxl_fp8_e4m3fn.safetensors'];
     const first = resolveRequirements(txt2vidLtxvTemplate, infoWithEncoders(...files));
     const second = resolveRequirements(txt2vidLtxvTemplate, infoWithEncoders(...[...files].reverse()));
     expect(first[0]!.filename).toBe(second[0]!.filename);
@@ -122,7 +123,7 @@ describe('resolveRequirements', () => {
       'nested/deep/t5xxl_fp8_e4m3fn.safetensors',
       'sub/t5xxl_fp16.safetensors',
     ]);
-    expect(ranked[0]).toBe('sub/t5xxl_fp16.safetensors');
+    expect(ranked[0]).toBe('nested/deep/t5xxl_fp8_e4m3fn.safetensors');
   });
 });
 
@@ -148,4 +149,20 @@ describe('withResolvedRequirements', () => {
     expect(graph['3']!.inputs).toEqual(img2vidLtxvTemplate.graph['3']!.inputs);
     expect(graph['12']!.inputs.type).toBe('ltxv');
   });
+});
+
+
+describe('LTX companion architecture checks', () => {
+  it('does not accept UMT5 or an arbitrary T5 build', () => {
+    for (const name of ['umt5_xxl_fp8_e4m3fn.safetensors', 't5_small.safetensors']) {
+      expect(LTXV_TEXT_ENCODER_REQUIREMENT.match.filename!.test(name)).toBe(false);
+    }
+  });
+});
+
+it('accepts the 0.9.1 VAE checkpoint and excludes newer audio/video VAEs', () => {
+  expect(LTXV_VAE_REQUIREMENT.match.filename!.test('LTXV\\ltx-video-2b-v0.9.1.safetensors')).toBe(true);
+  for (const name of ['ltx-2.5-video-vae-bf16.safetensors', 'ltx-2.5-audio-vae-bf16.safetensors']) {
+    expect(LTXV_VAE_REQUIREMENT.match.filename!.test(name)).toBe(false);
+  }
 });

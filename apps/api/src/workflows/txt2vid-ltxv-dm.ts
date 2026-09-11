@@ -54,10 +54,10 @@ export const txt2vidLtxvDmGraph = rawGraph as unknown as ComfyApiGraph;
 /**
  * The VAE the diffusion_models route needs and the checkpoints route does not.
  *
- * Any LTX-Video safetensors placed in `vae/` will do — ComfyUI's VAE loader
+ * The original 0.9.1 checkpoint placed in `vae/` works — ComfyUI's VAE loader
  * detects the LTXV VAE from its keys, so the full checkpoint file copied into
- * `vae/` works as well as a VAE-only extraction. The match is therefore on the
- * family name rather than on a specific build.
+ * `vae/` works as well as a VAE-only extraction. Only the matching 0.9.1 build is accepted; LTX-2 video/audio VAEs
+ * are incompatible and must not satisfy this requirement.
  */
 export const LTXV_VAE_REQUIREMENT: ModelRequirement = {
   id: 'vae',
@@ -68,9 +68,9 @@ export const LTXV_VAE_REQUIREMENT: ModelRequirement = {
     'Loading the model from diffusion_models gives only the transformer; the VAE that ' +
     'decodes its latents into frames has to come from the vae folder as a separate file.',
   match: {
-    filename: /ltx/i,
+    filename: /(?:^|[\\/])ltx[-_]video[-_]2b[-_]v0\.9\.1(?:[-_]vae)?\.safetensors$/i,
     catalogueBase: ['ltxv', 'ltx-video', 'LTX-Video'],
-    catalogueFilename: /ltx/i,
+    catalogueFilename: /ltx[-_]video[-_]2b[-_]v0\.9\.1(?:[-_]vae)?\.safetensors$/i,
   },
   preferred: ['ltx-video-2b-v0.9.1-vae.safetensors', 'ltx-video-2b-v0.9.1.safetensors'],
 };

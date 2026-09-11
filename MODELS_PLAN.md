@@ -325,8 +325,10 @@ it instead.
 - **Setup fix:** npm's lockfile lacked the existing agent workspace, causing
   `npm ci` to fail. Added the missing workspace entries without changing package
   versions.
-- **Next:** Task 2 (LTX companions); Task 22 is an independent option while LAN
-  access is unavailable. Tasks 2–23 are not marked complete by this run.
+- **Task 2 implemented; live verification pending.** Prefer FP8 T5, reject
+  incompatible UMT5/LTX-2 companions, and document publisher URLs, exact folders,
+  sizes and SHA-256 hashes in `docs/LTX_COMPANIONS.md`. Targeted API tests: 36
+  passed; API TypeScript check passed. No model files downloaded.
 
 ## Tasks
 

@@ -141,20 +141,19 @@ export const LTXV_TEXT_ENCODER_REQUIREMENT: ModelRequirement = {
     // Loose on purpose: `t5xxl_fp16.safetensors`, `t5/t5xxl_fp8_e4m3fn.safetensors`
     // and `t5\t5xxl_fp16.safetensors` must all match, because all three are
     // spellings the same file arrives under.
-    filename: /t5/i,
+    filename: /(?:^|[\\/])t5xxl_(?:fp16|fp8_e4m3fn(?:_scaled)?)\.safetensors$/i,
     // ComfyUI-Manager's catalogue files every T5-XXL build under base "t5",
     // including the ones it describes as "Text Encoders for FLUX" — the same
     // weights, and what LTX-Video's own reference workflow uses.
     catalogueBase: ['t5'],
     catalogueFilename: /t5xxl/i,
   },
-  // fp16 is the reference build; the fp8s are the ones that fit on a 16 GB card
-  // alongside the transformer, and are ordered after it only because a backend
-  // that has both should use the better one.
+  // Prefer the smaller verified encoder on the 16 GB reference card.
+  // UMT5 and the LTX-2 Gemma encoders are different architectures.
   preferred: [
-    't5xxl_fp16.safetensors',
-    't5xxl_fp8_e4m3fn_scaled.safetensors',
     't5xxl_fp8_e4m3fn.safetensors',
+    't5xxl_fp8_e4m3fn_scaled.safetensors',
+    't5xxl_fp16.safetensors',
   ],
 };
 
