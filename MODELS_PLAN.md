@@ -369,6 +369,13 @@ it instead.
   typecheck passed. Graph inputs match captured ComfyUI 0.34.0 specifications.
   No weights were downloaded and no real Wan video was produced.
 
+- **Task 4's implementation already exists; GPU completion pending.** Inspection
+  and the passing workflow/path tests establish that `txt2vid-hunyuan` already
+  uses `UNETLoader` from `diffusion_models/` plus CLIP-L, LLaVA-Llama-3 and VAE
+  requirements. A second `-dm` template would duplicate the same family/folder
+  registry entry. Retained its existing stable id and graph. The remaining work
+  is the file move, companion installation and a real job on the target machine.
+
 ## Tasks
 
 Ordered by value. Tasks in the same run group can be done in one session.
