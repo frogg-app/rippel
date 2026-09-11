@@ -693,3 +693,14 @@ At the end of each run, report:
   no submissions. Local CPU ComfyUI reports missing weights for every built-in,
   as expected. Cheap settings compile for all 13 built-ins; output verification
   tests distinguish incomplete history, absent output and actual bytes.
+
+- **Task 14 implemented for native file fixes; desktop/browser acceptance pending.**
+  Admin Fix builds a current server-side plan, confirms exact move/download steps,
+  logs its actor, persists progress and re-checks backend files after each step.
+  Lost agent-start responses are never replayed automatically. Retry builds a fresh
+  plan. Downloads resolve publisher hashes and sizes; LTX uses verified FP8 T5 and
+  original VAE metadata. Custom-node fixes remain excluded at the user's request.
+  Six API tests cover plans, metadata refusal and start journalling; two web tests
+  cover confirmation and refresh recovery. Existing ModelsPage tests: 37 passed.
+  Migration 015 applied to isolated PostgreSQL. Remaining source coverage and full
+  live card transitions need the desktop's existing ComfyUI path.

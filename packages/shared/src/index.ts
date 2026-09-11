@@ -1024,3 +1024,14 @@ export interface AgentRelease {
   /** Why the live lookup failed, when it did — the links then point at /latest. */
   note: string | null;
 }
+
+/** A reviewed file plan and its durable progress on a managed backend. */
+export interface ModelFileOperation {
+  id: string;
+  status: 'planned' | 'starting' | 'running' | 'done' | 'failed';
+  step_index: number;
+  steps: ({ kind: 'move'; request: { from: string; to: string } } |
+    { kind: 'download'; request: { path: string; url: string; sha256: string; sizeBytes?: number } })[];
+  progress: AgentTask | null;
+  error: string | null;
+}

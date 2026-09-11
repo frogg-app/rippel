@@ -53,6 +53,7 @@ export interface InstalledListProps {
   onWorkflows?: (model: Model) => void;
   /** Present for an administrator: the card offers a two-step Remove. */
   onRemove?: (model: Model) => void;
+  onFixed?: () => void;
 }
 
 export function InstalledList({
@@ -63,6 +64,7 @@ export function InstalledList({
   previews = {},
   onWorkflows,
   onRemove,
+  onFixed,
 }: InstalledListProps) {
   const bands = splitByKind(groupInstalledByType(models), (group) => group.type);
 
@@ -132,6 +134,7 @@ export function InstalledList({
                           selectedBackendId={selectedBackendId}
                           onWorkflows={onWorkflows}
                           onRemove={onRemove}
+                          onFixed={onFixed}
                         />
                       ))}
                     </div>

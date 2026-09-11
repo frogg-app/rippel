@@ -476,6 +476,7 @@ export function ModelsPage({ api = modelsApi, storageApi: storage = storageApi }
                   runnability={library.runnability}
                   previews={library.previews}
                   onWorkflows={openModelWorkflows}
+                  onFixed={library.refresh}
                   onRemove={isAdmin ? (model) => void removeModel(model) : undefined}
                 />
               )}

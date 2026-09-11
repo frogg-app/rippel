@@ -7,6 +7,7 @@ import { migrate, pool, waitForDatabase } from './db.js';
 import { seed } from './seed.js';
 import { pruneSessions } from './auth/sessions.js';
 import { startBackendPoller } from './lib/backend-poller.js';
+import { startModelOperationPoller } from './models/operations.js';
 import { startInstallPoller } from './models/install-poller.js';
 import { startOrchestrator } from './orchestrator/runner.js';
 import authPlugin from './plugins/auth.js';
@@ -20,6 +21,7 @@ import modelRoutes from './routes/models.js';
 import assetRoutes from './storage/routes.js';
 import modelInstallRoutes from './models/routes.js';
 import modelWorkflowRoutes from './models/workflow-routes.js';
+import fixRoutes from './models/fix-routes.js';
 import workflowCapabilityRoutes from './workflows/routes.js';
 import jobRoutes from './orchestrator/routes.js';
 import libraryRoutes from './library/routes.js';
@@ -52,6 +54,7 @@ await app.register(
     await api.register(assetRoutes);
     await api.register(modelInstallRoutes);
     await api.register(modelWorkflowRoutes);
+    await api.register(fixRoutes);
     await api.register(workflowCapabilityRoutes);
     await api.register(jobRoutes);
     await api.register(libraryRoutes);
@@ -81,6 +84,7 @@ async function main() {
 
   const stopPoller = startBackendPoller((msg) => app.log.info(msg));
   const stopInstallPoller = startInstallPoller((msg) => app.log.info(msg));
+  const stopModelOperations = startModelOperationPoller((msg) => app.log.info(msg));
   const stopOrchestrator = startOrchestrator((msg) => app.log.info(msg));
   const pruneTimer = setInterval(() => {
     void pruneSessions().catch((err) => app.log.warn({ err }, 'session prune failed'));
@@ -93,6 +97,7 @@ async function main() {
     clearInterval(pruneTimer);
     stopPoller();
     stopInstallPoller();
+    stopModelOperations();
     stopOrchestrator();
     await app.close();
     await pool.end();

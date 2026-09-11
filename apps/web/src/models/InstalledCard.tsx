@@ -30,6 +30,7 @@
  * catalogue card has no space for: the whole runnability sentence, which
  * machines hold the file, and the actions.
  */
+import { FixModel } from './FixModel';
 import { useState, type CSSProperties } from 'react';
 import type { Model, ModelCatalogInfo, ModelRunnability, Uuid } from '@comfy/shared';
 import {
@@ -60,6 +61,7 @@ export interface InstalledCardProps {
   selectedBackendId: Uuid | null;
   onWorkflows?: (model: Model) => void;
   onRemove?: (model: Model) => void;
+  onFixed?: () => void;
   /** Position in the grid, for the staggered entrance. */
   index?: number;
 }
@@ -72,6 +74,7 @@ export function InstalledCard({
   selectedBackendId,
   onWorkflows,
   onRemove,
+  onFixed,
   index = 0,
 }: InstalledCardProps) {
   const [imageBroken, setImageBroken] = useState(false);
@@ -237,6 +240,9 @@ export function InstalledCard({
           </p>
         ) : null}
 
+        {verdict && (verdict.status === 'wrong-folder' || (verdict.status === 'needs-companion' && verdict.missing.length > 0)) && verdict.backendId ? (
+          onRemove ? <FixModel modelId={model.id} backendId={verdict.backendId} onDone={onFixed} /> : <p>Ask an admin to fix this.</p>
+        ) : null}
         {onWorkflows || onRemove ? (
           <div className={styles.cardActions}>
             {onWorkflows ? (
