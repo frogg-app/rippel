@@ -685,3 +685,11 @@ At the end of each run, report:
   Queued jobs retain the chosen import. Authenticated `/workflows/library` serves
   tested imports. Five tests cover JSON round-trip compilation, precedence, pins,
   and readiness selection. Admin import/test controls follow in Tasks 9–10.
+
+- **Task 23 command implemented; desktop report pending agent authentication.**
+  `npm run smoke:workflows -w @comfy/api -- http://backend:8188` compiles cheap
+  settings, submits sequential jobs, checks history and downloads an output before
+  reporting success. `--imports` adds database revisions; `--check-only` performs
+  no submissions. Local CPU ComfyUI reports missing weights for every built-in,
+  as expected. Cheap settings compile for all 13 built-ins; output verification
+  tests distinguish incomplete history, absent output and actual bytes.

@@ -10,7 +10,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "snapshot:nodes": "tsx src/scripts/snapshot-nodes.ts"
+    "snapshot:nodes": "tsx src/scripts/snapshot-nodes.ts",
+    "smoke:workflows": "tsx src/scripts/smoke-workflows.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.717.0",

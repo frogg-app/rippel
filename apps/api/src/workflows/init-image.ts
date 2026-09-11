@@ -62,7 +62,7 @@
 
 import { createHash } from 'node:crypto';
 import { ComfyError } from '../lib/comfy.js';
-import { storage, type StorageDriver } from '../storage/index.js';
+import type { StorageDriver } from '../storage/index.js';
 import { IMG2IMG_INIT_IMAGE_NODE_ID } from './img2img-sdxl.js';
 import type { ComfyApiGraph } from './types.js';
 
@@ -174,7 +174,7 @@ export async function sendStoredInitImageToBackend(opts: {
   timeoutMs?: number;
   driver?: StorageDriver;
 }): Promise<TransferredInitImage> {
-  const driver = opts.driver ?? storage();
+  const driver = opts.driver ?? (await import('../storage/index.js')).storage();
   const bytes = await driver.get(opts.storageKey);
   return sendInitImageToBackend({
     backendUrl: opts.backendUrl,
