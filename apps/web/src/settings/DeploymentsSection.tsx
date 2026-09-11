@@ -202,6 +202,7 @@ function DeploymentCard({
   const [task, setTask] = useState<AgentTask | null>(null);
   const [probe, setProbe] = useState<AgentProbe | null>(null);
   const [armed, setArmed] = useState(false);
+  const [agentUpdate, setAgentUpdate] = useState(false);
   // A machine that has never been heard from has exactly one useful next step,
   // so the panel holding it is already open rather than behind another click.
   const [showInstall, setShowInstall] = useState(() => !deployment.lastSeenAt);
@@ -360,8 +361,13 @@ function DeploymentCard({
 
       <NextAction deployment={deployment} />
       <ComfySummary deployment={deployment} />
+      {agentUpdate ? <p role="status">Agent update requested. The agent will restart; use Refresh to check its version.</p> : null}
 
       <div className={shared.cardActions}>
+        <ReasonedButton className={shared.action} reason={busyReason ?? offlineReason}
+          onClick={() => void act('update the agent', async () => { await api.updateAgent(deployment.id); setAgentUpdate(true); })}>
+          Update agent
+        </ReasonedButton>
         <button type="button" className={shared.action} onClick={() => void test()} disabled={busy !== null}>
           {busy === 'test the agent' ? 'Testing…' : 'Test'}
         </button>

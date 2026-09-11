@@ -144,6 +144,7 @@ function fakeApi(initial: Deployment[] = [online], over: Partial<DeploymentsApi>
     })),
     releases: vi.fn(async () => instructions.release),
     installComfy: vi.fn(async () => done()),
+    updateAgent: vi.fn(),
     updateComfy: vi.fn(async () => done({ kind: 'update-comfyui' })),
     power: vi.fn(async () => ({ started: true })),
     installHelper: vi.fn(async () => done({ kind: 'install-helper' })),

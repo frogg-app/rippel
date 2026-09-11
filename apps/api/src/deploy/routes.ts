@@ -17,7 +17,8 @@
  * box that has no cookie and no header to spare.
  */
 
-import { randomBytes } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
+import { createHash, randomBytes } from 'node:crypto';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import type {
@@ -584,6 +585,20 @@ export function makeDeploymentRoutes(deps: DeployDeps = {}) {
         }
       },
     );
+
+    app.post<{ Params: { id: string } }>('/deployments/:id/agent-update', { onRequest: [app.requireAdmin] }, async (req, reply) => {
+      const row = await loadOr404(req,reply);
+      if (!row) return;
+      try {
+        const status = await agent.status(targetOf(row));
+        const target = status.platform === 'win32' ? 'windows-amd64' : null;
+        if (!target) return reply.code(422).send({ message: 'Automatic updates need an explicitly known platform and architecture.' });
+        const binary = await findBinary(target);
+        if (!binary) return reply.code(404).send({ message: `Build the ${target} agent on this rippel server first.` });
+        const sha256 = createHash('sha256').update(await readFile(binary.path)).digest('hex');
+        return { task: await agent.updateAgent(targetOf(row),sha256) };
+      } catch (cause) { return agentFailure(reply,cause); }
+    });
 
     app.post<{ Params: { id: string }; Body: { accelerator?: string } }>(
       '/deployments/:id/comfyui/install',

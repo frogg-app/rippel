@@ -243,6 +243,11 @@ func (a *Agent) route(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if r.Method == http.MethodPost && path == "/agent/update" {
+		a.updateAgent(w, r)
+		return
+	}
+
 	if r.Method == http.MethodPost && path == "/agent/config" {
 		a.updateConfig(w, r)
 		return

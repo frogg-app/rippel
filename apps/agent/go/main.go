@@ -44,6 +44,12 @@ func main() {
 	}
 
 	switch command {
+	case "apply-update":
+		if err := applyAgentUpdate(args[1:]); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
 	case "run":
 		if err := runAgent(); err != nil {
 			serviceLog("%s", err)

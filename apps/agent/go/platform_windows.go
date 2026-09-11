@@ -20,18 +20,18 @@ import (
 var (
 	kernel32 = syscall.NewLazyDLL("kernel32.dll")
 
-	procGetDiskFreeSpaceExW  = kernel32.NewProc("GetDiskFreeSpaceExW")
+	procGetDiskFreeSpaceExW   = kernel32.NewProc("GetDiskFreeSpaceExW")
 	procGetConsoleProcessList = kernel32.NewProc("GetConsoleProcessList")
-	procOpenProcess          = kernel32.NewProc("OpenProcess")
-	procGetExitCodeProcess   = kernel32.NewProc("GetExitCodeProcess")
-	procCloseHandle          = kernel32.NewProc("CloseHandle")
+	procOpenProcess           = kernel32.NewProc("OpenProcess")
+	procGetExitCodeProcess    = kernel32.NewProc("GetExitCodeProcess")
+	procCloseHandle           = kernel32.NewProc("CloseHandle")
 )
 
 const (
-	stillActive              = 259
-	processQueryLimitedInfo  = 0x1000
-	createNewProcessGroup    = 0x00000200
-	detachedProcess          = 0x00000008
+	stillActive             = 259
+	processQueryLimitedInfo = 0x1000
+	createNewProcessGroup   = 0x00000200
+	detachedProcess         = 0x00000008
 )
 
 // diskSpace returns free and total bytes on the volume holding path.
@@ -145,3 +145,5 @@ func looksLikeDoubleClick() bool {
 	)
 	return count == 1
 }
+
+func replaceAgentProcess(target string) error { return nil }

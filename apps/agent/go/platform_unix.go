@@ -69,3 +69,7 @@ func hideConsole(cmd *exec.Cmd) {}
 func looksLikeDoubleClick() bool { return false }
 
 var _ = os.Getpid
+
+func replaceAgentProcess(target string) error {
+	return syscall.Exec(target, []string{target, "run"}, os.Environ())
+}

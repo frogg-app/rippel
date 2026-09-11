@@ -179,6 +179,7 @@ function fakeAgent(over: Partial<AgentClient> = {}): AgentClient {
     power: async () => ({ started: true }),
     installHelper: async () => task({ kind: 'install-helper' }),
     comfyLog: async () => [],
+    updateAgent: async () => task(),
     moveModel: async () => task(),
     downloadModel: async () => task(),
     ...over,
