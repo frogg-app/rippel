@@ -724,3 +724,15 @@ At the end of each run, report:
   endpoint plus admin API/UI. Go/race tests and real Linux replacement passed;
   Windows manual replacement reports 0.3.0. Windows automatic handoff still needs
   testing. Custom-node installation remains pending by explicit user choice.
+
+- **Task 9 backend assessment/install API implemented and live catalogue checked.**
+  Admin routes browse, check, explicitly import and plan verified file installs.
+  File installs reuse Task 14's durable agent operations. Backend memory lower-bound
+  checks and missing node/file/control explanations are explicit. Ready still
+  requires a completed test with downloaded output; test prompts/results persist.
+  `docs/WORKFLOW_LIBRARY_DESKTOP_REPORT.json` records all 14 explicitly open-source
+  image-to-video entries on desktop library 0.11.59. All currently report unsupported
+  control mappings (many have multiple model stages); none are advertised Ready.
+  The older Wan 5B entry omits its source flag, so its locally verified native graph
+  is explicitly recognised. Its enabled image-input variant imports successfully
+  and reports missing files on the empty backend. Five route/status tests pass.

@@ -1,0 +1,1017 @@
+{
+  "capturedAt": "2026-09-11T15:05:33.389Z",
+  "backend": "http://192.168.1.10:8188",
+  "comfyVersion": "0.35.0",
+  "libraryVersion": "0.11.59",
+  "modelFolders": "Empty fresh agent deployment",
+  "rows": [
+    {
+      "name": "video_minimax_h3_i2v",
+      "title": "MiniMax H3: Image to Video",
+      "status": "not-supported",
+      "reasons": [
+        "119.image: required input has no value.",
+        "steps: 105_9.steps is not an editable literal.",
+        "prompt: no unambiguous positive text conditioning.",
+        "dimensions: no unambiguous latent size control.",
+        "prompt: required control unavailable.",
+        "width: required control unavailable.",
+        "height: required control unavailable.",
+        "frameCount: required control unavailable."
+      ],
+      "missingFiles": [
+        {
+          "name": "minimax_h3_video_vae_fp16.safetensors",
+          "url": "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/vae/minimax_h3_video_vae_fp16.safetensors",
+          "directory": "vae",
+          "paths": [
+            "105_11.inputs.vae_name"
+          ]
+        },
+        {
+          "name": "minimax_h3_audio_vae_fp32.safetensors",
+          "url": "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/vae/minimax_h3_audio_vae_fp32.safetensors",
+          "directory": "vae",
+          "paths": [
+            "105_24.inputs.vae_name"
+          ]
+        },
+        {
+          "name": "minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+          "url": "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/diffusion_models/minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+          "directory": "diffusion_models",
+          "paths": [
+            "105_6.inputs.unet_name"
+          ]
+        },
+        {
+          "name": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+          "url": "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+          "directory": "text_encoders",
+          "paths": [
+            "105_13.inputs.clip_name"
+          ]
+        },
+        {
+          "name": "minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors",
+          "url": "https://huggingface.co/lightx2v/Minimax-h3-Turbo/resolve/main/minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors",
+          "directory": "loras",
+          "paths": [
+            "105_121.inputs.lora_name"
+          ]
+        }
+      ],
+      "missingNodes": [],
+      "downloadBytes": null,
+      "omitted": [
+        "119.image: required input has no value.",
+        "steps: 105_9.steps is not an editable literal.",
+        "prompt: no unambiguous positive text conditioning.",
+        "dimensions: no unambiguous latent size control.",
+        "prompt: required control unavailable.",
+        "width: required control unavailable.",
+        "height: required control unavailable.",
+        "frameCount: required control unavailable."
+      ]
+    },
+    {
+      "name": "video_ltx2_5_i2v",
+      "title": "LTX-2.5: Image to Video",
+      "status": "not-supported",
+      "reasons": [
+        "398_366: 1 unmapped widget value(s).",
+        "fps: 398_365.frame_rate is not an editable literal.",
+        "sampler: several sampling stages; values kept fixed.",
+        "seed: several sampling stages; values kept fixed.",
+        "fps: 398_370.fps is not an editable literal.",
+        "prompt: no unambiguous positive text conditioning.",
+        "width: 398_356.width is not an editable literal.",
+        "height: 398_356.height is not an editable literal.",
+        "frameCount: 398_356.length is not an editable literal.",
+        "model files: unrecognized folder for 398_371.",
+        "prompt: required control unavailable.",
+        "width: required control unavailable.",
+        "height: required control unavailable.",
+        "frameCount: required control unavailable.",
+        "fps: required control unavailable."
+      ],
+      "missingFiles": [
+        {
+          "name": "gemma4_e2b_it_int8_convrot.safetensors",
+          "url": "https://huggingface.co/Comfy-Org/gemma-4/resolve/main/text_encoders/gemma4_e2b_it_int8_convrot.safetensors",
+          "directory": "text_encoders",
+          "paths": [
+            "398_393.inputs.clip_name"
+          ]
+        },
+        {
+          "name": "ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors",
+          "url": "https://huggingface.co/Lightricks/LTX-2.5/resolve/main/diffusion_models/ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors",
+          "directory": "diffusion_models",
+          "paths": [
+            "398_384.inputs.unet_name"
+          ]
+        },
+        {
+          "name": "ltx-2.5-video-vae-bf16.safetensors",
+          "url": "https://huggingface.co/Lightricks/LTX-2.5/resolve/main/vae/ltx-2.5-video-vae-bf16.safetensors",
+          "directory": "vae",
+          "paths": [
+            "398_385.inputs.vae_name"
+          ]
+        },
+        {
+          "name": "ltx-2.5-audio-vae-bf16.safetensors",
+          "url": "https://huggingface.co/Lightricks/LTX-2.5/resolve/main/vae/ltx-2.5-audio-vae-bf16.safetensors",
+          "directory": "vae",
+          "paths": [
+            "398_386.inputs.vae_name"
+          ]
+        },
+        {
+          "name": "gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors",
+          "url": "https://huggingface.co/Lightricks/LTX-2.5/resolve/main/text_encoders/gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors",
+          "directory": "text_encoders",
+          "paths": [
+            "398_387.inputs.clip_name"
+          ]
+        }
+      ],
+      "missingNodes": [],
+      "downloadBytes": null,
+      "omitted": [
+        "398_366: 1 unmapped widget value(s).",
+        "fps: 398_365.frame_rate is not an editable literal.",
+        "sampler: several sampling stages; values kept fixed.",
+        "seed: several sampling stages; values kept fixed.",
+        "fps: 398_370.fps is not an editable literal.",
+        "prompt: no unambiguous positive text conditioning.",
+        "width: 398_356.width is not an editable literal.",
+        "height: 398_356.height is not an editable literal.",
+        "frameCount: 398_356.length is not an editable literal.",
+        "model files: unrecognized folder for 398_371.",
+        "prompt: required control unavailable.",
+        "width: required control unavailable.",
+        "height: required control unavailable.",
+        "frameCount: required control unavailable.",
+        "fps: required control unavailable."
+      ]
+    },
+    {
+      "name": "video_ltx2_3_i2v",
+      "title": "LTX-2.3: Image to Video",
+      "status": "not-supported",
+      "reasons": [
+        "320_305: 1 unmapped widget value(s).",
+        "75: 1 unmapped widget value(s).",
+        "seed: several sampling stages; values kept fixed.",
+        "sampler: several sampling stages; values kept fixed.",
+        "fps: 320_304.frame_rate is not an editable literal.",
+        "fps: 320_310.fps is not an editable literal.",
+        "prompt: 320_303.text is not an editable literal.",
+        "width: 320_295.width is not an editable literal.",
+        "height: 320_295.height is not an editable literal.",
+        "frameCount: 320_295.length is not an editable literal.",
+        "model files: unrecognized folder for 320_279.",
+        "model files: unrecognized folder for 320_311.",
+        "model files: unrecognized folder for 320_317.",
+        "prompt: required control unavailable.",
+        "width: required control unavailable.",
+        "height: required control unavailable.",
+        "frameCount: required control unavailable.",
+        "fps: required control unavailable."
+      ],
+      "missingFiles": [
+        {
+          "name": "ltx_2.3_22b_distilled_1.1_lora_dynamic_fro09_avg_rank_111_bf16.safetensors",
+          "url": "https://huggingface.co/Comfy-Org/ltx-2.3/resolve/main/split_files/loras/ltx_2.3_22b_distilled_1.1_lora_dynamic_fro09_avg_rank_111_bf16.safetensors",
+          "directory": "loras",
+          "paths": [
+            "320_285.inputs.lora_name"
+          ]
+        },
+        {
+          "name": "ltx-2.3-22b-dev-fp8.safetensors",
+          "url": "https://huggingface.co/Lightricks/LTX-2.3-fp8/resolve/main/ltx-2.3-22b-dev-fp8.safetensors",
+          "directory": "checkpoints",
+          "paths": [
+            "320_316.inputs.ckpt_name"
+          ]
+        },
+        {
+          "name": "gemma-3-12b-it-abliterated_lora_rank64_bf16.safetensors",
+          "url": "https://huggingface.co/Comfy-Org/ltx-2/resolve/main/split_files/loras/gemma-3-12b-it-abliterated_lora_rank64_bf16.safetensors",
+          "directory": "loras",
+          "paths": [
+            "320_324.inputs.lora_name"
+          ]
+        }
+      ],
+      "missingNodes": [],
+      "downloadBytes": null,
+      "omitted": [
+        "320_305: 1 unmapped widget value(s).",
+        "75: 1 unmapped widget value(s).",
+        "seed: several sampling stages; values kept fixed.",
+        "sampler: several sampling stages; values kept fixed.",
+        "fps: 320_304.frame_rate is not an editable literal.",
+        "fps: 320_310.fps is not an editable literal.",
+        "prompt: 320_303.text is not an editable literal.",
+        "width: 320_295.width is not an editable literal.",
+        "height: 320_295.height is not an editable literal.",
+        "frameCount: 320_295.length is not an editable literal.",
+        "model files: unrecognized folder for 320_279.",
+        "model files: unrecognized folder for 320_311.",
+        "model files: unrecognized folder for 320_317.",
+        "prompt: required control unavailable.",
+        "width: required control unavailable.",
+        "height: required control unavailable.",
+        "frameCount: required control unavailable.",
+        "fps: required control unavailable."
+      ]
+    },
+    {
+      "name": "video_ltx2_3_ia2v",
+      "title": "LTX-2.3: Image Audio to Video",
+      "status": "not-supported",
+      "reasons": [
+        "341: 1 unmapped widget value(s).",
+        "276: 2 unmapped widget value(s).",
+        "seed: several sampling stages; values kept fixed.",
+        "sampler: several sampling stages; values kept fixed.",
+        "fps: 340_307.frame_rate is not an editable literal.",
+        "fps: 340_312.fps is not an editable literal.",
+        "prompt: 340_306.text is not an editable literal.",
+        "width: 340_302.width is not an editable literal.",
+        "height: 340_302.height is not an editable literal.",
+        "frameCount: 340_302.length is not an editable literal.",
+        "model files: unrecognized folder for 340_335.",
+        "model files: unrecognized folder for 340_313.",
+        "model files: unrecognized folder for 340_318.",
+        "prompt: required control unavailable.",
+        "width: required control unavailable.",
+        "height: required control unavailable.",
+        "frameCount: required control unavailable.",
+        "fps: required control unavailable."
+      ],
+      "missingFiles": [
+        {
+          "name": "ltx_2.3_22b_distilled_1.1_lora_dynamic_fro09_avg_rank_111_bf16.safetensors",
+          "url": "https://huggingface.co/Comfy-Org/ltx-2.3/resolve/main/split_files/loras/ltx_2.3_22b_distilled_1.1_lora_dynamic_fro09_avg_rank_111_bf16.safetensors",
+          "directory": "loras",
+          "paths": [
+            "340_293.inputs.lora_name"
+          ]
+        },
+        {
+          "name": "ltx-2.3-22b-dev-fp8.safetensors",
+          "url": "https://huggingface.co/Lightricks/LTX-2.3-fp8/resolve/main/ltx-2.3-22b-dev-fp8.safetensors",
+          "directory": "checkpoints",
+          "paths": [
+            "340_317.inputs.ckpt_name"
+          ]
+        },
+        {
+          "name": "gemma-3-12b-it-abliterated_lora_rank64_bf16.safetensors",
+          "url": "https://huggingface.co/Comfy-Org/ltx-2/resolve/main/split_files/loras/gemma-3-12b-it-abliterated_lora_rank64_bf16.safetensors",
+          "directory": "loras",
+          "paths": [
+            "340_345.inputs.lora_name"
+          ]
+        }
+      ],
+      "missingNodes": [],
+      "downloadBytes": null,
+      "omitted": [
+        "341: 1 unmapped widget value(s).",
+        "276: 2 unmapped widget value(s).",
+        "seed: several sampling stages; values kept fixed.",
+        "sampler: several sampling stages; values kept fixed.",
+        "fps: 340_307.frame_rate is not an editable literal.",
+        "fps: 340_312.fps is not an editable literal.",
+        "prompt: 340_306.text is not an editable literal.",
+        "width: 340_302.width is not an editable literal.",
+        "height: 340_302.height is not an editable literal.",
+        "frameCount: 340_302.length is not an editable literal.",
+        "model files: unrecognized folder for 340_335.",
+        "model files: unrecognized folder for 340_313.",
+        "model files: unrecognized folder for 340_318.",
+        "prompt: required control unavailable.",
+        "width: required control unavailable.",
+        "height: required control unavailable.",
+        "frameCount: required control unavailable.",
+        "fps: required control unavailable."
+      ]
+    },
+    {
+      "name": "video_wan2_2_14B_i2v",
+      "title": "Wan 2.2 14B Image to Video",
+      "status": "not-supported",
+      "reasons": [
+        "fps: 129_94.fps is not an editable literal.",
+        "seed: several sampling stages; values kept fixed.",
+        "steps: several sampling stages; values kept fixed.",
+        "guidance: several sampling stages; values kept fixed.",
+        "sampler: several sampling stages; values kept fixed.",
+        "scheduler: several sampling stages; values kept fixed.",
+        "frameCount: 129_98.length is not an editable literal.",
+        "model: several or no primary model loaders.",
+        "checkpointFilename: required control unavailable.",
+        "frameCount: required control unavailable.",
+        "fps: required control unavailable."
+      ],
+      "missingFiles": [
+        {
+          "name": "wan_2.1_vae.safetensors",
+          "url": "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/vae/wan_2.1_vae.safetensors",
+          "directory": "vae",
+          "paths": [
+            "129_90.inputs.vae_name"
+          ]
+        },
+        {
+          "name": "umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+          "url": "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+          "directory": "text_encoders",
+          "paths": [
+            "129_84.inputs.clip_name"
+          ]
+        },
+        {
+          "name": "wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors",
+          "url": "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors",
+          "directory": "diffusion_models",
+          "paths": [
+            "129_96.inputs.unet_name"
+          ]
+        },
+        {
+          "name": "wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors",
+          "url": "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors",
+          "directory": "diffusion_models",
+          "paths": [
+            "129_95.inputs.unet_name"
+          ]
+        },
+        {
+          "name": "wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise.safetensors",
+          "url": "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/loras/wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise.safetensors",
+          "directory": "loras",
+          "paths": [
+            "129_102.inputs.lora_name"
+          ]
+        },
+        {
+          "name": "wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise.safetensors",
+          "url": "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/loras/wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise.safetensors",
+          "directory": "loras",
+          "paths": [
+            "129_101.inputs.lora_name"
+          ]
+        }
+      ],
+      "missingNodes": [],
+      "downloadBytes": null,
+      "omitted": [
+        "fps: 129_94.fps is not an editable literal.",
+        "seed: several sampling stages; values kept fixed.",
+        "steps: several sampling stages; values kept fixed.",
+        "guidance: several sampling stages; values kept fixed.",
+        "sampler: several sampling stages; values kept fixed.",
+        "scheduler: several sampling stages; values kept fixed.",
+        "frameCount: 129_98.length is not an editable literal.",
+        "model: several or no primary model loaders.",
+        "checkpointFilename: required control unavailable.",
+        "frameCount: required control unavailable.",
+        "fps: required control unavailable."
+      ]
+    },
+    {
+      "name": "video_ltx2_i2v",
+      "title": "LTX-2: Image to Video",
+      "status": "not-supported",
+      "reasons": [
+        "92_51.frame_rate: required input has no value.",
+        "92_51: 1 unmapped widget value(s).",
+        "75: 1 unmapped widget value(s).",
+        "sampler: several sampling stages; values kept fixed.",
+        "seed: several sampling stages; values kept fixed.",
+        "width: 92_43.width is not an editable literal.",
+        "height: 92_43.height is not an editable literal.",
+        "frameCount: 92_43.length is not an editable literal.",
+        "model files: unrecognized folder for 92_48.",
+        "model files: unrecognized folder for 92_60.",
+        "model files: unrecognized folder for 92_76.",
+        "width: required control unavailable.",
+        "height: required control unavailable.",
+        "frameCount: required control unavailable."
+      ],
+      "missingFiles": [
+        {
+          "name": "ltx-2-19b-dev-fp8.safetensors",
+          "url": "https://huggingface.co/Lightricks/LTX-2/resolve/main/ltx-2-19b-dev-fp8.safetensors",
+          "directory": "checkpoints",
+          "paths": [
+            "92_1.inputs.ckpt_name"
+          ]
+        },
+        {
+          "name": "ltx-2-19b-distilled-lora-384.safetensors",
+          "url": "https://huggingface.co/Lightricks/LTX-2/resolve/main/ltx-2-19b-distilled-lora-384.safetensors",
+          "directory": "loras",
+          "paths": [
+            "92_68.inputs.lora_name"
+          ]
+        }
+      ],
+      "missingNodes": [],
+      "downloadBytes": null,
+      "omitted": [
+        "92_51.frame_rate: required input has no value.",
+        "92_51: 1 unmapped widget value(s).",
+        "75: 1 unmapped widget value(s).",
+        "sampler: several sampling stages; values kept fixed.",
+        "seed: several sampling stages; values kept fixed.",
+        "width: 92_43.width is not an editable literal.",
+        "height: 92_43.height is not an editable literal.",
+        "frameCount: 92_43.length is not an editable literal.",
+        "model files: unrecognized folder for 92_48.",
+        "model files: unrecognized folder for 92_60.",
+        "model files: unrecognized folder for 92_76.",
+        "width: required control unavailable.",
+        "height: required control unavailable.",
+        "frameCount: required control unavailable."
+      ]
+    },
+    {
+      "name": "video_causal_forcing_i2v",
+      "title": "Causal Forcing: Image to Video",
+      "status": "not-supported",
+      "reasons": [
+        "29: cannot map all subgraph widgets.",
+        "29_1.unet_name: required input has no value.",
+        "29_3.vae_name: required input has no value.",
+        "29_11.noise_seed: required input has no value.",
+        "29_2.clip_name: required input has no value.",
+        "29_8.width: required input has no value.",
+        "29_8.height: required input has no value.",
+        "29_4.text: required input has no value.",
+        "29_28.value: required input has no value.",
+        "seed: 29_11.noise_seed is not an editable literal.",
+        "prompt: 29_4.text is not an editable literal.",
+        "dimensions: no unambiguous latent size control.",
+        "model files: causal_forcing-framewise.safetensors has no matching loader input.",
+        "model files: wan_2.1_vae.safetensors has no matching loader input.",
+        "model files: umt5_xxl_fp8_e4m3fn_scaled.safetensors has no matching loader input.",
+        "prompt: required control unavailable.",
+        "width: required control unavailable.",
+        "height: required control unavailable.",
+        "frameCount: required control unavailable."
+      ],
+      "missingFiles": [],
+      "missingNodes": [],
+      "downloadBytes": 0,
+      "omitted": [
+        "29: cannot map all subgraph widgets.",
+        "29_1.unet_name: required input has no value.",
+        "29_3.vae_name: required input has no value.",
+        "29_11.noise_seed: required input has no value.",
+        "29_2.clip_name: required input has no value.",
+        "29_8.width: required input has no value.",
+        "29_8.height: required input has no value.",
+        "29_4.text: required input has no value.",
+        "29_28.value: required input has no value.",
+        "seed: 29_11.noise_seed is not an editable literal.",
+        "prompt: 29_4.text is not an editable literal.",
+        "dimensions: no unambiguous latent size control.",
+        "model files: causal_forcing-framewise.safetensors has no matching loader input.",
+        "model files: wan_2.1_vae.safetensors has no matching loader input.",
+        "model files: umt5_xxl_fp8_e4m3fn_scaled.safetensors has no matching loader input.",
+        "prompt: required control unavailable.",
+        "width: required control unavailable.",
+        "height: required control unavailable.",
+        "frameCount: required control unavailable."
+      ]
+    },
+    {
+      "name": "video_ltx2_i2v_lora",
+      "title": "Squish Anything with LTX-2 I2V and LoRA",
+      "status": "not-supported",
+      "reasons": [
+        "92: cannot map all subgraph widgets.",
+        "92_51: 1 unmapped widget value(s).",
+        "92_48.ckpt_name: required input has no value.",
+        "92_11.noise_seed: required input has no value.",
+        "92_3.text: required input has no value.",
+        "92_68.lora_name: required input has no value.",
+        "92_76.model_name: required input has no value.",
+        "92_60.text_encoder: required input has no value.",
+        "92_60.ckpt_name: required input has no value.",
+        "92_89.width: required input has no value.",
+        "92_89.height: required input has no value.",
+        "92_62.value: required input has no value.",
+        "92_110.lora_name: required input has no value.",
+        "92_110.strength_model: required input has no value.",
+        "92_108.lora_name: required input has no value.",
+        "92_1.ckpt_name: required input has no value.",
+        "92_109.lora_name: required input has no value.",
+        "92_109.strength_model: required input has no value.",
+        "fps: 92_22.frame_rate is not an editable literal.",
+        "sampler: several sampling stages; values kept fixed.",
+        "seed: several sampling stages; values kept fixed.",
+        "fps: 92_97.fps is not an editable literal.",
+        "prompt: 92_3.text is not an editable literal.",
+        "width: 92_43.width is not an editable literal.",
+        "height: 92_43.height is not an editable literal.",
+        "frameCount: 92_43.length is not an editable literal.",
+        "model files: unrecognized folder for 92_48.",
+        "model files: ltx-2-19b-distilled-lora-384.safetensors has no matching loader input.",
+        "model files: unrecognized folder for 92_76.",
+        "model files: unrecognized folder for 92_60.",
+        "model files: ltx2-squish.safetensors has no matching loader input.",
+        "model files: ltx-2-19b-dev.safetensors has no matching loader input.",
+        "prompt: required control unavailable.",
+        "width: required control unavailable.",
+        "height: required control unavailable.",
+        "frameCount: required control unavailable.",
+        "fps: required control unavailable."
+      ],
+      "missingFiles": [],
+      "missingNodes": [],
+      "downloadBytes": 0,
+      "omitted": [
+        "92: cannot map all subgraph widgets.",
+        "92_51: 1 unmapped widget value(s).",
+        "92_48.ckpt_name: required input has no value.",
+        "92_11.noise_seed: required input has no value.",
+        "92_3.text: required input has no value.",
+        "92_68.lora_name: required input has no value.",
+        "92_76.model_name: required input has no value.",
+        "92_60.text_encoder: required input has no value.",
+        "92_60.ckpt_name: required input has no value.",
+        "92_89.width: required input has no value.",
+        "92_89.height: required input has no value.",
+        "92_62.value: required input has no value.",
+        "92_110.lora_name: required input has no value.",
+        "92_110.strength_model: required input has no value.",
+        "92_108.lora_name: required input has no value.",
+        "92_1.ckpt_name: required input has no value.",
+        "92_109.lora_name: required input has no value.",
+        "92_109.strength_model: required input has no value.",
+        "fps: 92_22.frame_rate is not an editable literal.",
+        "sampler: several sampling stages; values kept fixed.",
+        "seed: several sampling stages; values kept fixed.",
+        "fps: 92_97.fps is not an editable literal.",
+        "prompt: 92_3.text is not an editable literal.",
+        "width: 92_43.width is not an editable literal.",
+        "height: 92_43.height is not an editable literal.",
+        "frameCount: 92_43.length is not an editable literal.",
+        "model files: unrecognized folder for 92_48.",
+        "model files: ltx-2-19b-distilled-lora-384.safetensors has no matching loader input.",
+        "model files: unrecognized folder for 92_76.",
+        "model files: unrecognized folder for 92_60.",
+        "model files: ltx2-squish.safetensors has no matching loader input.",
+        "model files: ltx-2-19b-dev.safetensors has no matching loader input.",
+        "prompt: required control unavailable.",
+        "width: required control unavailable.",
+        "height: required control unavailable.",
+        "frameCount: required control unavailable.",
+        "fps: required control unavailable."
+      ]
+    },
+    {
+      "name": "video_ltx2_i2v_distilled",
+      "title": "LTX-2 Image to Video (Distilled)",
+      "status": "not-supported",
+      "reasons": [
+        "92_51.frame_rate: required input has no value.",
+        "92_51: 1 unmapped widget value(s).",
+        "sampler: several sampling stages; values kept fixed.",
+        "seed: several sampling stages; values kept fixed.",
+        "width: 92_43.width is not an editable literal.",
+        "height: 92_43.height is not an editable literal.",
+        "frameCount: 92_43.length is not an editable literal.",
+        "model files: unrecognized folder for 92_48.",
+        "model files: unrecognized folder for 92_60.",
+        "model files: unrecognized folder for 92_76.",
+        "width: required control unavailable.",
+        "height: required control unavailable.",
+        "frameCount: required control unavailable."
+      ],
+      "missingFiles": [
+        {
+          "name": "ltx-2-19b-distilled.safetensors",
+          "url": "https://huggingface.co/Lightricks/LTX-2/resolve/main/ltx-2-19b-distilled.safetensors",
+          "directory": "checkpoints",
+          "paths": [
+            "92_1.inputs.ckpt_name"
+          ]
+        }
+      ],
+      "missingNodes": [],
+      "downloadBytes": null,
+      "omitted": [
+        "92_51.frame_rate: required input has no value.",
+        "92_51: 1 unmapped widget value(s).",
+        "sampler: several sampling stages; values kept fixed.",
+        "seed: several sampling stages; values kept fixed.",
+        "width: 92_43.width is not an editable literal.",
+        "height: 92_43.height is not an editable literal.",
+        "frameCount: 92_43.length is not an editable literal.",
+        "model files: unrecognized folder for 92_48.",
+        "model files: unrecognized folder for 92_60.",
+        "model files: unrecognized folder for 92_76.",
+        "width: required control unavailable.",
+        "height: required control unavailable.",
+        "frameCount: required control unavailable."
+      ]
+    },
+    {
+      "name": "video_wanmove_480p",
+      "title": "Wan-Move Motion-Control Image to Video",
+      "status": "not-supported",
+      "reasons": [
+        "257: cannot map all subgraph widgets.",
+        "257_231.lora_name: required input has no value.",
+        "257_193.clip_name: required input has no value.",
+        "257_10.vae_name: required input has no value.",
+        "257_84.clip_name: required input has no value.",
+        "257_232.unet_name: required input has no value.",
+        "257_195.length: required input has no value.",
+        "257_151.text: required input has no value.",
+        "257_268.value: required input has no value.",
+        "steps: 257_144.steps is not an editable literal.",
+        "guidance: 257_144.cfg is not an editable literal.",
+        "prompt: 257_151.text is not an editable literal.",
+        "dimensions: no unambiguous latent size control.",
+        "model files: lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors has no matching loader input.",
+        "model files: umt5_xxl_fp8_e4m3fn_scaled.safetensors has no matching loader input.",
+        "model files: wan_2.1_vae.safetensors has no matching loader input.",
+        "model files: clip_vision_h.safetensors has no matching loader input.",
+        "model files: Wan21-WanMove_fp8_scaled_e4m3fn_KJ.safetensors has no matching loader input.",
+        "prompt: required control unavailable.",
+        "width: required control unavailable.",
+        "height: required control unavailable.",
+        "frameCount: required control unavailable."
+      ],
+      "missingFiles": [],
+      "missingNodes": [],
+      "downloadBytes": 0,
+      "omitted": [
+        "257: cannot map all subgraph widgets.",
+        "257_231.lora_name: required input has no value.",
+        "257_193.clip_name: required input has no value.",
+        "257_10.vae_name: required input has no value.",
+        "257_84.clip_name: required input has no value.",
+        "257_232.unet_name: required input has no value.",
+        "257_195.length: required input has no value.",
+        "257_151.text: required input has no value.",
+        "257_268.value: required input has no value.",
+        "steps: 257_144.steps is not an editable literal.",
+        "guidance: 257_144.cfg is not an editable literal.",
+        "prompt: 257_151.text is not an editable literal.",
+        "dimensions: no unambiguous latent size control.",
+        "model files: lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors has no matching loader input.",
+        "model files: umt5_xxl_fp8_e4m3fn_scaled.safetensors has no matching loader input.",
+        "model files: wan_2.1_vae.safetensors has no matching loader input.",
+        "model files: clip_vision_h.safetensors has no matching loader input.",
+        "model files: Wan21-WanMove_fp8_scaled_e4m3fn_KJ.safetensors has no matching loader input.",
+        "prompt: required control unavailable.",
+        "width: required control unavailable.",
+        "height: required control unavailable.",
+        "frameCount: required control unavailable."
+      ]
+    },
+    {
+      "name": "video_minimax_h3_i2v_continuation",
+      "title": "Image to Video ",
+      "status": "not-supported",
+      "reasons": [
+        "steps: 105_9.steps is not an editable literal.",
+        "prompt: no unambiguous positive text conditioning.",
+        "dimensions: no unambiguous latent size control.",
+        "prompt: required control unavailable.",
+        "width: required control unavailable.",
+        "height: required control unavailable.",
+        "frameCount: required control unavailable."
+      ],
+      "missingFiles": [
+        {
+          "name": "minimax_h3_video_vae_fp16.safetensors",
+          "url": "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/vae/minimax_h3_video_vae_fp16.safetensors",
+          "directory": "vae",
+          "paths": [
+            "105_11.inputs.vae_name"
+          ]
+        },
+        {
+          "name": "minimax_h3_audio_vae_fp32.safetensors",
+          "url": "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/vae/minimax_h3_audio_vae_fp32.safetensors",
+          "directory": "vae",
+          "paths": [
+            "105_24.inputs.vae_name"
+          ]
+        },
+        {
+          "name": "minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+          "url": "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/diffusion_models/minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+          "directory": "diffusion_models",
+          "paths": [
+            "105_6.inputs.unet_name"
+          ]
+        },
+        {
+          "name": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+          "url": "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+          "directory": "text_encoders",
+          "paths": [
+            "105_13.inputs.clip_name"
+          ]
+        },
+        {
+          "name": "minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors",
+          "url": "https://huggingface.co/lightx2v/Minimax-h3-Turbo/resolve/main/minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors",
+          "directory": "loras",
+          "paths": [
+            "105_121.inputs.lora_name"
+          ]
+        }
+      ],
+      "missingNodes": [],
+      "downloadBytes": null,
+      "omitted": [
+        "steps: 105_9.steps is not an editable literal.",
+        "prompt: no unambiguous positive text conditioning.",
+        "dimensions: no unambiguous latent size control.",
+        "prompt: required control unavailable.",
+        "width: required control unavailable.",
+        "height: required control unavailable.",
+        "frameCount: required control unavailable."
+      ]
+    },
+    {
+      "name": "video_kandinsky5_i2v",
+      "title": "Kandinsky 5.0 Video Lite Image to Video",
+      "status": "not-supported",
+      "reasons": [
+        "dimensions: no unambiguous latent size control.",
+        "width: required control unavailable.",
+        "height: required control unavailable.",
+        "frameCount: required control unavailable."
+      ],
+      "missingFiles": [
+        {
+          "name": "kandinsky5lite_i2v_5s.safetensors",
+          "url": "https://huggingface.co/kandinskylab/Kandinsky-5.0-I2V-Lite-5s/resolve/main/model/kandinsky5lite_i2v_5s.safetensors",
+          "directory": "diffusion_models",
+          "paths": [
+            "69_53.inputs.unet_name"
+          ]
+        },
+        {
+          "name": "hunyuan_video_vae_bf16.safetensors",
+          "url": "https://huggingface.co/Kijai/HunyuanVideo_comfy/resolve/main/hunyuan_video_vae_bf16.safetensors",
+          "directory": "vae",
+          "paths": [
+            "69_54.inputs.vae_name"
+          ]
+        },
+        {
+          "name": "qwen_2.5_vl_7b_fp8_scaled.safetensors",
+          "url": "https://huggingface.co/Comfy-Org/HunyuanVideo_1.5_repackaged/resolve/main/split_files/text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors",
+          "directory": "text_encoders",
+          "paths": [
+            "69_55.inputs.clip_name1"
+          ]
+        },
+        {
+          "name": "clip_l.safetensors",
+          "url": "https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/clip_l.safetensors?download=true",
+          "directory": "text_encoders",
+          "paths": [
+            "69_55.inputs.clip_name2"
+          ]
+        }
+      ],
+      "missingNodes": [],
+      "downloadBytes": null,
+      "omitted": [
+        "dimensions: no unambiguous latent size control.",
+        "width: required control unavailable.",
+        "height: required control unavailable.",
+        "frameCount: required control unavailable."
+      ]
+    },
+    {
+      "name": "video_capybara_v0_1_image_to_video",
+      "title": "Capybara: Image to Video",
+      "status": "not-supported",
+      "reasons": [
+        "103: cannot map all subgraph widgets.",
+        "103_17.steps: required input has no value.",
+        "103_91.cfg: required input has no value.",
+        "103_44.text: required input has no value.",
+        "103_67.shift: required input has no value.",
+        "103_12.unet_name: required input has no value.",
+        "103_11.clip_name1: required input has no value.",
+        "103_11.clip_name2: required input has no value.",
+        "103_10.vae_name: required input has no value.",
+        "103_115.length: required input has no value.",
+        "103_122.value: required input has no value.",
+        "103_121.value: required input has no value.",
+        "steps: 103_17.steps is not an editable literal.",
+        "prompt: 103_44.text is not an editable literal.",
+        "dimensions: no unambiguous latent size control.",
+        "model files: capybara_v0.1.safetensors has no matching loader input.",
+        "model files: qwen_2.5_vl_7b.safetensors has no matching loader input.",
+        "model files: byt5_small_glyphxl_fp16.safetensors has no matching loader input.",
+        "model files: hunyuanvideo15_vae_fp16.safetensors has no matching loader input.",
+        "prompt: required control unavailable.",
+        "width: required control unavailable.",
+        "height: required control unavailable.",
+        "frameCount: required control unavailable."
+      ],
+      "missingFiles": [
+        {
+          "name": "sigclip_vision_patch14_384.safetensors",
+          "url": "https://huggingface.co/Comfy-Org/sigclip_vision_384/resolve/main/sigclip_vision_patch14_384.safetensors",
+          "directory": "clip_vision",
+          "paths": [
+            "103_117.inputs.clip_name"
+          ]
+        }
+      ],
+      "missingNodes": [],
+      "downloadBytes": null,
+      "omitted": [
+        "103: cannot map all subgraph widgets.",
+        "103_17.steps: required input has no value.",
+        "103_91.cfg: required input has no value.",
+        "103_44.text: required input has no value.",
+        "103_67.shift: required input has no value.",
+        "103_12.unet_name: required input has no value.",
+        "103_11.clip_name1: required input has no value.",
+        "103_11.clip_name2: required input has no value.",
+        "103_10.vae_name: required input has no value.",
+        "103_115.length: required input has no value.",
+        "103_122.value: required input has no value.",
+        "103_121.value: required input has no value.",
+        "steps: 103_17.steps is not an editable literal.",
+        "prompt: 103_44.text is not an editable literal.",
+        "dimensions: no unambiguous latent size control.",
+        "model files: capybara_v0.1.safetensors has no matching loader input.",
+        "model files: qwen_2.5_vl_7b.safetensors has no matching loader input.",
+        "model files: byt5_small_glyphxl_fp16.safetensors has no matching loader input.",
+        "model files: hunyuanvideo15_vae_fp16.safetensors has no matching loader input.",
+        "prompt: required control unavailable.",
+        "width: required control unavailable.",
+        "height: required control unavailable.",
+        "frameCount: required control unavailable."
+      ]
+    },
+    {
+      "name": "templates-6-key-frames",
+      "title": "Multi-Keyframe Video Stitching",
+      "status": "not-supported",
+      "reasons": [
+        "140: cannot map all subgraph widgets.",
+        "140_38.clip_name: required input has no value.",
+        "140_37.unet_name: required input has no value.",
+        "140_56.unet_name: required input has no value.",
+        "140_92.lora_name: required input has no value.",
+        "140_91.lora_name: required input has no value.",
+        "140_57.noise_seed: required input has no value.",
+        "140_39.vae_name: required input has no value.",
+        "140_6.text: required input has no value.",
+        "228: cannot map all subgraph widgets.",
+        "228_212.clip_name: required input has no value.",
+        "228_215.unet_name: required input has no value.",
+        "228_216.unet_name: required input has no value.",
+        "228_218.lora_name: required input has no value.",
+        "228_219.lora_name: required input has no value.",
+        "228_222.noise_seed: required input has no value.",
+        "228_223.vae_name: required input has no value.",
+        "228_225.text: required input has no value.",
+        "245: cannot map all subgraph widgets.",
+        "245_229.clip_name: required input has no value.",
+        "245_232.unet_name: required input has no value.",
+        "245_233.unet_name: required input has no value.",
+        "245_235.lora_name: required input has no value.",
+        "245_236.lora_name: required input has no value.",
+        "245_239.noise_seed: required input has no value.",
+        "245_240.vae_name: required input has no value.",
+        "245_242.text: required input has no value.",
+        "262: cannot map all subgraph widgets.",
+        "262_246.clip_name: required input has no value.",
+        "262_249.unet_name: required input has no value.",
+        "262_250.unet_name: required input has no value.",
+        "262_252.lora_name: required input has no value.",
+        "262_253.lora_name: required input has no value.",
+        "262_256.noise_seed: required input has no value.",
+        "262_257.vae_name: required input has no value.",
+        "262_259.text: required input has no value.",
+        "279: cannot map all subgraph widgets.",
+        "279_263.clip_name: required input has no value.",
+        "279_266.unet_name: required input has no value.",
+        "279_267.unet_name: required input has no value.",
+        "279_269.lora_name: required input has no value.",
+        "279_270.lora_name: required input has no value.",
+        "279_273.noise_seed: required input has no value.",
+        "279_274.vae_name: required input has no value.",
+        "279_276.text: required input has no value.",
+        "seed: several sampling stages; values kept fixed.",
+        "steps: several sampling stages; values kept fixed.",
+        "guidance: several sampling stages; values kept fixed.",
+        "sampler: several sampling stages; values kept fixed.",
+        "scheduler: several sampling stages; values kept fixed.",
+        "prompt: no unambiguous positive text conditioning.",
+        "negativePrompt: ambiguous negative conditioning.",
+        "dimensions: no unambiguous latent size control.",
+        "model: several or no primary model loaders.",
+        "model files: umt5_xxl_fp8_e4m3fn_scaled.safetensors has no matching loader input.",
+        "model files: wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors has no matching loader input.",
+        "model files: wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors has no matching loader input.",
+        "model files: wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise.safetensors has no matching loader input.",
+        "model files: wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise.safetensors has no matching loader input.",
+        "model files: wan_2.1_vae.safetensors has no matching loader input.",
+        "first frame: catalogue does not identify one enabled LoadImage.",
+        "prompt: required control unavailable.",
+        "checkpointFilename: required control unavailable.",
+        "width: required control unavailable.",
+        "height: required control unavailable.",
+        "frameCount: required control unavailable."
+      ],
+      "missingFiles": [],
+      "missingNodes": [],
+      "downloadBytes": 0,
+      "omitted": [
+        "140: cannot map all subgraph widgets.",
+        "140_38.clip_name: required input has no value.",
+        "140_37.unet_name: required input has no value.",
+        "140_56.unet_name: required input has no value.",
+        "140_92.lora_name: required input has no value.",
+        "140_91.lora_name: required input has no value.",
+        "140_57.noise_seed: required input has no value.",
+        "140_39.vae_name: required input has no value.",
+        "140_6.text: required input has no value.",
+        "228: cannot map all subgraph widgets.",
+        "228_212.clip_name: required input has no value.",
+        "228_215.unet_name: required input has no value.",
+        "228_216.unet_name: required input has no value.",
+        "228_218.lora_name: required input has no value.",
+        "228_219.lora_name: required input has no value.",
+        "228_222.noise_seed: required input has no value.",
+        "228_223.vae_name: required input has no value.",
+        "228_225.text: required input has no value.",
+        "245: cannot map all subgraph widgets.",
+        "245_229.clip_name: required input has no value.",
+        "245_232.unet_name: required input has no value.",
+        "245_233.unet_name: required input has no value.",
+        "245_235.lora_name: required input has no value.",
+        "245_236.lora_name: required input has no value.",
+        "245_239.noise_seed: required input has no value.",
+        "245_240.vae_name: required input has no value.",
+        "245_242.text: required input has no value.",
+        "262: cannot map all subgraph widgets.",
+        "262_246.clip_name: required input has no value.",
+        "262_249.unet_name: required input has no value.",
+        "262_250.unet_name: required input has no value.",
+        "262_252.lora_name: required input has no value.",
+        "262_253.lora_name: required input has no value.",
+        "262_256.noise_seed: required input has no value.",
+        "262_257.vae_name: required input has no value.",
+        "262_259.text: required input has no value.",
+        "279: cannot map all subgraph widgets.",
+        "279_263.clip_name: required input has no value.",
+        "279_266.unet_name: required input has no value.",
+        "279_267.unet_name: required input has no value.",
+        "279_269.lora_name: required input has no value.",
+        "279_270.lora_name: required input has no value.",
+        "279_273.noise_seed: required input has no value.",
+        "279_274.vae_name: required input has no value.",
+        "279_276.text: required input has no value.",
+        "seed: several sampling stages; values kept fixed.",
+        "steps: several sampling stages; values kept fixed.",
+        "guidance: several sampling stages; values kept fixed.",
+        "sampler: several sampling stages; values kept fixed.",
+        "scheduler: several sampling stages; values kept fixed.",
+        "prompt: no unambiguous positive text conditioning.",
+        "negativePrompt: ambiguous negative conditioning.",
+        "dimensions: no unambiguous latent size control.",
+        "model: several or no primary model loaders.",
+        "model files: umt5_xxl_fp8_e4m3fn_scaled.safetensors has no matching loader input.",
+        "model files: wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors has no matching loader input.",
+        "model files: wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors has no matching loader input.",
+        "model files: wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise.safetensors has no matching loader input.",
+        "model files: wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise.safetensors has no matching loader input.",
+        "model files: wan_2.1_vae.safetensors has no matching loader input.",
+        "first frame: catalogue does not identify one enabled LoadImage.",
+        "prompt: required control unavailable.",
+        "checkpointFilename: required control unavailable.",
+        "width: required control unavailable.",
+        "height: required control unavailable.",
+        "frameCount: required control unavailable."
+      ]
+    }
+  ]
+}

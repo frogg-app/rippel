@@ -6,17 +6,20 @@ const ioNode = z.object({ nodeId: z.union([z.string(), z.number()]), nodeType: z
 const entrySchema = z.object({
   name: z.string().regex(/^[A-Za-z0-9_-][A-Za-z0-9_.-]*$/), title: z.string(), description: z.string().default(''),
   tags: z.array(z.string()).default([]), models: z.array(z.string()).default([]),
-  date: z.string(), openSource: z.boolean().default(false), size: z.number().nonnegative().optional(),
+  date: z.string(), openSource: z.boolean().optional(), size: z.number().nonnegative().optional(),
   thumbnail: z.array(z.string()).default([]), minComfyUIVersion: z.string().optional(),
   io: z.object({ inputs: z.array(ioNode).default([]), outputs: z.array(ioNode).default([]) }).optional(),
 });
 const indexSchema = z.array(z.object({ title: z.string(), type: z.string().optional(), templates: z.array(entrySchema) }));
-export type LibraryEntry = z.infer<typeof entrySchema> & { category: string };
+export type LibraryEntry = Omit<z.infer<typeof entrySchema>, 'openSource'> & { category: string; openSource: boolean };
+// This older official entry omits openSource, but its native graph is captured
+// and verified in our converter fixtures. Do not treat every missing flag as local.
+const VERIFIED_LOCAL_LEGACY = new Set(['video_wan2_2_5B_ti2v']);
 export interface LibraryCatalogue { version: string; entries: LibraryEntry[] }
 
 export function parseCatalogue(value: unknown, version: string): LibraryCatalogue {
   if (!/^\d+\.\d+\.\d+(?:[A-Za-z0-9.+-]*)$/.test(version)) throw new Error('Backend did not report a valid installed workflow-library version.');
-  return { version, entries: indexSchema.parse(value).flatMap((group) => group.templates.map((entry) => ({ ...entry, category: group.title }))) };
+  return { version, entries: indexSchema.parse(value).flatMap((group) => group.templates.map((entry) => ({ ...entry, openSource: entry.openSource ?? VERIFIED_LOCAL_LEGACY.has(entry.name), category: group.title }))) };
 }
 export function filterCatalogue(catalogue: LibraryCatalogue, filter: { category?: string; tag?: string; includeCloud?: boolean } = {}) {
   return catalogue.entries.filter((entry) =>
