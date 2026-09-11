@@ -1,3 +1,4 @@
+import { readyBackendIds } from '../library/workflows/store.js';
 /**
  * Turning a queued job into a prompt running on a backend.
  *
@@ -114,9 +115,13 @@ export async function dispatch(job: JobRow, clientId: string): Promise<Dispatche
   // Claim a backend before choosing the graph or compiling: which template
   // fits depends on where *this* backend has the file, and the filenames we
   // compile in are only correct for the backend that reported them.
-  const backend = await pickBackend(job.params.modelId);
+  const templateId = job.params.workflowId ?? (job.template_id?.startsWith('library-') ? job.template_id : undefined);
+  const allowed = templateId ? await readyBackendIds(templateId) : undefined;
+  const backend = await pickBackend(job.params.modelId, allowed);
   const choice = await chooseTemplate({
     modelId: job.params.modelId,
+    templateId,
+    backendId: backend.id,
     capability: job.params.kind,
     family,
     filename: model?.filename ?? null,

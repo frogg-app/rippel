@@ -13,6 +13,7 @@ import type { GenerationParams, Job, JobEvent } from '@comfy/shared';
 import { query, queryOne } from '../db.js';
 import { compile, TemplateError, ValidationError } from '../compiler/index.js';
 import { chooseTemplate } from '../models/workflow-choice.js';
+import { readyBackendIds } from '../library/workflows/store.js';
 import { candidatesFor, filenamesOn } from './select.js';
 import { preflight } from './preflight.js';
 import { createJob, getJob, queuePosition, type JobRow } from './jobs.js';
@@ -28,6 +29,7 @@ import { makeQueueRoutes } from './queue-routes.js';
  * shape and lets the compiler check meaning.
  */
 const generationParams = z.object({
+  workflowId: z.string().refine((id) => id.startsWith('library-') && z.string().uuid().safeParse(id.slice(8)).success).optional(),
   kind: z.enum(['txt2img', 'img2img', 'txt2vid', 'img2vid', 'upscale']),
   prompt: z.string(),
   negativePrompt: z.string().optional(),
@@ -113,6 +115,7 @@ export default async function jobRoutes(app: FastifyInstance) {
       // "there is nothing for this family at all" refusal.
       const choice = await chooseTemplate({
         modelId: params.modelId,
+        templateId: params.workflowId,
         capability: params.kind,
         family: model.base_model,
         filename: model.filename,
@@ -130,7 +133,8 @@ export default async function jobRoutes(app: FastifyInstance) {
       // A backend must hold the model *now*. Checking here turns a job that
       // would sit queued forever into an immediate, explicable refusal.
       const candidates = await candidatesFor(params.modelId);
-      const backend = candidates[0];
+      const allowed = template.manifest.id.startsWith('library-') ? await readyBackendIds(template.manifest.id) : null;
+      const backend = candidates.find((candidate) => !allowed || allowed.includes(candidate.id));
       if (!backend) {
         return reply.code(409).send({
           error: 'no_backend',

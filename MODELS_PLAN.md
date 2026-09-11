@@ -675,3 +675,13 @@ At the end of each run, report:
 - Which real jobs you ran, with settings, time and result.
 - What you could not verify, and why.
 - Anything you stopped on that needs a person.
+
+## Progress — 2026-09-12 (Codex)
+
+- **Task 8 persistence and dispatch implemented; end-to-end acceptance pending.**
+  Immutable database imports retain library version, graph and manifest. Per-backend
+  test records gate availability; automatic selection prefers built-ins, while an
+  explicit library choice must match its tested model and an eligible backend.
+  Queued jobs retain the chosen import. Authenticated `/workflows/library` serves
+  tested imports. Five tests cover JSON round-trip compilation, precedence, pins,
+  and readiness selection. Admin import/test controls follow in Tasks 9–10.

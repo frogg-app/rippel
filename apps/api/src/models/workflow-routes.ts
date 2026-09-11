@@ -24,6 +24,7 @@
 
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { z } from 'zod';
+import { listReadyImports, importedTemplate, type ImportedWorkflow } from '../library/workflows/store.js';
 import { videoLimitsFor } from '../workflows/video-limits.js';
 import type {
   JobKind,
@@ -156,6 +157,7 @@ export async function deleteBackendFile(
 
 export interface WorkflowRouteDeps {
   db?: WorkflowDb;
+  readyImports?: () => Promise<ImportedWorkflow[]>;
   objectInfoFor?: (baseUrl: string) => Promise<ObjectInfo>;
   lookupOverride?: OverrideLookup;
   deleteBackendFile?: typeof deleteBackendFile;
@@ -203,6 +205,7 @@ export function makeWorkflowRoutes(deps: WorkflowRouteDeps = {}) {
           return row?.template_id ?? null;
         }
       : overrideFor);
+  const readyImports = deps.readyImports ?? (deps.db ? async () => [] : listReadyImports);
   const removeFile = deps.deleteBackendFile ?? deleteBackendFile;
 
   async function modelOr404(id: string, reply: FastifyReply): Promise<ModelRow | null> {
@@ -234,6 +237,14 @@ export function makeWorkflowRoutes(deps: WorkflowRouteDeps = {}) {
   }
 
   return async function workflowRoutes(app: FastifyInstance) {
+    app.get('/workflows/library', { onRequest: [app.requireAuth] }, async () => ({
+      workflows: (await readyImports()).flatMap((row) => {
+        const template = importedTemplate(row);
+        return template ? [{ ...templateSummary(template), description: row.description,
+          thumbnail: row.thumbnail, libraryName: row.library_name, libraryVersion: row.library_version }] : [];
+      }),
+    }));
+
     app.get('/workflows/templates', { onRequest: [app.requireAuth] }, async () => ({
       templates: TEMPLATES.map(templateSummary),
     }));

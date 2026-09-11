@@ -1,3 +1,4 @@
+import type { ImportLookup } from '../library/workflows/store.js';
 import { img2vidWan22Template } from './img2vid-wan22-5b.js';
 /**
  * The template registry.
@@ -340,4 +341,21 @@ export function capabilitiesFor(baseModel: string | null): JobKind[] {
 /** Every manifest, for the API endpoint that tells the UI what knobs exist. */
 export function allManifests(): WorkflowManifest[] {
   return TEMPLATES.map((t) => t.manifest);
+}
+
+/** Built-ins win automatic selection; explicit library choices must be tested. */
+export async function findAvailableTemplate(input: {
+  capability: JobKind; family: string | null; folder?: string | null;
+  id?: string; backendId?: string; filename?: string | null; lookupImported?: ImportLookup;
+}): Promise<WorkflowTemplate | undefined> {
+  if (input.id && !input.id.startsWith('library-')) {
+    const template = findTemplateById(input.id);
+    return template && templatesFor(input.capability, input.family).includes(template) ? template : undefined;
+  }
+  if (!input.id) {
+    const builtin = findTemplate(input.capability, input.family, input.folder);
+    if (builtin) return builtin;
+  }
+  const lookup = input.lookupImported ?? (await import('../library/workflows/store.js')).findImported;
+  return lookup(input);
 }

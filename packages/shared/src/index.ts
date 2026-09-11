@@ -222,6 +222,8 @@ export interface Upload {
  * field in it is optional — omitted means "let the quality preset decide".
  */
 export interface GenerationParams {
+  /** Explicit Ready library workflow selected by the user. */
+  workflowId?: string;
   kind: JobKind;
   prompt: string;
   negativePrompt?: string;

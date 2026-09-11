@@ -26,7 +26,7 @@ import type { JobKind } from '@comfy/shared';
 import { queryOne } from '../db.js';
 import type { ObjectInfo } from '../lib/comfy.js';
 import { folderOfInstalled } from '../workflows/folders.js';
-import { findTemplate, findTemplateById } from '../workflows/registry.js';
+import { findAvailableTemplate } from '../workflows/registry.js';
 import type { WorkflowTemplate } from '../workflows/types.js';
 
 export interface OverrideLookup {
@@ -43,6 +43,9 @@ export const overrideFor: OverrideLookup = async (modelId, capability) => {
 };
 
 export interface ChooseTemplateInput {
+  templateId?: string;
+  backendId?: string;
+  lookupImported?: import('../library/workflows/store.js').ImportLookup;
   modelId: string | null;
   capability: JobKind;
   /** `models.base_model`, our canonical family spelling, or null. */
@@ -72,6 +75,11 @@ export interface TemplateChoice {
 export async function chooseTemplate(input: ChooseTemplateInput): Promise<TemplateChoice | undefined> {
   const folder = input.filename ? folderOfInstalled(input.info ?? null, input.filename) : null;
 
+  if (input.templateId) {
+    const template = await findAvailableTemplate({ capability: input.capability, family: input.family,
+      folder, id: input.templateId, backendId: input.backendId, filename: input.filename, lookupImported: input.lookupImported });
+    return template ? { template, source: 'pinned', folder } : undefined;
+  }
   if (input.modelId) {
     const lookup = input.lookupOverride ?? overrideFor;
     let pinnedId: string | null = null;
@@ -81,13 +89,15 @@ export async function chooseTemplate(input: ChooseTemplateInput): Promise<Templa
       pinnedId = null;
     }
     if (pinnedId) {
-      const pinned = findTemplateById(pinnedId);
+      const pinned = await findAvailableTemplate({ capability: input.capability, family: input.family,
+        folder, id: pinnedId, backendId: input.backendId, filename: input.filename, lookupImported: input.lookupImported });
       if (pinned && pinned.manifest.capability === input.capability) {
         return { template: pinned, source: 'pinned', folder };
       }
     }
   }
 
-  const automatic = findTemplate(input.capability, input.family, folder);
+  const automatic = await findAvailableTemplate({ capability: input.capability, family: input.family,
+    folder, filename: input.filename, backendId: input.backendId, lookupImported: input.lookupImported });
   return automatic ? { template: automatic, source: 'automatic', folder } : undefined;
 }
