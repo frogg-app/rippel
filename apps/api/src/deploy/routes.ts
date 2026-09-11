@@ -676,7 +676,7 @@ export function makeDeploymentRoutes(deps: DeployDeps = {}) {
           return reply.code(409).send({
             error: 'not_configured',
             message:
-              'Set COMFY_STORAGE_TOKEN in rippel’s environment and restart the API. The helper refuses every request without a token, so installing one now would install a helper rippel cannot use.',
+              'Storage isn’t configured yet. Ask your server administrator to enable it.',
           });
         }
         try {

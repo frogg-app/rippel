@@ -28,3 +28,8 @@ health check returned `{"ok":true}`, and Chromium rendered the sign-in page.
 Those checks do not prove connectivity from every client network. If a user
 still cannot reach the site, record the exact browser/Cloudflare error and
 URL before changing DNS or tunnel routing.
+
+If installing the storage helper reports that storage is not configured, set
+`COMFY_STORAGE_TOKEN` in the API environment to a securely generated access
+token, then restart `rippel-api`. Rippel passes this token to the helper during
+installation and uses it to authenticate storage requests. Keep it private.
