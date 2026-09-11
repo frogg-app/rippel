@@ -14,11 +14,11 @@
   margin: 0;
   display: grid;
   grid-template-columns: max-content 1fr;
-  gap: 5px 14px;
+  gap: var(--gap-sm) var(--space-4);
   align-items: baseline;
   font-size: var(--text-sm);
   color: var(--text-4);
-  padding: 10px 12px;
+  padding: var(--space-4);
   border-radius: var(--radius-md);
   background: var(--surface-2, var(--surface-1));
   border: 1px solid var(--line);
@@ -110,7 +110,7 @@
      scrolls as one thing rather than becoming a page of log. */
   max-height: 260px;
   overflow: auto;
-  padding: 10px 12px;
+  padding: var(--space-4);
   border-radius: var(--radius-md);
   border: 1px solid var(--line);
   background: var(--surface-0, #14121f);
@@ -150,7 +150,7 @@
 }
 
 .tab {
-  height: 28px;
+  height: var(--control-height);
   padding: 0 12px;
   border-radius: calc(var(--radius) - 3px);
   font-size: var(--text-sm);
@@ -431,7 +431,7 @@
   align-items: flex-start;
   gap: 9px;
   margin: 0;
-  padding: 10px 12px;
+  padding: var(--space-4);
   border-radius: var(--radius-md);
   border: 1px solid var(--line);
   background: var(--surface-2, var(--surface-1));
@@ -457,4 +457,12 @@
 .nextText strong {
   color: var(--text);
   font-weight: 600;
+}
+
+@media (max-width: 560px) {
+  .summary { grid-template-columns: 1fr; gap: var(--gap-xs); }
+  .summary dt:not(:first-child) { margin-top: var(--gap-sm); }
+  .summary > div:not(:first-child) dt { margin-top: var(--gap-sm); }
+  .copyRow { flex-wrap: wrap; }
+  .code { flex-basis: 100%; }
 }

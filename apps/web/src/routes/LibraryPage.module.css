@@ -19,7 +19,7 @@
   flex-grow: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: var(--library-pad-y) var(--gap-xl) 48px;
+  padding: var(--space-6) var(--pane-pad-x) var(--space-8);
   display: flex;
   flex-direction: column;
 }
@@ -29,7 +29,7 @@
   display: flex;
   align-items: center;
   gap: var(--gap);
-  padding: 9px var(--gap-xl);
+  padding: var(--gap) var(--pane-pad-x);
   border-bottom: 1px solid var(--line);
   font-size: var(--text-sm);
   color: var(--text-3);
@@ -94,4 +94,10 @@
   letter-spacing: 0.04em;
   color: var(--text-muted);
   pointer-events: none;
+}
+
+@media (max-width: 720px) {
+  .screen { flex-direction: column; }
+  .context { flex-wrap: wrap; }
+  .skeletonGrid { grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--library-tile-min)), 1fr)); }
 }

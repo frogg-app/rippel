@@ -136,8 +136,12 @@
   /* The one measurement PLAN.md fixes by number: the input panel. */
   --panel-width: 396px;
   --topbar-height: 60px;
-  --panel-pad-x: 22px;
-  --pane-pad-x: 28px;
+  --panel-pad-x: 24px;
+  --pane-pad-x: 32px;
+  --page-header-height: 76px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
 
   --radius-sm: 7px;
   /* The segmented control's outer shell on Main — 10px around 7px segments. */
@@ -155,8 +159,8 @@
   --gap-lg: 20px;
   --gap-xl: 26px;
 
-  --control-height: 34px;
-  --action-height: 38px;
+  --control-height: 38px;
+  --action-height: 40px;
   --cta-height: 48px;
 
   --ease: cubic-bezier(0.2, 0.6, 0.3, 1);
@@ -270,8 +274,8 @@
   --focus-ring: 0 0 0 3px rgba(156, 207, 216, 0.22);
   --focus-line: rgba(156, 207, 216, 0.55);
 
-  /* The shell: a 64px icon rail replaces the split top bar. */
-  --rail-width: 64px;
+  /* The shell rail leaves 12px of breathing room around 56px navigation targets. */
+  --rail-width: 80px;
   --rail-bg: #0b0f12;
   --content-radius: 18px;
 
@@ -306,4 +310,13 @@
      position, not a hover, on a ground that is already translucent. */
   --dropdown-active: var(--accent-tint);
   --dropdown-z: 1200;
+}
+
+@media (max-width: 720px) {
+  :root {
+    --pane-pad-x: 20px;
+    --panel-pad-x: 20px;
+    --page-header-height: 68px;
+    --library-rail-width: 168px;
+  }
 }

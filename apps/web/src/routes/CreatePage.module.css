@@ -34,7 +34,7 @@
   scrollbar-gutter: stable;
   scrollbar-width: thin;
   scrollbar-color: transparent transparent;
-  padding: 22px calc(var(--panel-pad-x) - 6px) 24px var(--panel-pad-x);
+  padding: var(--space-6) calc(var(--panel-pad-x) - 6px) var(--space-6) var(--panel-pad-x);
   display: flex;
   flex-direction: column;
   gap: 24px;
@@ -115,7 +115,7 @@
 
 .footer {
   flex-shrink: 0;
-  padding: 14px var(--panel-pad-x) 18px;
+  padding: var(--space-4) var(--panel-pad-x) var(--space-6);
   border-top: 1px solid var(--line);
   background: linear-gradient(180deg, rgba(13, 16, 20, 0), rgba(13, 16, 20, 0.5));
   display: flex;
@@ -217,4 +217,14 @@
   color: var(--text-muted);
   min-height: 16px;
   transition: color var(--transition);
+}
+
+@media (max-width: 1000px) and (min-width: 721px) {
+  .panel { width: 340px; }
+}
+@media (max-width: 720px) {
+  .workspace { flex-direction: column; overflow-y: auto; }
+  .panel { width: 100%; flex: none; border-right: 0; border-bottom: 1px solid var(--line); }
+  .inputs { flex: none; overflow: visible; mask-image: none; -webkit-mask-image: none; padding-right: var(--panel-pad-x); }
+  .footer { padding-bottom: var(--space-6); }
 }

@@ -1,10 +1,10 @@
 .bar {
-  height: 64px;
+  min-height: var(--page-header-height);
   flex-shrink: 0;
   display: flex;
   align-items: center;
   gap: var(--gap);
-  padding: 0 var(--gap-xl);
+  padding: var(--space-4) var(--pane-pad-x);
   border-bottom: 1px solid var(--line);
   background: linear-gradient(180deg, rgba(220, 238, 242, 0.015), transparent);
 }
@@ -20,7 +20,7 @@
   display: flex;
   align-items: center;
   gap: var(--gap-sm);
-  height: 36px;
+  height: var(--control-height);
   padding: 0 13px;
   border-radius: 999px;
   border: 1px solid var(--glass-line);
@@ -100,7 +100,8 @@
 .segment {
   position: relative;
   z-index: 1;
-  padding: 5px 14px;
+  min-height: var(--control-height);
+  padding: var(--gap-xs) var(--space-4);
   border-radius: 999px;
   font-size: var(--text-sm);
   color: var(--text-dim);
@@ -128,4 +129,17 @@
   background: var(--surface-hover);
   box-shadow: var(--shadow-1), var(--edge-highlight);
   animation: pop var(--dur-slow) var(--ease-spring) both;
+}
+
+@media (max-width: 1200px) {
+  .bar { flex-wrap: wrap; gap: var(--gap); }
+  .search, .search:focus-within { flex: 1; width: auto; min-width: 140px; }
+  .segments { margin-left: auto; }
+  .spacer { display: none; }
+}
+@media (max-width: 560px) {
+  .search, .search:focus-within { flex-basis: 100%; order: 2; }
+  .segments { order: 3; width: 100%; justify-content: center; }
+  .segment { flex: 1; padding-inline: var(--gap); }
+  .count { margin-left: auto; }
 }

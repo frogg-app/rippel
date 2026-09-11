@@ -102,3 +102,9 @@
   object-fit: cover;
   display: block;
 }
+
+@media (max-width: 560px) {
+  .panel { width: calc(100vw - 24px); max-height: 85dvh; }
+  .head { padding: var(--space-4); gap: var(--gap); }
+  .close { min-height: 40px; padding-inline: var(--gap); }
+}

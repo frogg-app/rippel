@@ -3,8 +3,8 @@
 }
 
 .avatar {
-  width: 34px;
-  height: 34px;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
   background: var(--avatar);
   border: 1px solid var(--line-input);
@@ -52,7 +52,7 @@
 }
 
 .identity {
-  padding: 13px 14px;
+  padding: var(--space-4);
   border-bottom: 1px solid var(--line);
   display: flex;
   flex-direction: column;
@@ -86,7 +86,8 @@
   display: flex;
   align-items: center;
   gap: 9px;
-  padding: 11px 14px;
+  min-height: 44px;
+  padding: var(--gap) var(--space-4);
   font-size: var(--text-base);
   color: var(--text-2);
   text-align: left;
@@ -95,4 +96,8 @@
 .item:hover {
   background: var(--surface-hover);
   color: var(--text);
+}
+
+@media (max-width: 560px) {
+  .rail .menu { left: auto; right: 0; bottom: calc(100% + var(--gap)); }
 }

@@ -488,3 +488,16 @@
   background: var(--accent-tint-hover);
   color: var(--accent-hover);
 }
+
+@media (max-width: 720px) {
+  .section { padding: var(--space-4); }
+  .sectionHead, .bar { flex-wrap: wrap; }
+  .row { flex-wrap: wrap; gap: var(--gap-sm); padding-block: var(--gap); }
+  .rowPath { flex-basis: calc(100% - 32px); }
+  .rowAge { margin-left: auto; width: auto; }
+  .rowSize { width: auto; }
+  .barNote { white-space: normal; }
+  .barRemove { min-height: 40px; }
+  .helper { padding: var(--space-6); }
+  .toast { left: var(--space-4); right: var(--space-4); bottom: 80px; max-width: none; }
+}

@@ -1,9 +1,10 @@
 .pill {
   display: flex;
   align-items: center;
-  gap: 8px;
-  height: 32px;
-  padding: 0 13px 0 11px;
+  gap: var(--gap);
+  min-width: 0;
+  height: var(--control-height);
+  padding: 0 var(--space-4);
   border-radius: 999px;
   background: var(--glass-panel);
   backdrop-filter: var(--glass-blur);
@@ -67,6 +68,10 @@
 }
 
 .name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  max-width: 180px;
   font-size: var(--text-sm);
   color: var(--text-2);
 }
@@ -77,6 +82,7 @@
 }
 
 .qualifier {
+  margin-left: 4px;
   font-family: var(--font-ui);
   color: var(--text-muted);
 }
@@ -85,4 +91,10 @@
   font-size: var(--text-xs);
   color: var(--text-muted);
   padding-left: 2px;
+}
+
+@media (max-width: 720px) {
+  .memory, .extra { display: none; }
+  .name { max-width: 120px; }
+  .pill { gap: var(--gap-sm); padding: 0 var(--gap); }
 }
