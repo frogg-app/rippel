@@ -429,10 +429,17 @@ function DeploymentCard({
           </ReasonedButton>
         ) : null}
 
-        <button type="button" className={shared.action} onClick={() => setShowInstall((v) => !v)}>
-          {/* "Hide Install Agent" parsed as a verb phrase — an instruction to
-              hide the agent, rather than the toggle for this section. */}
-          {showInstall ? 'Hide install options' : 'Install Agent'}
+        {/* The label is fixed. Swapping it to "Hide install options" re-measured
+            the button mid-row and shunted Remove sideways under the cursor; the
+            open state is worth saying, but not at the cost of moving a target
+            someone is aiming at. It says it in colour instead. */}
+        <button
+          type="button"
+          className={showInstall ? `${shared.action} ${shared.actionOn}` : shared.action}
+          aria-expanded={showInstall}
+          onClick={() => setShowInstall((v) => !v)}
+        >
+          Install Agent
         </button>
 
         <button

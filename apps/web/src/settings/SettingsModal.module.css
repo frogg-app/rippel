@@ -371,6 +371,16 @@
   cursor: not-allowed;
 }
 
+/* A button holding a section open. Same footprint as .action — only the
+   surface changes — so nothing on the row shifts when it toggles. Hover is
+   pinned to the same values, or pointing at an open toggle would read as
+   closed. Matches .tabOn, which says "currently on" elsewhere in here. */
+.actionOn,
+.actionOn:hover:not(:disabled) {
+  background: var(--surface-3);
+  border-color: var(--line-strong);
+  color: var(--text);
+}
 .actionPrimary {
   background: var(--accent-gradient);
   border-color: transparent;
