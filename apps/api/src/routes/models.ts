@@ -31,7 +31,8 @@ interface ModelRow {
 }
 
 // Query strings are strings: Boolean('false') is true, so do not coerce them.
-const queryBoolean = z.enum(['true', 'false']).transform((value) => value === 'true');
+const queryBoolean = z.enum(['true', 'false', '1', '0'])
+  .transform((value) => value === 'true' || value === '1');
 
 const listQuery = z.object({
   type: z

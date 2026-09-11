@@ -15,6 +15,15 @@ async function app() {
 afterEach(() => vi.resetAllMocks());
 
 describe('model availability filters', () => {
+  it('accepts numeric flags sent by the Models page', async () => {
+    vi.mocked(query).mockResolvedValue([]);
+    const server = await app();
+    const response = await server.inject('/models?runnability=1&previews=1');
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ models: [], runnability: {}, previews: {} });
+    await server.close();
+  });
+
   it('restricts both models and family filters to online, enabled backend inventory', async () => {
     vi.mocked(query).mockResolvedValue([]);
     const server = await app();
@@ -30,7 +39,7 @@ describe('model availability filters', () => {
     await server.close();
   });
 
-  it.each(['', '?availableOnly=false'])('preserves historical entries for management (%s)', async (suffix) => {
+  it.each(['', '?availableOnly=false', '?availableOnly=0'])('preserves historical entries for management (%s)', async (suffix) => {
     vi.mocked(query).mockResolvedValueOnce([{
       id: 'm1', type: 'checkpoint', filename: 'removed.safetensors', display_name: 'Removed',
       base_model: 'sdxl', preview_url: null, size_bytes: null, source: 'local',
