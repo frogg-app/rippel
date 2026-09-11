@@ -430,7 +430,9 @@ function DeploymentCard({
         ) : null}
 
         <button type="button" className={shared.action} onClick={() => setShowInstall((v) => !v)}>
-          {showInstall ? 'Hide Install Agent' : 'Install Agent'}
+          {/* "Hide Install Agent" parsed as a verb phrase — an instruction to
+              hide the agent, rather than the toggle for this section. */}
+          {showInstall ? 'Hide install options' : 'Install Agent'}
         </button>
 
         <button
@@ -824,33 +826,16 @@ function InstallInstructionsPanel({ api, deployment }: { api: DeploymentsApi; de
   return (
     <div className={styles.panel}>
       {/* ---------------------------------------------------- the easy path */}
-      <div className={`${styles.step} ${styles.stepLead}`}>
-        <div className={styles.stepHead}>
-          <h4 className={styles.stepTitle}>Send a setup link</h4>
-        </div>
-        <p className={styles.stepNote}>
-          The simplest way in, and it needs no rippel login at the other end. Send this to whoever
-          is sitting at <strong>{deployment.name}</strong>. They open it, click the button for their
-          computer, and open the file that downloads — the download is named after this
-          deployment&rsquo;s own setup code, so there is nothing to type and nothing to unpack.
-        </p>
-        <CopyField label="Setup link" value={data.setupLink} />
-        <div className={styles.downloadRow}>
-          <a className={shared.action} href={data.setupLink} target="_blank" rel="noreferrer">
-            Open the setup page
-          </a>
-        </div>
-      </div>
-
-      {/* ------------------------------------------- or download it yourself */}
       {chosen ? (
-        <div className={styles.step}>
+        <div className={`${styles.step} ${styles.stepLead}`}>
           <div className={styles.stepHead}>
-            <h4 className={styles.stepTitle}>Or download the agent here</h4>
+            <h4 className={styles.stepTitle}>Download the agent here</h4>
           </div>
           <p className={styles.stepNote}>
-            One file, about {fileSize(chosen.sizeBytes)}. Nothing needs to be installed first, and
-            there is nothing to unpack — run it and it registers itself with this rippel.
+            Usually the whole job: whoever opened this screen is usually sitting at the machine
+            ComfyUI should run on. One file, about {fileSize(chosen.sizeBytes)} — nothing needs to
+            be installed first and there is nothing to unpack. Run it and it registers itself with
+            this rippel.
           </p>
           <div className={styles.downloadRow}>
             <a
@@ -875,6 +860,30 @@ function InstallInstructionsPanel({ api, deployment }: { api: DeploymentsApi; de
           </div>
         </div>
       ) : null}
+
+      {/* --------------------------- when somebody else is at that machine */}
+      <div className={styles.step}>
+        <div className={styles.stepHead}>
+          <h4 className={styles.stepTitle}>Send a setup link</h4>
+        </div>
+        <p className={styles.stepNote}>
+          <strong>Needs no rippel login at the other end.</strong> Use this when somebody else is
+          sitting at <strong>{deployment.name}</strong>, or when you would rather not sign in to
+          rippel from there. They open it, click the button for their computer, and open the file
+          that downloads — nothing to type and nothing to unpack.
+        </p>
+        <p className={styles.stepNote}>
+          The link is only as reachable as the address inside it: it points at{' '}
+          <code className="mono">{data.serverUrl}</code>, so it will not open for someone who cannot
+          reach that address — send them the downloaded file instead.
+        </p>
+        <CopyField label="Setup link" value={data.setupLink} />
+        <div className={styles.downloadRow}>
+          <a className={shared.action} href={data.setupLink} target="_blank" rel="noreferrer">
+            Open the setup page
+          </a>
+        </div>
+      </div>
 
       {/* ------------------------------------------------ the command line */}
       <details className={styles.details} open={!chosen}>

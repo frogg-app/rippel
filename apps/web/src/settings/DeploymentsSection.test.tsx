@@ -258,11 +258,16 @@ describe('DeploymentsSection', () => {
   });
 
   /**
-   * The easy path has to be the one you see first. The setup link is the only
-   * install that needs no terminal and no rippel login at the other end, and
-   * the old panel did not mention it at all.
+   * Order is the product decision here, so it is asserted rather than left to
+   * whoever edits the JSX next.
+   *
+   * The download is first because it is the ordinary case: in self-hosting the
+   * person who opened Deployment is almost always sitting at the GPU box, and
+   * for them the button *is* the install. The setup link solves a different and
+   * rarer problem — somebody else is at that machine — so it comes second
+   * despite being the more clever mechanism.
    */
-  it('leads with the setup link and the download, not the command line', async () => {
+  it('leads with the download, then the setup link, then the command line', async () => {
     const { api } = fakeApi([]);
     render(<DeploymentsSection api={api} />);
     await userEvent.click(await screen.findByRole('button', { name: /Install by hand/ }));
@@ -272,6 +277,15 @@ describe('DeploymentsSection', () => {
 
     expect(await screen.findByText('http://192.168.1.9:4000/api/deployments/setup/tok-secret')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Open the setup page/ })).toBeInTheDocument();
+
+    // The download leads; the setup link follows it.
+    expect(screen.getAllByRole('heading', { level: 4 }).map((h) => h.textContent)).toEqual([
+      'Download the agent here',
+      'Send a setup link',
+    ]);
+
+    // The setup link is honest that it is only as reachable as its address.
+    expect(screen.getByText(/only as reachable as the address inside it/)).toBeInTheDocument();
 
     // The command line is still there, but folded away as the alternative.
     expect(screen.getByText('Install from a command line instead')).toBeInTheDocument();
