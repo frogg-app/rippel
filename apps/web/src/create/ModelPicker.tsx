@@ -1,41 +1,53 @@
 /**
- * The model tiles.
+ * The model, as the Create panel shows it: one row saying what is chosen, and a
+ * press away from choosing something else.
  *
- * The artboard draws three 70px tiles across the panel with the name over a
- * bottom scrim, the selected one ringed in accent. Real installs have more than
- * three, so this is a wrapping grid of the same tile at the same height.
+ * This was a grid of 72px tiles, and it had two faults that turned out to be
+ * the same fault.
  *
- * The part that matters more than the look: a model whose *family* has no
- * workflow template for the capability we are about to ask for cannot be
- * generated with. `POST /jobs` answers that with a 501 `no_template`, and
- * finding out by pressing Generate is a bad way to learn it.
+ * The first was room. Every installed checkpoint was drawn into a 396px column
+ * between the reference image and the quality preset, which clipped names,
+ * stacked badges over art and pushed the rest of the form down by a row per
+ * three models. The choosing now happens in `ModelModal.tsx`, which has space
+ * for names, families, readiness and a search box; this component keeps only
+ * the answer.
  *
- * How that is *said* is the rest of the job here. The first version dimmed the
- * blocked tiles, badged them "No template" and put a count underneath, which
- * read — in the user's own words — as "I can't change models". So the states
- * were separated, and now they are separated again by *visibility*: see
- * `visibility.ts` for the rule. What is impossible is hidden and counted; what
- * is merely not-yet-possible stays on screen, blocked, carrying the remedy the
- * readiness endpoint gave us. An empty grid always says why it is empty.
+ * The second was the jump on reload. `visibility.ts` already refused to hide a
+ * model on a probe that had not answered, and marked such entries `pending` —
+ * but a pending entry was still *listed*, and the grid drew every listed entry.
+ * So whenever the capability map said a family could do this mode and the
+ * per-model probe later said this machine could not (Hunyuan under Video with
+ * no template installed; every model at all when `GET /workflows` failed and
+ * the map was not live), the tile was painted and then removed. `pending`
+ * stopped a wrong *badge*; it never stopped a wrong *set*. A grid animation that
+ * held the old height for 260ms made the removal slide instead of snap, which
+ * is the same bug made smoother.
  *
- * Blocked tiles use `aria-disabled` rather than `disabled`, deliberately. A
- * `disabled` button takes no focus, fires no events and shows no `title`
- * tooltip, so the explanation for why you cannot pick it is unreachable by
- * exactly the person asking. These take the click and answer it.
+ * The rule now is the one the user asked for: only populate with valid models.
+ * Until every probe in the pass has answered, this draws a skeleton of the same
+ * size and nothing else — no names, no count, no selection — and the modal
+ * cannot be opened. When it does draw, it is drawing a settled `Partition`, and
+ * the preselect in `CreatePage` has already run in a layout effect in the same
+ * commit, so the first model name the user sees is the one that stays.
  */
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import type { JobKind, Model } from '@comfy/shared';
-import { type CapabilityMap, isFallbackFamily } from '../lib/api-jobs';
+import type { CapabilityMap } from '../lib/api-jobs';
+import { familyLabel } from '../models/catalogue';
+import { ChevronDownIcon } from '../components/icons';
 import { WarningIcon } from './icons';
+import { modelWash } from './modelArt';
+import { ModelModal } from './ModelModal';
+import { blockedReason, KIND_NOUN, listNames, stateLabel } from './modelReasons';
 import type { CreateMode } from './mode';
 import { modeOfKind } from './form';
 import type { ReadinessMap } from './useReadiness';
-import { type ModelEntry, type Partition, partitionModels } from './visibility';
-import { modelWash } from './modelArt';
+import type { Partition } from './visibility';
 import styles from './modelPicker.module.css';
 
 export function ModelPicker({
   models,
+  partition,
   kind,
   capabilities,
   readiness,
@@ -46,10 +58,15 @@ export function ModelPicker({
   onModeChange,
 }: {
   models: Model[];
+  /**
+   * The verdicts, computed once by the page. Passed in rather than re-derived
+   * here so the summary, the modal and the page's selection repair can never
+   * disagree about which models exist.
+   */
+  partition: Partition;
   /** The capability that will actually be submitted — see `effectiveKind`. */
   kind: JobKind;
   capabilities: CapabilityMap;
-  /** Per-model, per-capability answers from the server. May be empty. */
   readiness: ReadinessMap;
   loading: boolean;
   error: string | null;
@@ -61,82 +78,15 @@ export function ModelPicker({
    */
   onModeChange?: (mode: CreateMode) => void;
 }) {
-  // Which blocked tile the user last pressed. A click on a model you cannot
-  // use has to answer, or the tile is the silent wall the report describes.
-  const [explainedId, setExplainedId] = useState<string | null>(null);
-  // "2 models hidden — no workflow for them yet", opened. Off by default: the
-  // whole point is that they are noise. Available because a list that quietly
-  // omits things the user installed is lying about what is on the machine.
-  const [revealed, setRevealed] = useState(false);
-
-  // Verdicts landing can drop a whole grid row, and a row vanishing under the
-  // cursor shoves the quality preset and everything below it up the panel. So
-  // the grid's height is animated across that one moment instead: pinned to
-  // the height it had, then transitioned to the height it now wants, then let
-  // go. `min-height: auto` is not an animatable endpoint, which is why the
-  // target is a measured number and not simply released.
-  const gridRef = useRef<HTMLDivElement | null>(null);
-  const lastGridHeight = useRef(0);
-  const wasPending = useRef(readiness.loading);
-  const [collapse, setCollapse] = useState<{ phase: 'from' | 'to'; height: number } | null>(null);
-
-  // Runs after every commit, which is how it has the previous render's height
-  // to hand on the render that drops a row.
-  useLayoutEffect(() => {
-    const settled = wasPending.current && !readiness.loading;
-    wasPending.current = readiness.loading;
-    const now = gridRef.current?.offsetHeight ?? 0;
-    if (settled && lastGridHeight.current > 0 && now !== lastGridHeight.current) {
-      setCollapse({ phase: 'from', height: lastGridHeight.current });
-      return;
-    }
-    if (!collapse) lastGridHeight.current = now;
-  });
-
-  // Two frames and a timer: one frame at the old height to transition from,
-  // then the new height, then the inline style goes away so the grid is free
-  // again. Keyed on the phase rather than dependency-free — an effect that
-  // reran on every render would cancel its own pending frame forever, and the
-  // grid would keep the dead space for good.
-  useEffect(() => {
-    if (!collapse) return undefined;
-    if (collapse.phase === 'from') {
-      const frame = requestAnimationFrame(() => {
-        const height = gridRef.current?.offsetHeight ?? 0;
-        setCollapse({ phase: 'to', height });
-      });
-      return () => cancelAnimationFrame(frame);
-    }
-    const timer = setTimeout(() => {
-      lastGridHeight.current = gridRef.current?.offsetHeight ?? 0;
-      setCollapse(null);
-    }, 260);
-    return () => clearTimeout(timer);
-  }, [collapse]);
-
+  const [open, setOpen] = useState(false);
   const mode = modeOfKind(kind);
-  // A mode change re-derives the whole list; anything opened or explained about
-  // the old one is about models that may no longer be here.
-  useEffect(() => {
-    setRevealed(false);
-    setExplainedId(null);
-  }, [mode]);
-
-  if (loading) {
-    return (
-      <div className={styles.grid} aria-busy>
-        {[0, 1, 2].map((index) => (
-          <div key={index} className={`${styles.tile} ${styles.skeleton}`} />
-        ))}
-      </div>
-    );
-  }
+  const otherMode: CreateMode = mode === 'image' ? 'video' : 'image';
 
   if (error) {
     return <p className={styles.note}>{error}</p>;
   }
 
-  if (models.length === 0) {
+  if (!loading && models.length === 0) {
     return (
       <p className={styles.note}>
         No checkpoints discovered yet. The backend poller finds them
@@ -145,176 +95,118 @@ export function ModelPicker({
     );
   }
 
-  const otherMode: CreateMode = mode === 'image' ? 'video' : 'image';
-  const partition = partitionModels(models, kind, capabilities, readiness);
-  const { listed, runnable, hiddenNoTemplate } = partition;
-  const shown = revealed ? [...listed, ...hiddenNoTemplate] : listed;
+  // The whole fix for the reload jump, in one condition. Anything drawn before
+  // this is false would be a guess that the probes are about to correct.
+  if (loading || partition.pending) {
+    return (
+      <div className={`${styles.summary} ${styles.skeleton}`} aria-busy="true">
+        <span className={styles.visuallyHidden}>Checking which models can run…</span>
+      </div>
+    );
+  }
 
-  const explainedEntry =
-    [...listed, ...partition.hidden].find((entry) => entry.model.id === explainedId) ?? null;
-  const explainedReason =
-    explainedEntry && !explainedEntry.runnable
-      ? blockedReason(explainedEntry, kind, capabilities, readiness)
-      : null;
+  const { listed, runnable } = partition;
+  const hiddenCount = partition.hiddenNoTemplate.length;
+  const selected = listed.find((entry) => entry.model.id === value) ?? null;
+  const reason = selected && !selected.runnable ? blockedReason(selected, kind, readiness) : null;
 
   return (
     <>
-      {/* Keyed by mode: the grid re-enters, tiles staggering in, when the
-          toggle flips. */}
-      {shown.length > 0 ? (
-        <div
-          className={styles.gridHold}
-          style={collapse ? { height: collapse.height, overflow: 'hidden' } : undefined}
+      {listed.length > 0 ? (
+        <button
+          type="button"
+          className={styles.summary}
+          aria-haspopup="dialog"
+          aria-expanded={open}
+          aria-label={
+            selected
+              ? `Change model: ${selected.model.displayName}, ${stateLabel(selected, kind, readiness)}`
+              : 'Choose a model'
+          }
+          onClick={() => setOpen(true)}
         >
-        <div ref={gridRef} key={mode} className={styles.grid} role="radiogroup" aria-label="Model">
-          {shown.map((entry, index) => {
-            const model = entry.model;
-            // Pending tiles are plain and pressable. We have no verdict, and a
-            // guess dressed as one is what we are here to stop drawing.
-            const supported = entry.runnable || entry.pending;
-            const selected = model.id === value;
-            const reason = supported
-              ? null
-              : blockedReason(entry, kind, capabilities, readiness);
-            const generic = entry.runnable && isFallbackFamily(model, capabilities);
-
-            return (
-              <button
-                key={model.id}
-                type="button"
-                role="radio"
-                aria-checked={selected}
-                aria-disabled={!supported}
-                title={
-                  reason
-                    ? `${model.displayName}: ${reason.detail}`
-                    : generic
-                      ? `${model.displayName} · ${model.baseModel ?? 'unknown family'} · generic workflow`
-                      : `${model.displayName} · ${model.baseModel ?? 'unknown family'}`
-                }
-                className={[
-                  styles.tile,
-                  selected ? styles.tileOn : '',
-                  supported ? '' : styles.tileBlocked,
-                  explainedId === model.id ? styles.tileExplained : '',
-                ]
-                  .filter(Boolean)
-                  .join(' ')}
-                style={{ ...modelWash(model), '--i': index } as React.CSSProperties}
-                onClick={() => {
-                  if (supported) {
-                    setExplainedId(null);
-                    onChange(model.id);
-                  } else {
-                    // Not selectable, but not silent either.
-                    setExplainedId(model.id);
-                  }
-                }}
-              >
-                {model.previewUrl ? (
-                  <img className={styles.art} src={model.previewUrl} alt="" loading="lazy" />
-                ) : null}
-                <span className={styles.name}>{model.displayName}</span>
-                {reason ? <span className={styles.badge}>{reason.badge}</span> : null}
-                {/* A generic template will probably work and may look wrong; say
-                    so quietly rather than either hiding it or blocking it. */}
-                {generic ? <span className={styles.badgeSoft}>generic</span> : null}
-              </button>
-            );
-          })}
-        </div>
-        </div>
+          <span className={styles.thumb} style={selected ? modelWash(selected.model) : undefined}>
+            {selected?.model.previewUrl ? (
+              <img className={styles.art} src={selected.model.previewUrl} alt="" />
+            ) : null}
+          </span>
+          <span className={styles.meta}>
+            <span className={styles.name}>
+              {selected ? selected.model.displayName : 'Choose a model'}
+            </span>
+            <span className={styles.family}>
+              {selected
+                ? `${selected.model.baseModel ? familyLabel(selected.model.baseModel) : 'Unclassified'} · ${stateLabel(selected, kind, readiness)}`
+                : `${listed.length} ${listed.length === 1 ? 'model' : 'models'} for ${KIND_NOUN[mode]}`}
+            </span>
+          </span>
+          <span className={styles.change}>
+            {listed.length > 1 ? `${listed.length} models` : 'Details'}
+            <ChevronDownIcon size={13} />
+          </span>
+        </button>
       ) : null}
 
       <div className={styles.notes}>
-      {/* Nothing to draw. An empty grid with no words is worse than the greyed
-          tiles it replaced, so this always says what happened and what would
-          change it. */}
-      {listed.length === 0 && !partition.pending ? <EmptyState
-        mode={mode}
-        otherMode={otherMode}
-        partition={partition}
-        onModeChange={onModeChange}
-      /> : null}
-
-      {/* The tile the user just pressed, answered in full. */}
-      {explainedReason ? (
-        <p className={styles.note} role="status">
-          <WarningIcon size={12} className={styles.noteIcon} />
-          <span>
-            <strong className={styles.noteStrong}>{explainedEntry?.model.displayName}</strong>{' '}
-            {explainedReason.detail}
-            {explainedReason.steps.length > 0 ? (
-              <> {explainedReason.steps.join(' ')}</>
-            ) : null}
-            {explainedReason.switchTo && onModeChange ? (
-              <>
-                {' '}
-                <button
-                  type="button"
-                  className={styles.link}
-                  onClick={() => {
-                    onModeChange(explainedReason.switchTo!);
-                    setExplainedId(null);
-                  }}
-                >
-                  Switch to {explainedReason.switchTo === 'video' ? 'Video' : 'Image'} mode
-                </button>
-              </>
-            ) : null}
-          </span>
-        </p>
-      ) : listed.length > 0 && runnable.length === 0 && !partition.pending ? (
-        <p className={styles.note}>
-          <WarningIcon size={12} className={styles.noteIcon} />
-          <span>
-            {listed.every((entry) => entry.blocked === 'needs-setup') ? (
-              <>
-                The {KIND_NOUN[mode]} models on this machine need setting up before they can run.
-                Press one to see what it needs.
-              </>
-            ) : (
-              <>
-                Nothing here can run a {KIND_NOUN[mode]} job as the form stands. Press a tile to
-                see what it needs.
-              </>
-            )}
-          </span>
-        </p>
-      ) : null}
-
-      {/* The honest count. Hiding a checkpoint the user installed is fine;
-          not saying so is not.
-
-          Deliberately not gated on `partition.pending`: a hidden entry is never
-          a pending one (`visibility.ts` gives a pending entry no verdict at
-          all), so a count that exists is already a settled count. Holding it
-          back until every *listed* tile's setup probe answered made the line
-          appear a moment after the grid and shove everything below it down —
-          the same shift, one element lower. */}
-      {hiddenNoTemplate.length > 0 ? (
-        <p className={styles.note}>
-          <span>
-            {hiddenNoTemplate.length} {hiddenNoTemplate.length === 1 ? 'model' : 'models'} hidden —
-            no workflow for {hiddenNoTemplate.length === 1 ? 'it' : 'them'} yet.{' '}
-            <button
-              type="button"
-              className={styles.link}
-              aria-expanded={revealed}
-              onClick={() => setRevealed((open) => !open)}
-            >
-              {revealed ? 'Hide again' : 'Show anyway'}
-            </button>
-          </span>
-        </p>
-      ) : null}
+        {listed.length === 0 ? (
+          <EmptyState
+            mode={mode}
+            otherMode={otherMode}
+            partition={partition}
+            onModeChange={onModeChange}
+            onReveal={hiddenCount > 0 ? () => setOpen(true) : undefined}
+          />
+        ) : reason ? (
+          // The selected model has become one that cannot run — a starting
+          // image was removed from under an img2vid model, say. Its reason is
+          // the most useful sentence on the panel, so it is not hidden in the
+          // modal.
+          <p className={styles.note} role="status">
+            <WarningIcon size={12} className={styles.noteIcon} />
+            <span>
+              <strong className={styles.noteStrong}>{selected?.model.displayName}</strong>{' '}
+              {reason.detail}
+              {reason.steps.length > 0 ? <> {reason.steps.join(' ')}</> : null}
+            </span>
+          </p>
+        ) : runnable.length === 0 ? (
+          <p className={styles.note}>
+            <WarningIcon size={12} className={styles.noteIcon} />
+            <span>
+              {listed.every((entry) => entry.blocked === 'needs-setup') ? (
+                <>
+                  The {KIND_NOUN[mode]} models on this machine need setting up before they can run.
+                  Open the list to see what each one needs.
+                </>
+              ) : (
+                <>
+                  Nothing here can run a {KIND_NOUN[mode]} job as the form stands. Open the list
+                  to see what each model needs.
+                </>
+              )}
+            </span>
+          </p>
+        ) : null}
       </div>
+
+      {open ? (
+        <ModelModal
+          partition={partition}
+          kind={kind}
+          capabilities={capabilities}
+          readiness={readiness}
+          value={value}
+          onChange={onChange}
+          onClose={() => setOpen(false)}
+          onModeChange={onModeChange}
+        />
+      ) : null}
     </>
   );
 }
 
 /**
- * What the panel says instead of a grid.
+ * What the panel says instead of a model.
  *
  * Three different nothings, and only one of them is "you have no models": the
  * other two are "your models are in the other tab" and "the models you have
@@ -325,11 +217,13 @@ function EmptyState({
   otherMode,
   partition,
   onModeChange,
+  onReveal,
 }: {
   mode: CreateMode;
   otherMode: CreateMode;
   partition: Partition;
   onModeChange?: (mode: CreateMode) => void;
+  onReveal?: () => void;
 }) {
   const elsewhere = partition.otherMode.map((entry) => entry.model);
   const hidden = partition.hiddenNoTemplate.length;
@@ -361,6 +255,11 @@ function EmptyState({
             No {KIND_NOUN[mode]} models are installed. {hidden}{' '}
             {hidden === 1 ? 'checkpoint is' : 'checkpoints are'} hidden because nothing here knows
             how to build a graph for {hidden === 1 ? 'it' : 'them'}.{' '}
+            {onReveal ? (
+              <button type="button" className={styles.link} onClick={onReveal}>
+                See {hidden === 1 ? 'it' : 'them'}
+              </button>
+            ) : null}{' '}
             <a className={styles.link} href="/models">
               Manage models
             </a>
@@ -376,86 +275,4 @@ function EmptyState({
       </span>
     </p>
   );
-}
-
-// ---------------------------------------------------------------- reasons
-
-const KIND_NOUN: Record<CreateMode, string> = { image: 'image', video: 'video' };
-
-interface BlockedReason {
-  /** Two words, on the tile. */
-  badge: string;
-  /** The sentence, in the note and the tooltip. */
-  detail: string;
-  /** The server's own remedy, when it gave one. */
-  steps: string[];
-  /** The mode that *would* run this model, when there is one. */
-  switchTo: CreateMode | null;
-}
-
-/**
- * Why this model cannot run this job — the specific answer, not the count.
- *
- * The states that reach a *visible* tile are the fixable ones: the backend is
- * missing a file (the server tells us which, and how to fix it), or the job
- * wants a starting image. The unfixable ones are hidden, and only reach here
- * through the "show anyway" reveal, where the honest answer is that nobody has
- * written a graph for this family.
- */
-export function blockedReason(
-  entry: ModelEntry,
-  kind: JobKind,
-  capabilities: CapabilityMap,
-  readiness: ReadinessMap,
-): BlockedReason {
-  const model = entry.model;
-  const family = model.baseModel ?? 'this family';
-  const mode = modeOfKind(kind);
-  const answer = readiness.here[model.id];
-
-  if (entry.blocked === 'needs-setup') {
-    return {
-      badge: 'Needs setup',
-      detail: `cannot run here yet: ${answer?.summary ?? 'the backend is not set up for it.'}`,
-      steps: answer?.steps ?? [],
-      switchTo: null,
-    };
-  }
-
-  if (entry.blocked === 'needs-image') {
-    return {
-      badge: 'Needs an image',
-      detail: 'only runs from a starting image. Add one above and it becomes selectable.',
-      steps: [],
-      switchTo: null,
-    };
-  }
-
-  if (entry.hidden === 'other-mode' && entry.runsInMode) {
-    const only = entry.runsInMode;
-    return {
-      badge: only === 'video' ? 'Video model' : 'Image model',
-      detail: `is a ${KIND_NOUN[only]} model — it runs ${KIND_NOUN[only]} jobs, not ${KIND_NOUN[mode]} ones.`,
-      steps: [],
-      switchTo: only,
-    };
-  }
-
-  void capabilities;
-  return {
-    badge: 'No template',
-    detail:
-      answer?.summary ??
-      `has no workflow template yet — nothing here knows how to build a graph for ${family}.`,
-    steps: [],
-    switchTo: null,
-  };
-}
-
-/** "Hunyuan Video 720p and Ltx Video" — at most three, then "and 2 more". */
-function listNames(models: Model[]): string {
-  const names = models.slice(0, 2).map((model) => model.displayName);
-  const rest = models.length - names.length;
-  if (rest > 0) return `${names.join(', ')} and ${rest} more`;
-  return names.length === 2 ? `${names[0]} and ${names[1]}` : (names[0] ?? '');
 }

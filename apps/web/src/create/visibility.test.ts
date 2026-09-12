@@ -147,6 +147,42 @@ describe('while the probe is still in flight', () => {
     expect(settled.listed.map((entry) => entry.model.id)).toEqual(['sdxl']);
   });
 
+  it('can hide a listed pending entry once its probe lands, so pending must not be drawn', () => {
+    // The reload jump, stated as the rule it broke. The live map says Hunyuan
+    // does txt2vid, so under Video nothing settles it early and it is listed
+    // as pending. The probe then says no graph is installed and the other tab
+    // would run it: hidden. Any picker that drew `listed` while `pending` was
+    // true painted this tile and took it away — which is why the picker now
+    // draws a skeleton until the partition is settled.
+    const models = [model('hunyuan', 'hunyuan-video')];
+    const capabilities: CapabilityMap = {
+      byFamily: { hunyuanvideo: ['txt2vid'] },
+      unknownFamily: [],
+      live: true,
+    };
+    const early = partitionModels(models, 'txt2vid', capabilities, pendingMap());
+    expect(early.pending).toBe(true);
+    expect(early.listed.map((entry) => entry.model.id)).toEqual(['hunyuan']);
+
+    const settled = partitionModels(
+      models,
+      'txt2vid',
+      capabilities,
+      map({ hunyuan: 'no-template' }),
+    );
+    expect(settled.pending).toBe(false);
+    expect(settled.listed).toHaveLength(0);
+  });
+
+  it('holds every entry undecided on a map that is not live, however many there are', () => {
+    // The other half of the jump: `GET /workflows` failed, so nothing can be
+    // settled early and the whole list is pending until the probes answer.
+    const models = [model('a', 'sdxl'), model('b', 'ltxv'), model('c', 'mystery')];
+    const partition = partitionModels(models, 'txt2img', guessed, pendingMap());
+    expect(partition.pending).toBe(true);
+    expect(partition.listed.every((entry) => entry.pending)).toBe(true);
+  });
+
   it('still uses an answer that has already arrived for one model', () => {
     // A cached answer is a real answer, whatever the rest of the pass is doing.
     const entry = classify(model('a', 'sdxl'), 'txt2img', guessed, pendingMap({ a: 'ready' }));

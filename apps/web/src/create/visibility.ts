@@ -20,10 +20,16 @@
  *            installed). Fixable, and the readiness endpoint returns the exact
  *            remedy. Hiding it would turn a solvable problem into "that model
  *            does not exist".
- *   shown    pending — the readiness probe is still in flight. No verdict is
- *            drawn at all: no badge, no dimming, nothing hidden and no count.
- *            A wrong label followed by a correction is worse than a moment of
- *            plain tiles.
+ *   pending  the readiness probe is still in flight. No verdict is reached:
+ *            not hidden, not blocked, not runnable. It is kept in `listed`
+ *            only so the selection repair in `CreatePage` does not mistake
+ *            "not answered" for "gone" — it is **not** permission to draw it.
+ *            An entry that is listed while pending can still be hidden when
+ *            its probe lands (a family the map says can do Video, on a box
+ *            with no template installed), so while `Partition.pending` is true
+ *            the picker draws a skeleton and nothing else. Drawing pending
+ *            entries as plain tiles was the reload jump: the badge was never
+ *            wrong, the *set* was.
  *   shown    needs a starting image — same family, other side of the
  *            txt2img / img2img split. Also fixable, in one drag.
  *
@@ -80,7 +86,10 @@ export interface Partition {
   hidden: ModelEntry[];
   /** Of `listed`, the ones that can actually be selected. */
   runnable: ModelEntry[];
-  /** True while any listed model is still waiting on a verdict. */
+  /**
+   * True while any listed model is still waiting on a verdict. While it is,
+   * `listed` is not yet the set that will be shown and must not be drawn.
+   */
   pending: boolean;
   hiddenNoTemplate: ModelEntry[];
   hiddenOtherMode: ModelEntry[];
@@ -152,10 +161,11 @@ export function classify(
   }
 
   // Everything the map could not settle stays undecided until the probe lands.
-  // What remains here is the setup question, and its answer is a *badge* on a
-  // tile that is already on screen — so it can arrive late without moving
-  // anything. No verdict is drawn in the meantime: a guess dressed as an answer
-  // is what we are here to stop.
+  // This was once described as "only a badge, so it can arrive late", and that
+  // was the mistake behind the reload jump: a `no-template` answer here still
+  // *hides* the model (Hunyuan under Video with no graph installed), so an entry
+  // that is pending is one whose presence is undecided too. Callers must not
+  // draw a partition while `pending` is true.
   if (readiness.loading && !answered) {
     return entry({ runnable: false, hidden: null, blocked: null, pending: true });
   }

@@ -11,7 +11,7 @@
  * `create/form.ts` (what we POST, and what the seed does), `create/jobProgress.ts`
  * (what a `JobEvent` does to the job on screen).
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import type { Job, Model, VideoLimits } from '@comfy/shared';
 import { SparkIcon } from '../components/icons';
 import { Chips, Group, Segmented, Slider } from '../create/Controls';
@@ -131,7 +131,15 @@ export function CreatePage() {
   // paint, so a model that was legitimately chosen a moment ago can become
   // one the grid no longer shows; dropping it hands the preselect below the
   // job of finding a replacement that is actually visible.
-  useEffect(() => {
+  //
+  // Layout effects, both of these, rather than plain ones. The picker draws
+  // nothing until the partition settles, and the render in which it settles
+  // is also the first render it shows a model name in. A plain effect runs
+  // after that frame is painted, so for one frame the panel read "Choose a
+  // model" and then snapped to SDXL — the selection changing under the user
+  // on the very first thing they see. A layout effect commits the choice
+  // before the browser paints, so the first name shown is the one that stays.
+  useLayoutEffect(() => {
     if (!form.modelId) return;
     // Never on an unanswered probe. `visibility.ts` refuses to hide while a
     // verdict is pending; clearing the user's choice here would undo that and
@@ -146,7 +154,7 @@ export function CreatePage() {
   // opens with nothing chosen makes the user do work the app could do, and
   // preselecting an *unrunnable* model would arm a disabled Generate for a
   // reason that is not the user's fault.
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (form.modelId || checkpoints.length === 0) return;
     // Same rule: preselecting on a guess means visibly swapping the model out
     // from under the user a moment later.
@@ -234,6 +242,7 @@ export function CreatePage() {
           <Group label="Model">
             <ModelPicker
               models={checkpoints}
+              partition={partition}
               kind={kind}
               capabilities={capabilities}
               readiness={readiness}

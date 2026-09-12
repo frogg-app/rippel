@@ -220,7 +220,7 @@ vi.mock('../lib/api-jobs', async () => {
 
 const { CreatePage } = await import('./CreatePage');
 const { ModeToggle } = await import('../shell/ModeToggle');
-const { resetCreateMode } = await import('../create/mode');
+const { resetCreateMode, setCreateMode } = await import('../create/mode');
 const { resetReadinessCache } = await import('../create/useReadiness');
 
 beforeEach(() => {
@@ -240,10 +240,27 @@ async function openAdvanced(user: ReturnType<typeof userEvent.setup>) {
   if (toggle.getAttribute('aria-expanded') !== 'true') await user.click(toggle);
 }
 
+/**
+ * Wait for the panel to show a settled, chosen model.
+ *
+ * The panel draws a skeleton until every readiness probe has answered, so this
+ * is also the moment the screen becomes usable — which is what most tests here
+ * used to wait on by finding a tile.
+ */
+function modelShown(name: RegExp) {
+  return screen.findByRole('button', { name: new RegExp(`change model: .*${name.source}`, 'i') });
+}
+
+/** Open the model modal from the panel and return the dialog. */
+async function openModels(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(await screen.findByRole('button', { name: /change model|choose a model/i }));
+  return screen.findByRole('dialog', { name: /choose a model/i });
+}
+
 describe('CreatePage', () => {
   it('will not submit without a prompt, and says why', async () => {
     render(<CreatePage />);
-    await screen.findByRole('radio', { name: /SDXL Base/i });
+    await modelShown(/SDXL Base/);
 
     const generate = screen.getByRole('button', { name: /generate/i });
     expect(generate).toBeDisabled();
@@ -253,39 +270,41 @@ describe('CreatePage', () => {
   it("lists only this mode's models, and a template-less one explains itself", async () => {
     const user = userEvent.setup();
     render(<CreatePage />);
-    await screen.findByRole('radio', { name: /SDXL Base/i });
+    // ...and the runnable one is preselected, so the screen opens usable.
+    await modelShown(/SDXL Base/);
+    const dialog = await openModels(user);
 
     // A video checkpoint under Image is not a blocked tile any more; it is
     // not there at all. The toggle is what changes the list.
-    expect(screen.queryByRole('radio', { name: /Hunyuan/i })).not.toBeInTheDocument();
+    expect(within(dialog).queryByRole('radio', { name: /Hunyuan/i })).not.toBeInTheDocument();
 
     // A model whose family has no workflow at all is not there either — that
-    // is the ask — but the count under the grid says so rather than letting
-    // the list quietly misrepresent what is installed.
-    expect(screen.queryByRole('radio', { name: /Mystery Mix/i })).not.toBeInTheDocument();
-    expect(screen.getByText(/1 model hidden/i)).toBeInTheDocument();
+    // is the ask — but the count says so rather than letting the list quietly
+    // misrepresent what is installed.
+    expect(within(dialog).queryByRole('radio', { name: /Mystery Mix/i })).not.toBeInTheDocument();
+    expect(within(dialog).getByText(/1 model hidden/i)).toBeInTheDocument();
 
     // ...and it can still be brought back, blocked, to answer for itself.
-    await user.click(screen.getByRole('button', { name: /show anyway/i }));
-    const blocked = screen.getByRole('radio', { name: /Mystery Mix/i });
+    await user.click(within(dialog).getByRole('button', { name: /show anyway/i }));
+    const blocked = within(dialog).getByRole('radio', { name: /Mystery Mix/i });
     expect(blocked).toHaveAttribute('aria-disabled', 'true');
+    expect(blocked).toHaveTextContent(/No template/);
     await user.click(blocked);
     expect(blocked).toHaveAttribute('aria-checked', 'false');
-    expect(await screen.findByText(/no workflow template/i)).toBeInTheDocument();
-
-    // ...and the runnable one is preselected, so the screen opens usable.
-    await waitFor(() =>
-      expect(screen.getByRole('radio', { name: /SDXL Base/i })).toHaveAttribute(
-        'aria-checked',
-        'true',
-      ),
+    expect(await within(dialog).findByText(/no workflow template/i)).toBeInTheDocument();
+    // Pressing a model you cannot use explains it; it does not close the
+    // modal on you, and it does not change the selection.
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(within(dialog).getByRole('radio', { name: /SDXL Base/i })).toHaveAttribute(
+      'aria-checked',
+      'true',
     );
   });
 
   it('POSTs params that match the form', async () => {
     const user = userEvent.setup();
     render(<CreatePage />);
-    await screen.findByRole('radio', { name: /SDXL Base/i });
+    await modelShown(/SDXL Base/);
 
     await user.type(screen.getByRole('textbox', { name: /prompt/i }), 'a rain-slick street');
     await user.click(screen.getByRole('radio', { name: 'High' }));
@@ -307,7 +326,7 @@ describe('CreatePage', () => {
   it('rolls the seed on each run unless it is locked', async () => {
     const user = userEvent.setup();
     render(<CreatePage />);
-    await screen.findByRole('radio', { name: /SDXL Base/i });
+    await modelShown(/SDXL Base/);
     await user.type(screen.getByRole('textbox', { name: /prompt/i }), 'neon');
     await openAdvanced(user);
 
@@ -333,7 +352,7 @@ describe('CreatePage', () => {
   it('applies socket frames to the stage, including out-of-order ones', async () => {
     const user = userEvent.setup();
     render(<CreatePage />);
-    await screen.findByRole('radio', { name: /SDXL Base/i });
+    await modelShown(/SDXL Base/);
     await user.type(screen.getByRole('textbox', { name: /prompt/i }), 'neon');
     await user.click(screen.getByRole('button', { name: /^generate$/i }));
     await waitFor(() => expect(created).toHaveLength(1));
@@ -402,7 +421,7 @@ describe('CreatePage', () => {
     // The bug this pins: the stage said "Done" but stayed empty until reload.
     const user = userEvent.setup();
     render(<CreatePage />);
-    await screen.findByRole('radio', { name: /SDXL Base/i });
+    await modelShown(/SDXL Base/);
     await user.type(screen.getByRole('textbox', { name: /prompt/i }), 'neon');
     await user.click(screen.getByRole('button', { name: /^generate$/i }));
     await waitFor(() => expect(created).toHaveLength(1));
@@ -441,7 +460,7 @@ describe('CreatePage', () => {
   it('shows the backend’s own message when a job fails', async () => {
     const user = userEvent.setup();
     render(<CreatePage />);
-    await screen.findByRole('radio', { name: /SDXL Base/i });
+    await modelShown(/SDXL Base/);
     await user.type(screen.getByRole('textbox', { name: /prompt/i }), 'neon');
     await user.click(screen.getByRole('button', { name: /^generate$/i }));
     await waitFor(() => expect(created).toHaveLength(1));
@@ -461,7 +480,7 @@ describe('CreatePage', () => {
   it('remembers the Advanced drawer between mounts', async () => {
     const user = userEvent.setup();
     const first = render(<CreatePage />);
-    await screen.findByRole('radio', { name: /SDXL Base/i });
+    await modelShown(/SDXL Base/);
     await openAdvanced(user);
     first.unmount();
 
@@ -477,7 +496,7 @@ describe('CreatePage', () => {
   it('refills the form from a finished job when you remix it', async () => {
     const user = userEvent.setup();
     render(<CreatePage />);
-    await screen.findByRole('radio', { name: /SDXL Base/i });
+    await modelShown(/SDXL Base/);
 
     await user.type(screen.getByRole('textbox', { name: /prompt/i }), 'a cathedral of glass');
     await user.click(screen.getByRole('radio', { name: 'Fast' }));
@@ -510,7 +529,7 @@ describe('CreatePage', () => {
 /** Get a job running, so the stage is showing the progress row. */
 async function startJob(user: ReturnType<typeof userEvent.setup>) {
   render(<CreatePage />);
-  await screen.findByRole('radio', { name: /SDXL Base/i });
+  await modelShown(/SDXL Base/);
   await user.type(screen.getByRole('textbox', { name: /prompt/i }), 'neon');
   await user.click(screen.getByRole('button', { name: /^generate$/i }));
   await waitFor(() => expect(created).toHaveLength(1));
@@ -632,7 +651,7 @@ describe('the Advanced drawer', () => {
   it('sends nothing extra just because the drawer was opened', async () => {
     const user = userEvent.setup();
     render(<CreatePage />);
-    await screen.findByRole('radio', { name: /SDXL Base/i });
+    await modelShown(/SDXL Base/);
     await user.type(screen.getByRole('textbox', { name: /prompt/i }), 'neon');
 
     await openAdvanced(user);
@@ -648,7 +667,7 @@ describe('the Advanced drawer', () => {
   it('sends a setting once it is pinned, and stops when it is handed back', async () => {
     const user = userEvent.setup();
     render(<CreatePage />);
-    await screen.findByRole('radio', { name: /SDXL Base/i });
+    await modelShown(/SDXL Base/);
     await user.type(screen.getByRole('textbox', { name: /prompt/i }), 'neon');
     await openAdvanced(user);
     await user.click(screen.getByRole('button', { name: /sampling method/i }));
@@ -681,7 +700,7 @@ describe('the Advanced drawer', () => {
     // not a control a non-technical user can use.
     const user = userEvent.setup();
     render(<CreatePage />);
-    await screen.findByRole('radio', { name: /SDXL Base/i });
+    await modelShown(/SDXL Base/);
     await openAdvanced(user);
 
     const guidance = screen.getByLabelText(/follow the prompt/i);
@@ -710,7 +729,7 @@ describe('mode toggle', () => {
         <CreatePage />
       </>,
     );
-    await screen.findByRole('radio', { name: /SDXL Base/i });
+    await modelShown(/SDXL Base/);
     await user.type(screen.getByRole('textbox', { name: /prompt/i }), 'a wave breaking');
 
     expect(screen.getByRole('slider', { name: /image count/i })).toBeInTheDocument();
@@ -718,20 +737,22 @@ describe('mode toggle', () => {
     await user.click(screen.getByRole('radio', { name: 'Video' }));
 
     // The list is now the video checkpoints, and the image ones are gone.
-    await waitFor(() =>
-      expect(screen.getByRole('radio', { name: /Hunyuan/i })).toHaveAttribute(
-        'aria-disabled',
-        'false',
-      ),
+    await modelShown(/Hunyuan/);
+    const dialog = await openModels(user);
+    expect(within(dialog).getByRole('radio', { name: /Hunyuan/i })).toHaveAttribute(
+      'aria-disabled',
+      'false',
     );
-    expect(screen.queryByRole('radio', { name: /SDXL Base/i })).not.toBeInTheDocument();
+    expect(within(dialog).queryByRole('radio', { name: /SDXL Base/i })).not.toBeInTheDocument();
+    await user.click(within(dialog).getByRole('radio', { name: /Hunyuan/i }));
+    // Choosing closes the modal: the panel is where the answer lives.
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
 
     // And the controls follow: a clip has a length and a rate, not a count.
     expect(screen.queryByRole('slider', { name: /image count/i })).not.toBeInTheDocument();
     expect(screen.getByRole('slider', { name: /duration/i })).toBeInTheDocument();
     expect(screen.getByRole('radiogroup', { name: /frame rate/i })).toBeInTheDocument();
 
-    await user.click(screen.getByRole('radio', { name: /Hunyuan/i }));
     await user.click(screen.getByRole('button', { name: /^generate$/i }));
 
     await waitFor(() => expect(created).toHaveLength(1));
@@ -755,7 +776,7 @@ describe('mode toggle', () => {
         <CreatePage />
       </>,
     );
-    await screen.findByRole('radio', { name: /SDXL Base/i });
+    await modelShown(/SDXL Base/);
 
     // No family here has a video template, so Video lists nothing runnable
     // (the template-less checkpoints, blocked) and the picker has to point
@@ -768,10 +789,7 @@ describe('mode toggle', () => {
     await waitFor(() =>
       expect(screen.getByRole('radio', { name: 'Image' })).toHaveAttribute('aria-checked', 'true'),
     );
-    expect(screen.getByRole('radio', { name: /SDXL Base/i })).toHaveAttribute(
-      'aria-disabled',
-      'false',
-    );
+    await modelShown(/SDXL Base/);
   });
 });
 
@@ -805,20 +823,24 @@ describe('what the picker hides', () => {
         <CreatePage />
       </>,
     );
-    await screen.findByRole('radio', { name: /SDXL Base/i });
+    await modelShown(/SDXL Base/);
     await user.click(screen.getByRole('radio', { name: 'Video' }));
+
+    // Nothing here can run, so nothing is chosen — and the panel says why
+    // rather than showing an empty row.
+    expect(await screen.findByText(/need setting up before they can run/i)).toBeInTheDocument();
 
     // Hunyuan has no workflow anywhere: gone. LTX has one and the machine is
     // not set up for it: present, blocked, and it says what to do.
-    const ltx = await screen.findByRole('radio', { name: /LTX Video/i });
+    const dialog = await openModels(user);
+    const ltx = within(dialog).getByRole('radio', { name: /LTX Video/i });
     expect(ltx).toHaveAttribute('aria-disabled', 'true');
-    await waitFor(() =>
-      expect(screen.queryByRole('radio', { name: /Hunyuan/i })).not.toBeInTheDocument(),
-    );
+    expect(ltx).toHaveTextContent(/Needs setup/);
+    expect(within(dialog).queryByRole('radio', { name: /Hunyuan/i })).not.toBeInTheDocument();
 
     await user.click(ltx);
-    expect(await screen.findByText(/T5 text encoder is not installed/i)).toBeInTheDocument();
-    expect(screen.getByText(/Move it into models\/checkpoints\./i)).toBeInTheDocument();
+    expect(await within(dialog).findByText(/T5 text encoder is not installed/i)).toBeInTheDocument();
+    expect(within(dialog).getByText(/Move it into models\/checkpoints\./i)).toBeInTheDocument();
   });
 
   it('shows everything when readiness cannot be asked', async () => {
@@ -834,11 +856,13 @@ describe('what the picker hides', () => {
       live: false,
     });
 
+    const user = userEvent.setup();
     render(<CreatePage />);
-    await screen.findByRole('radio', { name: /SDXL Base/i });
-    const mystery = await screen.findByRole('radio', { name: /Mystery Mix/i });
+    await modelShown(/SDXL Base/);
+    const dialog = await openModels(user);
+    const mystery = within(dialog).getByRole('radio', { name: /Mystery Mix/i });
     expect(mystery).toHaveAttribute('aria-disabled', 'true');
-    expect(screen.queryByText(/hidden/i)).not.toBeInTheDocument();
+    expect(within(dialog).queryByText(/hidden/i)).not.toBeInTheDocument();
   });
 
   it('explains an empty grid instead of drawing nothing', async () => {
@@ -855,7 +879,7 @@ describe('what the picker hides', () => {
         <CreatePage />
       </>,
     );
-    await screen.findByRole('radio', { name: /SDXL Base/i });
+    await modelShown(/SDXL Base/);
     await user.click(screen.getByRole('radio', { name: 'Video' }));
 
     expect(await screen.findByText(/No video models are installed/i)).toBeInTheDocument();
@@ -870,23 +894,23 @@ describe('what the picker hides', () => {
         <CreatePage />
       </>,
     );
-    const juggernaut = await screen.findByRole('radio', { name: /Juggernaut/i });
-    await user.click(juggernaut);
-    expect(juggernaut).toHaveAttribute('aria-checked', 'true');
+    await modelShown(/SDXL Base/);
+    await user.click(within(await openModels(user)).getByRole('radio', { name: /Juggernaut/i }));
+    await modelShown(/Juggernaut/);
 
     await user.click(screen.getByRole('radio', { name: 'Video' }));
 
     // The image model it was on is not in this list at all now, so the repair
-    // has to land on one of the tiles actually on screen — never on a hidden
-    // one, and never on nothing while a runnable tile exists.
-    const checked = await waitFor(() => {
-      const tiles = within(screen.getByRole('radiogroup', { name: 'Model' })).getAllByRole('radio');
-      const on = tiles.filter((tile) => tile.getAttribute('aria-checked') === 'true');
-      expect(on).toHaveLength(1);
-      return on[0]!;
-    });
-    expect(checked).toHaveAccessibleName(/Hunyuan|LTX/i);
-    expect(checked).toHaveAttribute('aria-disabled', 'false');
+    // has to land on one of the models actually listed — never on a hidden
+    // one, and never on nothing while a runnable one exists.
+    await modelShown(/Hunyuan|LTX/);
+    const dialog = await openModels(user);
+    const on = within(dialog)
+      .getAllByRole('radio')
+      .filter((tile) => tile.getAttribute('aria-checked') === 'true');
+    expect(on).toHaveLength(1);
+    expect(on[0]).toHaveAccessibleName(/Hunyuan|LTX/i);
+    expect(on[0]).toHaveAttribute('aria-disabled', 'false');
   });
 });
 
@@ -896,14 +920,26 @@ describe('model picker', () => {
     // qualify for txt2img, so switching between them must work.
     const user = userEvent.setup();
     render(<CreatePage />);
-    const first = await screen.findByRole('radio', { name: /SDXL Base/i });
-    await waitFor(() => expect(first).toHaveAttribute('aria-checked', 'true'));
+    await modelShown(/SDXL Base/);
 
-    const second = screen.getByRole('radio', { name: /Juggernaut/i });
-    await user.click(second);
+    let dialog = await openModels(user);
+    expect(within(dialog).getByRole('radio', { name: /SDXL Base/i })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    );
+    await user.click(within(dialog).getByRole('radio', { name: /Juggernaut/i }));
+    await modelShown(/Juggernaut/);
 
-    expect(second).toHaveAttribute('aria-checked', 'true');
-    expect(first).toHaveAttribute('aria-checked', 'false');
+    dialog = await openModels(user);
+    expect(within(dialog).getByRole('radio', { name: /Juggernaut/i })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    );
+    expect(within(dialog).getByRole('radio', { name: /SDXL Base/i })).toHaveAttribute(
+      'aria-checked',
+      'false',
+    );
+    await user.keyboard('{Escape}');
 
     await user.type(screen.getByRole('textbox', { name: /prompt/i }), 'neon');
     await user.click(screen.getByRole('button', { name: /^generate$/i }));
@@ -932,99 +968,267 @@ describe('the first paint', () => {
     };
   }
 
-  const tiles = () => within(screen.getByRole('radiogroup', { name: 'Model' })).getAllByRole('radio');
+  const NAMES = checkpoints.map((model) => model.displayName);
 
-  it('opens at the final tile count rather than collapsing to it', async () => {
-    // The reported flash, twice over: every checkpoint painted and then removed
-    // a moment later. The fix is that the *family* question — is there a
-    // workflow for this capability at all — is answered by the capability map,
-    // which arrives with the model list. Only the *setup* question waits on a
-    // probe, and that is a badge on a tile already on screen.
-    //
-    // Of the five checkpoints here, only the two SDXL ones can do txt2img:
-    // Hunyuan and LTX are video families and Mystery has no template at all.
-    // So the grid must open at two and stay there.
-    const probes = gatedReadiness({ 'model-sdxl': 'ready', 'model-sdxl-2': 'ready' });
-    await probes.install();
+  /**
+   * Every checkpoint name the panel is currently showing, and the name of the
+   * one it presents as chosen. Read off the DOM, not off state, because the
+   * complaint was about what the user *saw*.
+   */
+  function snapshot() {
+    const panel = screen.getByRole('region', { name: /generation settings/i });
+    const text = panel.textContent ?? '';
+    const summary = within(panel).queryByRole('button', { name: /change model|choose a model/i });
+    return {
+      names: NAMES.filter((name) => text.includes(name)),
+      chosen: summary?.getAttribute('aria-label') ?? null,
+      // The whole row — name, family, state and the model count — so a set
+      // that shrinks shows up even while nothing is chosen.
+      summary: summary?.textContent ?? null,
+    };
+  }
 
-    render(<CreatePage />);
-    await screen.findByRole('radiogroup', { name: 'Model' });
-
-    // The first painted frame is already the right one.
-    expect(tiles()).toHaveLength(2);
-    expect(tiles().map((tile) => tile.textContent)).toEqual([
-      expect.stringContaining('SDXL Base'),
-      expect.stringContaining('Juggernaut'),
-    ]);
-    // The count of what was left out is settled too, so it does not appear a
-    // beat later and push everything below it down the panel.
-    expect(screen.getByText(/1 model hidden/i)).toBeInTheDocument();
-
-    // Still no *setup* verdict on a tile that is on screen: that is the half
-    // the probe owns, and guessing it is what drew wrong badges before.
-    expect(screen.queryByText(/No template/i)).toBeNull();
-    expect(screen.queryByText(/Needs setup/i)).toBeNull();
-    for (const tile of tiles()) expect(tile).toHaveAttribute('aria-disabled', 'false');
-
-    // And when the probes land, nothing moves.
-    probes.release();
-    await waitFor(() =>
-      expect(screen.getByRole('radio', { name: /SDXL Base/i })).toHaveAttribute(
-        'aria-checked',
-        'true',
-      ),
-    );
-    expect(tiles()).toHaveLength(2);
-    expect(screen.getByText(/1 model hidden/i)).toBeInTheDocument();
-  });
-
-  it('never paints a tile it is about to take away', async () => {
-    // Sampled every microtask from mount until the probes have answered: the
-    // count must never exceed the two it settles on.
-    const probes = gatedReadiness({ 'model-sdxl': 'ready', 'model-sdxl-2': 'ready' });
-    await probes.install();
-
-    const counts: number[] = [];
-    render(<CreatePage />);
-    for (let i = 0; i < 40; i += 1) {
-      const group = screen.queryByRole('radiogroup', { name: 'Model' });
-      if (group) counts.push(within(group).getAllByRole('radio').length);
+  /** Sample the panel on every microtask until `release` and a while after. */
+  async function sampleAround(release: () => void) {
+    const frames: ReturnType<typeof snapshot>[] = [];
+    for (let i = 0; i < 30; i += 1) {
+      frames.push(snapshot());
       await act(async () => {
         await Promise.resolve();
       });
     }
-    probes.release();
-    await waitFor(() => expect(tiles()).toHaveLength(2));
+    release();
+    for (let i = 0; i < 30; i += 1) {
+      frames.push(snapshot());
+      await act(async () => {
+        await Promise.resolve();
+      });
+    }
+    return frames;
+  }
 
-    expect(counts.length).toBeGreaterThan(0);
-    expect(Math.max(...counts)).toBe(2);
-  });
-
-  it('does not preselect or clear a model on an unanswered probe', async () => {
-    const probes = gatedReadiness({ 'model-sdxl': 'ready' });
+  it('draws a skeleton, not a guess, while the probes are out', async () => {
+    const probes = gatedReadiness({ 'model-sdxl': 'ready', 'model-sdxl-2': 'ready' });
     await probes.install();
 
     render(<CreatePage />);
-    await screen.findByRole('radiogroup', { name: 'Model' });
+    // Wait for the model list itself; only the probes are held.
+    await waitFor(() => expect(screen.getByText(/checking which models can run/i)).toBeInTheDocument());
 
-    // Nothing is chosen on a guess: preselecting here would visibly swap the
-    // model out from under the user a moment later.
-    expect(tiles().every((tile) => tile.getAttribute('aria-checked') === 'false')).toBe(true);
+    // No name, no selection, no way into the modal: anything drawn now would be
+    // the fallback's guess.
+    expect(snapshot()).toEqual({ names: [], chosen: null, summary: null });
+    expect(screen.queryByRole('radiogroup', { name: 'Model' })).toBeNull();
 
     probes.release();
-    await waitFor(() =>
-      expect(screen.getByRole('radio', { name: /SDXL Base/i })).toHaveAttribute(
-        'aria-checked',
-        'true',
-      ),
-    );
+    await modelShown(/SDXL Base/);
+    expect(screen.queryByText(/checking which models can run/i)).toBeNull();
+  });
+
+  it('never shows a model it then takes away (the reload jump)', async () => {
+    // The case that still jumped after the badge flash was fixed. Under Video
+    // the live map says Hunyuan can do txt2vid, so nothing settles it early —
+    // it was *listed* as pending and drawn as a plain tile. Then its probe said
+    // no graph is installed, and the tile vanished. Here the probe says exactly
+    // that, and at no sampled moment may Hunyuan's name be on screen.
+    setCreateMode('video');
+    const probes = gatedReadiness({ 'model-hunyuan': 'no-template', 'model-ltx': 'ready' });
+    await probes.install();
+
+    render(<CreatePage />);
+    const frames = await sampleAround(() => probes.release());
+    await modelShown(/LTX Video/);
+
+    expect(frames.some((frame) => frame.names.includes('Hunyuan Video 720p'))).toBe(false);
+    // The row was drawn, and drawn once: the first thing it said is the last.
+    const rows = frames.map((frame) => frame.summary).filter(Boolean);
+    expect(rows.length).toBeGreaterThan(0);
+    expect(new Set(rows).size).toBe(1);
+
+    // And the modal, once it can be opened, holds exactly the settled set.
+    const dialog = await openModels(userEvent.setup());
+    expect(within(dialog).getAllByRole('radio').map((tile) => tile.textContent)).toEqual([
+      expect.stringContaining('LTX Video'),
+    ]);
+  });
+
+  it('never changes the set it shows when the capability map could not be fetched', async () => {
+    // The other route into the same bug: with `GET /workflows` down, nothing
+    // can be settled early and every checkpoint is pending. The old grid drew
+    // all five and then dropped three.
+    const { workflowsApi } = await import('../lib/api-jobs');
+    vi.mocked(workflowsApi.capabilities).mockResolvedValueOnce({
+      byFamily: {},
+      unknownFamily: [],
+      live: false,
+    });
+    const probes = gatedReadiness({
+      'model-sdxl': 'ready',
+      'model-sdxl-2': 'ready',
+      'model-hunyuan': 'no-template',
+      'model-ltx': 'no-template',
+      'model-mystery': 'no-template',
+    });
+    await probes.install();
+
+    render(<CreatePage />);
+    const frames = await sampleAround(() => probes.release());
+    await modelShown(/SDXL Base/);
+
+    // Every frame either shows nothing or shows the final answer.
+    const drawn = frames.filter((frame) => frame.chosen !== null);
+    expect(drawn.length).toBeGreaterThan(0);
+    for (const frame of frames) {
+      if (frame.chosen === null) expect(frame.names).toEqual([]);
+    }
+    expect(new Set(drawn.map((frame) => frame.summary)).size).toBe(1);
+    const dialog = await openModels(userEvent.setup());
+    expect(within(dialog).getAllByRole('radio')).toHaveLength(2);
+  });
+
+  it('shows the preselected model first and never swaps it', async () => {
+    // Every frame that names a choice must name the same one, and no frame may
+    // offer "Choose a model" while a runnable model is about to be preselected.
+    // (jsdom flushes passive effects inside `act`, so the one *painted* frame a
+    // plain `useEffect` preselect would leave in a browser is not observable
+    // here; `CreatePage` uses a layout effect for that half.)
+    const probes = gatedReadiness({ 'model-sdxl': 'ready', 'model-sdxl-2': 'ready' });
+    await probes.install();
+
+    render(<CreatePage />);
+    const frames = await sampleAround(() => probes.release());
+    await modelShown(/SDXL Base/);
+
+    const choices = new Set(frames.map((frame) => frame.chosen).filter(Boolean));
+    expect([...choices]).toEqual([expect.stringMatching(/SDXL Base/)]);
+    expect(screen.queryByRole('button', { name: /choose a model/i })).toBeNull();
+  });
+});
+
+describe('the model modal', () => {
+  it('opens from the panel, chooses, and puts focus back', async () => {
+    const user = userEvent.setup();
+    render(<CreatePage />);
+    const summary = await modelShown(/SDXL Base/);
+    expect(summary).toHaveAttribute('aria-haspopup', 'dialog');
+
+    const dialog = await openModels(user);
+    expect(dialog).toHaveAttribute('aria-modal', 'true');
+    // Focus lands in the search box, the control that makes a long list usable.
+    expect(within(dialog).getByRole('searchbox', { name: /search models/i })).toHaveFocus();
+    // The readiness state is words, not a dimmed tile.
+    expect(within(dialog).getByRole('radio', { name: /SDXL Base/i })).toHaveTextContent(/Ready/);
+    expect(within(dialog).getByRole('radio', { name: /SDXL Base/i })).toHaveTextContent(/SDXL/);
+
+    await user.click(within(dialog).getByRole('radio', { name: /Juggernaut/i }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(await modelShown(/Juggernaut/)).toHaveFocus();
+  });
+
+  it('closes on Escape without changing the model', async () => {
+    const user = userEvent.setup();
+    render(<CreatePage />);
+    await modelShown(/SDXL Base/);
+    await openModels(user);
+
+    await user.keyboard('{ArrowDown}');
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(await modelShown(/SDXL Base/)).toHaveFocus();
+  });
+
+  it('closes when the backdrop is pressed, but not the sheet', async () => {
+    const user = userEvent.setup();
+    render(<CreatePage />);
+    await modelShown(/SDXL Base/);
+    const dialog = await openModels(user);
+
+    await user.click(within(dialog).getByRole('heading', { name: /choose a model/i }));
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    await user.click(dialog.parentElement!);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('keeps Tab inside the dialog', async () => {
+    // Without the trap, Tab walked out of the grid into the form behind the
+    // backdrop, where nothing the user can see has focus.
+    const user = userEvent.setup();
+    render(<CreatePage />);
+    await modelShown(/SDXL Base/);
+    const dialog = await openModels(user);
+
+    for (let i = 0; i < 12; i += 1) {
+      await user.tab();
+      expect(dialog.contains(document.activeElement)).toBe(true);
+    }
+    for (let i = 0; i < 12; i += 1) {
+      await user.tab({ shift: true });
+      expect(dialog.contains(document.activeElement)).toBe(true);
+    }
+  });
+
+  it('filters by name or family, and Enter takes the first model that can run', async () => {
+    const user = userEvent.setup();
+    render(<CreatePage />);
+    await modelShown(/SDXL Base/);
+    const dialog = await openModels(user);
+
+    await user.type(within(dialog).getByRole('searchbox'), 'jugg');
+    expect(within(dialog).getAllByRole('radio')).toHaveLength(1);
+
+    await user.clear(within(dialog).getByRole('searchbox'));
+    // "sdxl" is in neither display name's lowercase form for Juggernaut — it is
+    // the family — and still finds both.
+    await user.type(within(dialog).getByRole('searchbox'), 'sdxl');
+    expect(within(dialog).getAllByRole('radio')).toHaveLength(2);
+
+    await user.clear(within(dialog).getByRole('searchbox'));
+    await user.type(within(dialog).getByRole('searchbox'), 'nothing like this');
+    expect(within(dialog).getByText(/Nothing installed matches/i)).toBeInTheDocument();
+
+    await user.clear(within(dialog).getByRole('searchbox'));
+    await user.type(within(dialog).getByRole('searchbox'), 'jugg{Enter}');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    await modelShown(/Juggernaut/);
+  });
+
+  it('moves between tiles with the arrow keys', async () => {
+    const user = userEvent.setup();
+    render(<CreatePage />);
+    await modelShown(/SDXL Base/);
+    const dialog = await openModels(user);
+    const [first, second] = within(dialog).getAllByRole('radio');
+
+    first!.focus();
+    await user.keyboard('{ArrowRight}');
+    expect(second).toHaveFocus();
+    await user.keyboard('{ArrowRight}');
+    // Wraps: two tiles, so the next one is the first again.
+    expect(first).toHaveFocus();
+    await user.keyboard('{ArrowLeft}');
+    expect(second).toHaveFocus();
+  });
+
+  it('will not select a blocked model from the keyboard either', async () => {
+    const user = userEvent.setup();
+    render(<CreatePage />);
+    await modelShown(/SDXL Base/);
+    const dialog = await openModels(user);
+    await user.click(within(dialog).getByRole('button', { name: /show anyway/i }));
+
+    within(dialog).getByRole('radio', { name: /Mystery Mix/i }).focus();
+    await user.keyboard('{Enter}');
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(within(dialog).getByText(/no workflow template/i)).toBeInTheDocument();
+    await user.keyboard('{Escape}');
+    await modelShown(/SDXL Base/);
   });
 });
 
 describe('extra styles', () => {
   it('is a section of the panel, not something buried in Advanced', async () => {
     render(<CreatePage />);
-    await screen.findByRole('radio', { name: /SDXL Base/i });
+    await modelShown(/SDXL Base/);
 
     // Visible with the Advanced drawer shut, which is the point of the move.
     expect(screen.getByRole('button', { name: /add a style/i })).toBeInTheDocument();
@@ -1034,7 +1238,7 @@ describe('extra styles', () => {
   it('offers what fits the chosen checkpoint and hides what cannot run', async () => {
     const user = userEvent.setup();
     render(<CreatePage />);
-    await screen.findByRole('radio', { name: /SDXL Base/i });
+    await modelShown(/SDXL Base/);
 
     await user.click(screen.getByRole('button', { name: /add a style/i }));
 
@@ -1056,7 +1260,7 @@ describe('extra styles', () => {
   it('adds a style, stacks a second, and sends both with their weights', async () => {
     const user = userEvent.setup();
     render(<CreatePage />);
-    await screen.findByRole('radio', { name: /SDXL Base/i });
+    await modelShown(/SDXL Base/);
     await user.type(screen.getByRole('textbox', { name: /prompt/i }), 'neon');
 
     await user.click(screen.getByRole('button', { name: /add a style/i }));
@@ -1077,7 +1281,7 @@ describe('extra styles', () => {
   it('removes one again, and sends nothing when none are left', async () => {
     const user = userEvent.setup();
     render(<CreatePage />);
-    await screen.findByRole('radio', { name: /SDXL Base/i });
+    await modelShown(/SDXL Base/);
     await user.type(screen.getByRole('textbox', { name: /prompt/i }), 'neon');
 
     await user.click(screen.getByRole('button', { name: /add a style/i }));
@@ -1092,7 +1296,7 @@ describe('extra styles', () => {
   it('closes the picker on Escape and puts focus back on the button', async () => {
     const user = userEvent.setup();
     render(<CreatePage />);
-    await screen.findByRole('radio', { name: /SDXL Base/i });
+    await modelShown(/SDXL Base/);
 
     const add = screen.getByRole('button', { name: /add a style/i });
     await user.click(add);
@@ -1106,7 +1310,7 @@ describe('extra styles', () => {
   it('filters the picker by typing, and chooses with the keyboard', async () => {
     const user = userEvent.setup();
     render(<CreatePage />);
-    await screen.findByRole('radio', { name: /SDXL Base/i });
+    await modelShown(/SDXL Base/);
     await user.type(screen.getByRole('textbox', { name: /prompt/i }), 'neon');
 
     await user.click(screen.getByRole('button', { name: /add a style/i }));
@@ -1153,7 +1357,7 @@ describe('per-model video limits', () => {
         <CreatePage />
       </>,
     );
-    await screen.findByRole('radio', { name: /SDXL Base/i });
+    await modelShown(/SDXL Base/);
     await user.click(screen.getByRole('radio', { name: 'Video' }));
 
     const duration = await screen.findByRole('slider', { name: /duration/i });
@@ -1171,11 +1375,10 @@ describe('per-model video limits', () => {
         <CreatePage />
       </>,
     );
-    await screen.findByRole('radio', { name: /SDXL Base/i });
+    await modelShown(/SDXL Base/);
     await user.type(screen.getByRole('textbox', { name: /prompt/i }), 'a paper boat');
     await user.click(screen.getByRole('radio', { name: 'Video' }));
     await screen.findByRole('slider', { name: /duration/i });
-    await user.click(screen.getByRole('radio', { name: /Hunyuan/i }));
     await user.click(screen.getByRole('button', { name: /^generate$/i }));
 
     await waitFor(() => expect(created).toHaveLength(1));
@@ -1196,7 +1399,7 @@ describe('per-model video limits', () => {
         <CreatePage />
       </>,
     );
-    await screen.findByRole('radio', { name: /SDXL Base/i });
+    await modelShown(/SDXL Base/);
     await user.click(screen.getByRole('radio', { name: 'Video' }));
 
     const duration = await screen.findByRole('slider', { name: /duration/i });
