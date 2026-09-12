@@ -11,6 +11,7 @@
 
 import type { Uuid } from '@comfy/shared';
 import { query } from '../db.js';
+import { assessOn } from './fit.js';
 
 export interface Candidate {
   id: string;
@@ -65,9 +66,21 @@ export async function candidatesFor(modelId: Uuid): Promise<Candidate[]> {
  * Deliberately not weighted by reported VRAM: that figure is a budget rather
  * than a physical size and, as this project learned the hard way, may not even
  * describe the card you meant. Job counts are something we measure ourselves.
+ *
+ * It *is* weighted by what each machine has actually run, when a score is
+ * supplied. That is a different claim from the VRAM one and rests on different
+ * evidence — not what the driver says it has, but what we have watched it
+ * finish. A machine that has already run out of memory on a job this size drops
+ * behind one that has not, which on a mixed fleet is the whole difference
+ * between a 14B clip landing on the 24 GB card and landing on the 16 GB one.
+ *
+ * Crucially it only ever *reorders*. A backend known to be too small is still a
+ * candidate, last, because the alternative is refusing a job that the ledger is
+ * merely pessimistic about — the brackets come from history, and history is not
+ * a promise. Possession still decides who is eligible at all.
  */
-export async function pickBackend(modelId: Uuid): Promise<Candidate> {
-  const candidates = await candidatesFor(modelId);
+export async function pickBackend(modelId: Uuid, score?: number): Promise<Candidate> {
+  const candidates = await rankByFit(await candidatesFor(modelId), score);
   const chosen = candidates[0];
 
   if (!chosen) {
@@ -140,4 +153,53 @@ export async function sizesOn(
   return Object.fromEntries(
     rows.map((r) => [r.model_id, r.size_bytes === null ? null : Number(r.size_bytes)]),
   );
+}
+
+/**
+ * Move backends that have already failed a job this size to the back.
+ *
+ * Stable within each group, so the least-loaded ordering `candidatesFor`
+ * established survives inside both halves and the choice stays reproducible.
+ * With no score, or on a fleet of one, this is the identity.
+ */
+async function rankByFit(candidates: Candidate[], score?: number): Promise<Candidate[]> {
+  if (score === undefined || candidates.length < 2) return candidates;
+
+  const verdicts = await Promise.all(
+    candidates.map(async (candidate) => {
+      try {
+        return (await assessOn(candidate.id, score)).verdict;
+      } catch {
+        // A machine we cannot assess is not a machine we demote.
+        return 'unknown' as const;
+      }
+    }),
+  );
+
+  const fine: Candidate[] = [];
+  const doubtful: Candidate[] = [];
+  candidates.forEach((candidate, i) => {
+    (verdicts[i] === 'too-big' ? doubtful : fine).push(candidate);
+  });
+  return [...fine, ...doubtful];
+}
+
+/**
+ * Bytes on disk for these models, regardless of which backend holds them.
+ *
+ * `sizesOn` answers the same question for one backend and is the right call
+ * once a backend is chosen. This one exists for the moment *before* that, when
+ * the size is wanted precisely in order to choose. A size is a property of the
+ * file rather than of the machine, so no join is needed and none is done.
+ */
+export async function modelSizes(modelIds: Uuid[]): Promise<(number | null)[]> {
+  if (modelIds.length === 0) return [];
+  const rows = await query<{ id: string; size_bytes: string | null }>(
+    'SELECT id, size_bytes FROM models WHERE id = ANY($1::uuid[])',
+    [modelIds],
+  );
+  const byId = new Map(rows.map((r) => [r.id, r.size_bytes === null ? null : Number(r.size_bytes)]));
+  // Preserve the caller's order, and keep a model we know nothing about as a
+  // null rather than dropping it — `cost.ts` folds that into `partial`.
+  return modelIds.map((id) => byId.get(id) ?? null);
 }

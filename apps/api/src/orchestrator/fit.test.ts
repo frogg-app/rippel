@@ -151,3 +151,21 @@ describe('formatScore', () => {
     expect(formatScore(512 * 1024 ** 2)).toBe('512 MB');
   });
 });
+
+describe('the ledger only ever reorders machines, never excludes them', () => {
+  // `rankByFit` is private; its contract is stated through `assess`, which is
+  // the whole of its decision. These pin the properties the caller relies on.
+
+  it('treats an unassessable machine as fine rather than demoting it', () => {
+    // A machine with no history must not lose to one that merely has some.
+    expect(assess(1000, NO_EVIDENCE).verdict).toBe('unknown');
+    expect(assess(1000, NO_EVIDENCE).verdict).not.toBe('too-big');
+  });
+
+  it('demotes only on a failure at or below this size', () => {
+    // The single condition that moves a machine to the back of the queue.
+    const seen: FitEvidence = { ceiling: 100, floor: 500, observations: 20 };
+    expect(assess(499, seen).verdict).not.toBe('too-big');
+    expect(assess(500, seen).verdict).toBe('too-big');
+  });
+});

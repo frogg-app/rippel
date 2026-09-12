@@ -21,6 +21,8 @@ import { preflight } from './preflight.js';
 import type { JobRow } from './jobs.js';
 import { setSizeScore } from './jobs.js';
 import { sizeOfJob } from './cost.js';
+import { dimensionsFor } from '../compiler/compile.js';
+import { modelSizes } from './select.js';
 import { withOffload } from '../workflows/offload.js';
 import { memoryProfileForBackend } from './memory.js';
 
@@ -118,7 +120,16 @@ export async function dispatch(job: JobRow, clientId: string): Promise<Dispatche
   // Claim a backend before choosing the graph or compiling: which template
   // fits depends on where *this* backend has the file, and the filenames we
   // compile in are only correct for the backend that reported them.
-  const backend = await pickBackend(job.params.modelId);
+  //
+  // The ordering wants a size, and a size wants a template, which is the
+  // dependency this comment just described in the other direction. It is broken
+  // with a *family-level* template lookup — the same call without the backend's
+  // file list — used only to rank. That is sound for this purpose: the
+  // folder-aware variants differ from their siblings in which loader reads the
+  // model, not in resolutions or frame grids, so the two produce the same score.
+  // The exact score, from the template actually chosen, is recorded below.
+  const ranking = await rankingScore(job, family, model?.filename ?? null);
+  const backend = await pickBackend(job.params.modelId, ranking);
   const choice = await chooseTemplate({
     modelId: job.params.modelId,
     capability: job.params.kind,
@@ -248,4 +259,42 @@ export async function dispatch(job: JobRow, clientId: string): Promise<Dispatche
     ),
     modelLabel: model?.display_name ?? family,
   };
+}
+
+
+/**
+ * A size for choosing between machines, before a machine has been chosen.
+ *
+ * Best-effort by construction: every failure path returns undefined, which
+ * `pickBackend` reads as "rank by load alone" — exactly what it did before any
+ * of this existed. Nothing here may prevent a dispatch.
+ */
+async function rankingScore(
+  job: JobRow,
+  family: string,
+  filename: string | null,
+): Promise<number | undefined> {
+  try {
+    const choice = await chooseTemplate({
+      modelId: job.params.modelId,
+      capability: job.params.kind,
+      family,
+      filename,
+    });
+    if (!choice) return undefined;
+    const { width, height } = dimensionsFor(job.params.aspect, choice.template.manifest);
+    const sizes = await modelSizes([
+      job.params.modelId,
+      ...(job.params.loras ?? []).map((l) => l.modelId),
+    ]);
+    return sizeOfJob({
+      manifest: choice.template.manifest,
+      params: job.params,
+      width,
+      height,
+      fileBytes: sizes,
+    }).score;
+  } catch {
+    return undefined;
+  }
 }
