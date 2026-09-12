@@ -38,6 +38,7 @@ const UNKNOWN = {
   state: 'unknown' as const,
   templateLabel: null,
   isFallback: false,
+  videoLimits: null,
   summary: null,
   steps: [] as string[],
 };
@@ -785,6 +786,7 @@ describe('what the picker hides', () => {
           state: 'blocked' as const,
           templateLabel: 'Text to video (LTX-Video)',
           isFallback: false,
+          videoLimits: null,
           summary:
             'the checkpoint is in a folder ComfyUI cannot load it from and the T5 text encoder is not installed.',
           steps: ['Move it into models/checkpoints.'],
@@ -1120,3 +1122,83 @@ describe('extra styles', () => {
 function formatted(seed: number): string {
   return String(seed).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
 }
+
+describe('per-model video limits', () => {
+  /** `img2vid-svd`'s real budget: 25 frames, no grid. */
+  const SVD_LIMITS = {
+    frames: { min: 2, max: 25 },
+    frameQuantum: null,
+    fps: { min: 3, max: 30 },
+    motion: { min: 1, max: 1023 },
+  };
+
+  async function readinessSays(limits: typeof SVD_LIMITS | null) {
+    const { readinessApi } = await import('../lib/api-jobs');
+    vi.mocked(readinessApi.get).mockImplementation(async () => ({
+      ...UNKNOWN,
+      state: 'ready' as const,
+      videoLimits: limits,
+    }));
+  }
+
+  it('bounds the duration slider to what the selected model can sample', async () => {
+    // Before this the slider read 1..6 for every model, so an SVD clip longer
+    // than a second was offered, submitted, and refused by the compiler.
+    const user = userEvent.setup();
+    await readinessSays(SVD_LIMITS);
+    render(
+      <>
+        <ModeToggle />
+        <CreatePage />
+      </>,
+    );
+    await screen.findByRole('radio', { name: /SDXL Base/i });
+    await user.click(screen.getByRole('radio', { name: 'Video' }));
+
+    const duration = await screen.findByRole('slider', { name: /duration/i });
+    await waitFor(() => expect(duration).toHaveAttribute('max', '1'));
+    // And the hint names the real reason, rather than guessing about the card.
+    expect(screen.getByText(/samples up to 25 frames/i)).toBeInTheDocument();
+  });
+
+  it('submits a length the model accepts even though the form opened at four seconds', async () => {
+    const user = userEvent.setup();
+    await readinessSays(SVD_LIMITS);
+    render(
+      <>
+        <ModeToggle />
+        <CreatePage />
+      </>,
+    );
+    await screen.findByRole('radio', { name: /SDXL Base/i });
+    await user.type(screen.getByRole('textbox', { name: /prompt/i }), 'a paper boat');
+    await user.click(screen.getByRole('radio', { name: 'Video' }));
+    await screen.findByRole('slider', { name: /duration/i });
+    await user.click(screen.getByRole('radio', { name: /Hunyuan/i }));
+    await user.click(screen.getByRole('button', { name: /^generate$/i }));
+
+    await waitFor(() => expect(created).toHaveLength(1));
+    const video = created[0]!.video!;
+    // The form's own default is 4s at 25 fps — 100 frames. Clamped to the
+    // budget, not sent and rejected.
+    expect(video.lengthSeconds * video.fps).toBeLessThanOrEqual(25);
+  });
+
+  it('keeps the widest bounds when the server does not say', async () => {
+    // An image capability, or an unreachable endpoint. Neither should narrow
+    // the control: this is what the screen did before limits existed.
+    const user = userEvent.setup();
+    await readinessSays(null);
+    render(
+      <>
+        <ModeToggle />
+        <CreatePage />
+      </>,
+    );
+    await screen.findByRole('radio', { name: /SDXL Base/i });
+    await user.click(screen.getByRole('radio', { name: 'Video' }));
+
+    const duration = await screen.findByRole('slider', { name: /duration/i });
+    expect(duration).toHaveAttribute('max', '6');
+  });
+});

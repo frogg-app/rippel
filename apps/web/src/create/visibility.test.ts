@@ -43,7 +43,7 @@ function map(
     Object.fromEntries(
       Object.entries(states).map(([id, state]) => [
         id,
-        { state, templateLabel: null, isFallback: false, summary: null, steps: [] },
+        { state, templateLabel: null, isFallback: false, videoLimits: null, summary: null, steps: [] },
       ]),
     );
   return { here: build(here), other: build(other), loading: false };

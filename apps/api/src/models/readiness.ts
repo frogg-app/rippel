@@ -56,6 +56,7 @@ import type {
 
 import { comboOptions, type ObjectInfo } from '../lib/comfy.js';
 import { objectInfoFor } from '../orchestrator/preflight.js';
+import { videoLimitsFor } from '../workflows/limits.js';
 import {
   modelBasename,
   requirementSite,
@@ -424,6 +425,9 @@ export function analyse(input: ReadinessInput): BackendReadiness {
     templateLabel: manifest.label,
     capability: manifest.capability,
     isFallback: manifest.isFallback === true,
+    // Derived from this manifest's own constraints, so the form's duration and
+    // rate controls cannot offer a clip the compiler will then reject.
+    videoLimits: videoLimitsFor(manifest),
     modelId: input.modelId,
     modelLabel: input.modelLabel,
     ready: reports.every((r) => r.status === 'satisfied') && missingNodeClasses.length === 0,

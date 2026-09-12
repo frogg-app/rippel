@@ -12,7 +12,7 @@
  * (what a `JobEvent` does to the job on screen).
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { Job, Model } from '@comfy/shared';
+import type { Job, Model, VideoLimits } from '@comfy/shared';
 import { SparkIcon } from '../components/icons';
 import { Chips, Group, Segmented, Slider } from '../create/Controls';
 import { AdvancedDrawer } from '../create/AdvancedDrawer';
@@ -29,10 +29,9 @@ import {
   modeOfKind,
   MAX_BATCH,
   MIN_BATCH,
-  VIDEO_FPS_OPTIONS,
-  VIDEO_LENGTH_MAX,
-  VIDEO_LENGTH_MIN,
-  VIDEO_LENGTH_STEP,
+  clampVideo,
+  type VideoBounds,
+  videoBoundsFor,
   QUALITY_LABELS,
   QUALITY_PRESETS,
   checkSubmittable,
@@ -51,6 +50,31 @@ import { partitionModels } from '../create/visibility';
 import { placeInQueue, refreshQueue, useQueue } from '../lib/api-queue';
 import { isTerminal } from '../create/jobProgress';
 import styles from './CreatePage.module.css';
+
+/**
+ * What the duration slider says under itself.
+ *
+ * The old hint was one sentence for every model — "about six seconds is the
+ * most a 16 GB card decodes" — which was a guess about the card, not a fact
+ * about the model, and it was wrong in the direction that mattered: Stable
+ * Video Diffusion stops at 25 frames, so its ceiling is one second at 25 fps
+ * and no amount of VRAM changes that. Now that the server sends the frame
+ * budget, the hint can name the real reason the slider stops where it does.
+ */
+function videoHint(
+  model: Model | null,
+  limits: VideoLimits | null,
+  bounds: VideoBounds,
+): string {
+  if (!limits) {
+    return 'Longer clips cost more memory and time.';
+  }
+  const name = model?.displayName ?? 'This model';
+  return (
+    `${name} samples up to ${limits.frames.max} frames, which is ${bounds.lengthMax}s ` +
+    `at this rate. Longer clips cost more memory and time.`
+  );
+}
 
 export function CreatePage() {
   const [form, setForm] = useState<CreateFormState>(initialFormState);
@@ -138,6 +162,19 @@ export function CreatePage() {
     ? isRunnable(selectedModel, kind, capabilities, readiness)
     : false;
 
+  // What *this* model can sample, as the server derived it from the template's
+  // own constraints. Null until readiness answers, for an image capability, or
+  // when the endpoint could not be reached — all three fall back to the widest
+  // bounds, which is what this screen used before it asked.
+  const videoLimits = selectedModel ? readiness.here[selectedModel.id]?.videoLimits ?? null : null;
+  // Clamped during render rather than written back into form state: an effect
+  // would leave one frame in which a rejected length is on screen and armed,
+  // and a write-back would throw away the 6 seconds the user picked for LTX the
+  // moment they glanced at SVD. `form.video` stays the user's intent; `video`
+  // is what this model would run.
+  const video = clampVideo(form.video, videoLimits);
+  const videoBounds = videoBoundsFor(videoLimits, video.fps);
+
   const busy = Boolean(stage.job && !isTerminal(stage.job.status)) || stage.submitting;
   const submittable = useMemo(
     () => checkSubmittable(form, { modelSupported: supported, busy }),
@@ -148,7 +185,7 @@ export function CreatePage() {
     if (!submittable.ok) return;
     // The seed is settled *before* the request, so what the drawer shows is
     // what the sampler gets. `prepareSubmit` re-rolls it unless it is locked.
-    const submitted = prepareSubmit(form);
+    const submitted = prepareSubmit({ ...form, video });
     setForm(submitted);
     void stage.submit(toGenerationParams(submitted)).then(() => {
       // Ask straight away rather than waiting out the poll: the job you just
@@ -156,7 +193,7 @@ export function CreatePage() {
       // button.
       refreshQueue();
     });
-  }, [form, stage, submittable.ok]);
+  }, [form, video, stage, submittable.ok]);
 
   const remix = useCallback(
     (job: Job) => {
@@ -233,20 +270,23 @@ export function CreatePage() {
                 <Slider
                   label="Duration"
                   accent
-                  min={VIDEO_LENGTH_MIN}
-                  max={VIDEO_LENGTH_MAX}
-                  step={VIDEO_LENGTH_STEP}
-                  value={form.video.lengthSeconds}
-                  display={`${form.video.lengthSeconds}s`}
-                  valueText={`${form.video.lengthSeconds} seconds`}
-                  hint="Longer clips cost more memory and time. About six seconds is the most a 16 GB card decodes."
-                  onChange={(lengthSeconds) => patch({ video: { ...form.video, lengthSeconds } })}
+                  min={videoBounds.lengthMin}
+                  max={videoBounds.lengthMax}
+                  step={videoBounds.lengthStep}
+                  value={video.lengthSeconds}
+                  display={`${video.lengthSeconds}s`}
+                  valueText={`${video.lengthSeconds} seconds`}
+                  hint={videoHint(selectedModel, videoLimits, videoBounds)}
+                  onChange={(lengthSeconds) => patch({ video: { ...video, lengthSeconds } })}
                 />
                 <Chips
                   label="Frame rate"
-                  value={String(form.video.fps)}
-                  options={VIDEO_FPS_OPTIONS.map((fps) => ({ value: String(fps), label: `${fps} fps` }))}
-                  onChange={(fps) => patch({ video: { ...form.video, fps: Number(fps) } })}
+                  value={String(video.fps)}
+                  options={videoBounds.fpsOptions.map((fps) => ({
+                    value: String(fps),
+                    label: `${fps} fps`,
+                  }))}
+                  onChange={(fps) => patch({ video: { ...video, fps: Number(fps) } })}
                 />
               </Group>
             </div>
@@ -304,9 +344,9 @@ export function CreatePage() {
             {submittable.reason ?? (
               <>
                 {mode === 'video'
-                  ? `${form.video.lengthSeconds}s clip`
+                  ? `${video.lengthSeconds}s clip`
                   : `${form.batchSize} ${form.batchSize === 1 ? 'image' : 'images'}`}{' '}
-                &middot; about {estimateSeconds(form)} seconds
+                &middot; about {estimateSeconds({ ...form, video })} seconds
               </>
             )}
           </div>

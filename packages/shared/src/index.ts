@@ -527,6 +527,56 @@ export interface ModelRequirementReport {
 }
 
 /**
+ * What a video template can actually sample, in the numbers a form needs.
+ *
+ * The Create screen asks the user for a length in seconds and a frame rate,
+ * because that is how a person thinks about a clip. A template constrains
+ * neither: it constrains the *frame count* those two multiply out to, and it
+ * does so differently per family — Stable Video Diffusion tops out at 25
+ * frames, LTX-Video at 161. A form carrying one hardcoded range therefore has
+ * to be wrong about every family but the one it was written for, and it was
+ * written for LTX: 6 seconds at 25 fps is 150 frames, so *every* SVD clip
+ * longer than a second was rejected by the compiler after the user had already
+ * pressed Generate.
+ *
+ * So the server sends the frame budget and the client does the arithmetic. The
+ * division of labour is deliberate: `frames` and `fps` are facts about the
+ * model that only the manifest knows, while "what should the duration slider's
+ * maximum be at the rate currently selected" is a question about a control that
+ * only the form knows it has. Sending seconds instead would bake this screen's
+ * two-control layout into the API.
+ *
+ * Every field mirrors a manifest constraint exactly, so a value the form allows
+ * is a value the compiler accepts. Out-of-range values are still rejected
+ * rather than clamped server-side; this makes the form stop producing them.
+ */
+export interface VideoLimits {
+  /**
+   * Frame counts the template's `frameCount` input accepts, as the manifest
+   * constraint states them.
+   */
+  frames: { min: number; max: number };
+  /**
+   * The grid frame counts snap onto, as `quantum * n + 1` — 8 for LTX-Video, 4
+   * for Hunyuan. Null when the family samples any count, which is SVD.
+   *
+   * The compiler rounds *up* onto this grid, so a form that offers a length
+   * whose frame count lands just under `frames.max` can still be pushed over
+   * it. A client computing a maximum duration must snap the same way.
+   */
+  frameQuantum: number | null;
+  /** Rates the template's `fps` input accepts. */
+  fps: { min: number; max: number };
+  /**
+   * The family's motion knob, when it has one — a trained motion bucket on SVD
+   * (1..1023), conditioning-image compression on LTX-Video, nothing at all on
+   * WAN. Null means the template binds no `motion` input and sending one is an
+   * error, which is why this is a presence check and not a range with defaults.
+   */
+  motion: { min: number; max: number } | null;
+}
+
+/**
  * What a given model + capability needs on a given backend, what is there, what
  * is not, and what would fix it.
  *
@@ -542,6 +592,11 @@ export interface BackendReadiness {
   capability: JobKind;
   /** True when the graph is a generic best guess rather than authored. */
   isFallback: boolean;
+  /**
+   * What this template can sample, for a video capability. Null for an image
+   * template, which has no frame budget to report.
+   */
+  videoLimits: VideoLimits | null;
   /** Null when readiness was asked about a template rather than a model. */
   modelId: Uuid | null;
   modelLabel: string | null;

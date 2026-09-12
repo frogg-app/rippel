@@ -63,6 +63,8 @@ export {
 
 export { isNodeLink, parseInputPath, resolveInputPath } from './paths.js';
 
+export { videoLimitsFor } from './limits.js';
+
 export type { CapabilityOffer, TemplateIndex } from './registry.js';
 export {
   TEMPLATES,

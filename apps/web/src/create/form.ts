@@ -15,6 +15,7 @@ import type {
   JobKind,
   LoraSelection,
   QualityPreset,
+  VideoLimits,
 } from '@comfy/shared';
 import type { CreateMode } from './mode';
 
@@ -153,9 +154,19 @@ export const MIN_BATCH = 1;
 export const MAX_BATCH = 8;
 
 /**
- * Video length and rate. The bounds mirror the LTX-Video template's frame
- * budget (9 to 161 frames) at watchable rates: 25 fps is what the model was
- * trained at, so it is the default and the longest clip at that rate is 6.4s.
+ * Video length and rate.
+ *
+ * These are the *widest* controls the screen will ever draw, not what any one
+ * model accepts. They mirror the LTX-Video template's frame budget (9 to 161
+ * frames) at watchable rates: 25 fps is what the model was trained at, so it is
+ * the default and the longest clip at that rate is 6.4s.
+ *
+ * They used to be the only bounds, which is why every Stable Video Diffusion
+ * clip longer than a second was rejected — SVD samples at most 25 frames, and
+ * the default 4s at 25 fps asks for 100. The real per-model bounds come from
+ * the server as `VideoLimits`; see `videoBoundsFor` below. This range is what
+ * the controls fall back to before the server has answered, and a request built
+ * on it is no worse than what the screen sent before.
  */
 export const VIDEO_LENGTH_MIN = 1;
 export const VIDEO_LENGTH_MAX = 6;
@@ -166,6 +177,105 @@ export type VideoFps = (typeof VIDEO_FPS_OPTIONS)[number];
 export interface VideoState {
   lengthSeconds: number;
   fps: number;
+}
+
+// ------------------------------------------------------- per-model video bounds
+
+/** What the duration slider and the rate chips should offer for one model. */
+export interface VideoBounds {
+  lengthMin: number;
+  lengthMax: number;
+  lengthStep: number;
+  fpsOptions: readonly number[];
+}
+
+export const DEFAULT_VIDEO_BOUNDS: VideoBounds = {
+  lengthMin: VIDEO_LENGTH_MIN,
+  lengthMax: VIDEO_LENGTH_MAX,
+  lengthStep: VIDEO_LENGTH_STEP,
+  fpsOptions: VIDEO_FPS_OPTIONS,
+};
+
+/**
+ * Frames a length and rate will actually sample.
+ *
+ * This mirrors `videoFrameCount` in the API compiler, including the rounding
+ * *up* onto the family's grid, because the number the compiler computes is the
+ * number its constraint check rejects. Rounding to nearest here would let the
+ * slider offer a duration that snaps one group past the ceiling.
+ */
+export function videoFrameCount(lengthSeconds: number, fps: number, quantum: number | null): number {
+  const raw = Math.round(lengthSeconds * fps);
+  if (!quantum || quantum <= 1) return raw;
+  const groups = Math.ceil((raw - 1) / quantum);
+  return Math.max(0, groups) * quantum + 1;
+}
+
+/** The rates this family allows, from the ones the screen has chips for. */
+function fpsOptionsFor(limits: VideoLimits): readonly number[] {
+  const allowed = VIDEO_FPS_OPTIONS.filter((fps) => fps >= limits.fps.min && fps <= limits.fps.max);
+  // A family whose range excludes every chip we draw. Rather than render no
+  // rate at all, offer the nearest end of its range as a single option — the
+  // user still gets a working control and the request is still in range.
+  if (allowed.length === 0) return [limits.fps.max];
+  return allowed;
+}
+
+/**
+ * Duration bounds for one model at the rate currently selected.
+ *
+ * The server sends a frame budget, not a duration, because seconds are a
+ * property of this screen's two controls and frames are a property of the
+ * model. Turning one into the other needs the rate, so it happens here, per
+ * render, and changes when the user picks a different rate: SVD's 25 frames is
+ * one second at 25 fps and two at 12.
+ *
+ * The `while` loops are not defensive padding. `frames.max / fps` is a duration
+ * whose frame count can still snap *up* past the ceiling on a quantum family,
+ * and the step grid means the nearest allowed duration is not simply the
+ * quotient. Walking one step is cheaper than inverting the snap, and it cannot
+ * be wrong.
+ */
+export function videoBoundsFor(limits: VideoLimits | null, fps: number): VideoBounds {
+  if (!limits) return DEFAULT_VIDEO_BOUNDS;
+  const step = VIDEO_LENGTH_STEP;
+  const quantum = limits.frameQuantum;
+  const frames = (length: number) => videoFrameCount(length, fps, quantum);
+  const round = (value: number) => Math.round(value / step) * step;
+
+  let lengthMin = Math.max(step, round(Math.ceil((limits.frames.min / fps) / step) * step));
+  while (frames(lengthMin) < limits.frames.min) lengthMin = round(lengthMin + step);
+
+  let lengthMax = round(Math.floor((limits.frames.max / fps) / step) * step);
+  while (lengthMax > step && frames(lengthMax) > limits.frames.max) lengthMax = round(lengthMax - step);
+
+  // A rate so high that no allowed duration exists on the step grid. Collapse
+  // to a single point rather than hand back an inverted range.
+  if (lengthMax < lengthMin) lengthMax = lengthMin;
+
+  return { lengthMin, lengthMax, lengthStep: step, fpsOptions: fpsOptionsFor(limits) };
+}
+
+/**
+ * The video settings this model would actually run, from the ones on the form.
+ *
+ * Applied during render and again at submit, rather than written back into form
+ * state by an effect. An effect runs after the first paint, so the frame in
+ * between shows — and could submit — a length the model rejects; and a write-back
+ * would lose the user's chosen 6 seconds the moment they glanced at SVD, so
+ * switching back to LTX would silently keep the clamped 1 second.
+ */
+export function clampVideo(video: VideoState, limits: VideoLimits | null): VideoState {
+  if (!limits) return video;
+  const options = fpsOptionsFor(limits);
+  // Nearest allowed rate, not the first: a form sitting at 25 fps looking at a
+  // family that caps at 24 wants 24, not 12.
+  const fps = options.reduce((best, option) =>
+    Math.abs(option - video.fps) < Math.abs(best - video.fps) ? option : best,
+  );
+  const bounds = videoBoundsFor(limits, fps);
+  const lengthSeconds = Math.min(bounds.lengthMax, Math.max(bounds.lengthMin, video.lengthSeconds));
+  return { lengthSeconds, fps };
 }
 
 /**
