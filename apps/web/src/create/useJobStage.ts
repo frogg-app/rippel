@@ -14,7 +14,7 @@
  * that live in the Library instead.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { GenerationParams, Job, JobEvent } from '@comfy/shared';
+import type { JobFit, GenerationParams, Job, JobEvent } from '@comfy/shared';
 import { type ConnectionState, jobsApi, subscribeToEvents } from '../lib/api-jobs';
 import { adoptCreated, applyJobEvent, isTerminal } from './jobProgress';
 
@@ -26,6 +26,15 @@ export interface JobStageState {
   /** A submit that failed — the API's own message, which names the control. */
   submitError: string | null;
   submitting: boolean;
+  /**
+   * Whether the machine that took this job has ever finished one this big.
+   *
+   * Only ever a warning. The verdict comes from a bracket learned from that
+   * machine's own history, and history is not a promise in either direction —
+   * so a job judged `too-big` still runs, and this is what says so while it
+   * does. Cleared whenever the stage is.
+   */
+  fit: JobFit | null;
 }
 
 export interface JobStage extends JobStageState {
@@ -57,6 +66,7 @@ export function useJobStage(): JobStage {
     connection: 'connecting',
     submitError: null,
     submitting: false,
+    fit: null,
   });
 
   // The reducer needs the current job, but resubscribing the socket on every
@@ -108,16 +118,23 @@ export function useJobStage(): JobStage {
 
   const submit = useCallback(
     async (params: GenerationParams) => {
-      setState((prev) => ({ ...prev, submitting: true, submitError: null }));
+      setState((prev) => ({ ...prev, submitting: true, submitError: null, fit: null }));
       try {
-        const { job } = await jobsApi.create(params);
+        const { job, fit } = await jobsApi.create(params);
         writeActiveJobId(job.id);
         // The socket may already have delivered `job.created` and progress
         // frames for this job while the POST was in flight; keep whichever is
         // further along rather than snapping the bar back to queued.
         const current = jobRef.current;
         if (!current || current.id !== job.id) setJob(job);
-        setState((prev) => ({ ...prev, submitting: false }));
+        // Only a verdict worth reading is kept: `fits` and `unknown` both mean
+        // "say nothing", and a banner that appears on every job teaches people
+        // to ignore the one that matters.
+        setState((prev) => ({
+          ...prev,
+          submitting: false,
+          fit: fit && (fit.verdict === 'too-big' || fit.verdict === 'unproven') ? fit : null,
+        }));
         return job;
       } catch (error) {
         setState((prev) => ({
@@ -145,7 +162,7 @@ export function useJobStage(): JobStage {
   const clear = useCallback(() => {
     writeActiveJobId(null);
     setJob(null);
-    setState((prev) => ({ ...prev, submitError: null }));
+    setState((prev) => ({ ...prev, submitError: null, fit: null }));
   }, [setJob]);
 
   return { ...state, submit, cancel, clear };

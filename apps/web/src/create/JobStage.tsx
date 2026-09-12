@@ -25,7 +25,7 @@
  * step/fraction behaviour this screen has always had.
  */
 import { useEffect, useState } from 'react';
-import type { Asset, Job, JobFailure, JobProgress } from '@comfy/shared';
+import type { Asset, Job, JobFailure, JobFit, JobProgress } from '@comfy/shared';
 import { type QueuePlace, ordinal } from '../lib/api-queue';
 import { SparkIcon } from '../components/icons';
 import { Mark } from '../components/Mark';
@@ -37,6 +37,7 @@ export function JobStage({
   job,
   submitting,
   submitError,
+  fit = null,
   disconnected,
   place,
   onCancel,
@@ -46,6 +47,13 @@ export function JobStage({
   job: Job | null;
   submitting: boolean;
   submitError: string | null;
+  /**
+   * Whether this machine has ever finished a job this big. Only the verdicts
+   * worth reading reach here — see `useJobStage`, which drops `fits` and
+   * `unknown` so that a banner on every job does not train people to ignore the
+   * one that matters.
+   */
+  fit?: JobFit | null;
   /** The socket is down. Shown quietly; the job itself is unaffected. */
   disconnected: boolean;
   /**
@@ -85,6 +93,14 @@ export function JobStage({
           onCancel={onCancel}
           onDismiss={onDismiss}
         />
+
+        {fit?.note ? (
+          <p className={styles.fitWarning} role="status">
+            <strong>{fit.verdict === 'too-big' ? 'This may not fit.' : 'Bigger than usual.'}</strong>{' '}
+            {fit.note} It is running anyway — if it fails, the Memory setting for that machine will
+            let it finish more slowly.
+          </p>
+        ) : null}
 
         <div className={styles.canvas}>
           {submitError ? (

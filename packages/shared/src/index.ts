@@ -139,6 +139,22 @@ export interface JobProgress {
  */
 export type MemoryProfile = 'fast' | 'balanced' | 'low-vram' | 'minimal-vram';
 
+/**
+ * Whether a job is likely to fit on the machine that will run it, judged only
+ * from what that machine has already done.
+ *
+ * `unknown` is the normal answer on a machine that has finished nothing yet,
+ * and means "say nothing" rather than "probably fine". See `orchestrator/fit.ts`
+ * for why this is empirical rather than a comparison against reported VRAM.
+ */
+export interface JobFit {
+  verdict: 'fits' | 'unproven' | 'too-big' | 'unknown';
+  /** One sentence, or null when there is nothing worth saying. */
+  note: string | null;
+  /** How many finished jobs this machine has taught us. */
+  observations: number;
+}
+
 /** Why a job failed, sorted into something a person can act on. */
 export type JobFailureKind =
   | 'out-of-memory'

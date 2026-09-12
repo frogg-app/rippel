@@ -591,3 +591,22 @@
 .failureDetail summary:hover {
   color: var(--text);
 }
+
+/*
+ * "This may not fit" — a warning that sits above the canvas while the job runs.
+ *
+ * Amber rather than red on purpose. The verdict comes from a bracket learned
+ * from that machine's own history, and history is not a promise: a job that
+ * OOMed at this size once may have had a browser open at the time. So the job
+ * runs, and this says what to reach for if it does not finish.
+ */
+.fitWarning {
+  margin: 0 0 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--warn, #f6c177);
+  border-radius: 10px;
+  background: var(--warn-tint, rgba(246, 193, 119, 0.1));
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text);
+}

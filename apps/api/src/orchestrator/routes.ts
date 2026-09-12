@@ -9,11 +9,13 @@
 
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import type { GenerationParams, Job, JobEvent } from '@comfy/shared';
+import type { GenerationParams, Job, JobEvent, JobFit } from '@comfy/shared';
 import { query, queryOne } from '../db.js';
 import { compile, TemplateError, ValidationError } from '../compiler/index.js';
 import { chooseTemplate } from '../models/workflow-choice.js';
-import { candidatesFor, filenamesOn } from './select.js';
+import { candidatesFor, filenamesOn, sizesOn } from './select.js';
+import { sizeOfJob } from './cost.js';
+import { assessOn } from './fit.js';
 import { preflight } from './preflight.js';
 import { createJob, getJob, queuePosition, type JobRow } from './jobs.js';
 import { jobWithAssets } from './runner.js';
@@ -178,7 +180,36 @@ export default async function jobRoutes(app: FastifyInstance) {
       const job: Job = { ...(await jobWithAssets(row)), queuePosition: await queuePosition(row) };
 
       publish(row.user_id, { type: 'job.created', job });
-      return reply.code(202).send({ job });
+
+      // Whether this machine has ever finished something this big. Best-effort
+      // and never a refusal: the evidence is a bracket learned from history, and
+      // history is not a promise in either direction — a machine that OOMed at
+      // this size once may have had a browser open at the time. So it warns and
+      // the job still runs. See `fit.ts`.
+      let fit: JobFit | undefined;
+      try {
+        const sizes = await sizesOn(backend.id, [
+          params.modelId,
+          ...(params.loras ?? []).map((l) => l.modelId),
+        ]);
+        const size = sizeOfJob({
+          manifest: template.manifest,
+          params,
+          width: compiled.resolved.width,
+          height: compiled.resolved.height,
+          fileBytes: Object.values(sizes),
+        });
+        const assessment = await assessOn(backend.id, size.score);
+        fit = {
+          verdict: assessment.verdict,
+          note: assessment.note,
+          observations: assessment.observations,
+        };
+      } catch {
+        // A machine we cannot score is one we say nothing about.
+      }
+
+      return reply.code(202).send({ job, fit });
     },
   );
 

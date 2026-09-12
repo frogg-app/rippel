@@ -111,3 +111,45 @@ describe('a failed job leads with what it means', () => {
     expect(screen.getByText('A file is missing')).toBeInTheDocument();
   });
 });
+
+describe('the fit warning', () => {
+  const running: Job = { ...failedJob(null, ''), status: 'running', error: null, failure: null };
+
+  function paintWith(fit: Parameters<typeof JobStage>[0]['fit']) {
+    render(
+      <JobStage
+        job={running}
+        submitting={false}
+        submitError={null}
+        fit={fit}
+        disconnected={false}
+        place={null}
+        onCancel={() => {}}
+        onRemix={() => {}}
+        onDismiss={() => {}}
+      />,
+    );
+  }
+
+  it('warns when the machine has already failed a job this size', () => {
+    paintWith({
+      verdict: 'too-big',
+      note: 'A job this size has already run out of memory on this machine.',
+      observations: 9,
+    });
+    expect(screen.getByText('This may not fit.')).toBeInTheDocument();
+    expect(screen.getByText(/already run out of memory/)).toBeInTheDocument();
+  });
+
+  it('points at the setting that would make it finish', () => {
+    paintWith({ verdict: 'unproven', note: 'This is larger than anything this machine has finished so far.', observations: 3 });
+    expect(screen.getByText(/Memory setting/)).toBeInTheDocument();
+  });
+
+  it('says nothing at all when there is no verdict worth reading', () => {
+    // A banner on every job trains people to ignore the one that matters.
+    paintWith(null);
+    expect(screen.queryByText(/may not fit/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Bigger than usual/i)).not.toBeInTheDocument();
+  });
+});

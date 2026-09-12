@@ -357,6 +357,7 @@ export function CreatePage() {
         job={stage.job}
         submitting={stage.submitting}
         submitError={stage.submitError}
+        fit={stage.fit}
         disconnected={stage.connection !== 'open'}
         place={place}
         onCancel={stage.cancel}

@@ -19,6 +19,7 @@ import type {
   JobStatus,
   Model,
   Upload,
+  JobFit,
   VideoLimits,
 } from '@comfy/shared';
 import { ApiRequestError } from './api';
@@ -433,10 +434,10 @@ function summarise(
 
 export const jobsApi = {
   /** `POST /jobs` -> 202. Validates, compiles and persists; does not dispatch. */
-  create: (params: GenerationParams, signal?: AbortSignal): Promise<{ job: Job }> =>
+  create: (params: GenerationParams, signal?: AbortSignal): Promise<{ job: Job; fit?: JobFit }> =>
     MOCK.jobs
       ? mockJobs.create(params)
-      : request<{ job: Job }>('/jobs', { method: 'POST', body: { params }, signal }),
+      : request<{ job: Job; fit?: JobFit }>('/jobs', { method: 'POST', body: { params }, signal }),
 
   /**
    * The reload path. A socket only tells you what happened while you were
