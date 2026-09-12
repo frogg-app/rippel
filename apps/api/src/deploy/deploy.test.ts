@@ -60,6 +60,8 @@ interface Row {
   comfy: ComfyState | null;
   backend_id: string | null;
   backend_name: string | null;
+  memory_profile: string;
+  cpu_vae: boolean;
   last_seen_at: Date | null;
   created_at: Date;
 }
@@ -85,6 +87,8 @@ function row(over: Partial<Row> = {}): Row {
     comfy: COMFY,
     backend_id: null,
     backend_name: null,
+    memory_profile: 'balanced',
+    cpu_vae: false,
     last_seen_at: new Date(),
     created_at: new Date('2026-09-01T00:00:00Z'),
     ...over,
@@ -172,6 +176,10 @@ function fakeDb(
       const target = rows.find((r) => r.id === params[0]);
       if (!target) return [];
       if (sql.includes("status = 'offline'")) target.status = 'offline';
+      if (sql.includes('memory_profile = $2')) {
+        target.memory_profile = params[1] as string;
+        target.cpu_vae = params[2] as boolean;
+      }
       if (sql.includes('backend_id = $2')) {
         target.backend_id = params[1] as string;
         target.backend_name = backends.find((b) => b.id === params[1])?.name ?? null;
@@ -232,6 +240,7 @@ function fakeAgent(over: Partial<AgentClient> = {}): AgentClient {
     power: async () => ({ started: true }),
     installHelper: async () => task({ kind: 'install-helper' }),
     comfyLog: async () => [],
+    updateConfig: async () => {},
     ...over,
   };
 }
@@ -941,5 +950,124 @@ describe('the agent release lookup', () => {
       'rippel-agent-macos-amd64',
       'rippel-agent-linux-amd64',
     ]);
+  });
+});
+
+// ---------------------------------------------------------- memory profiles
+
+describe('setting how much memory a machine may use', () => {
+  it('stores the intent, pushes the flags, and restarts ComfyUI', async () => {
+    // ComfyUI reads its arguments at startup and nowhere else, so without the
+    // restart nothing has changed and the control only appears to have worked.
+    const rows = [row()];
+    const pushed: { comfyArgs?: string }[] = [];
+    const powered: string[] = [];
+    const app = await server(ADMIN, {
+      rows,
+      agent: fakeAgent({
+        updateConfig: async (_target, patch) => {
+          pushed.push(patch);
+        },
+        power: async (_target, action) => {
+          powered.push(action);
+          return {};
+        },
+      }),
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/deployments/${D1}/memory`,
+      payload: { profile: 'low-vram', cpuVae: true },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ profile: 'low-vram', cpuVae: true, applied: true, restarted: true });
+    expect(pushed).toEqual([{ comfyArgs: '--lowvram --cpu-vae' }]);
+    expect(powered).toEqual(['restart']);
+    expect(rows[0]!.memory_profile).toBe('low-vram');
+    expect(rows[0]!.cpu_vae).toBe(true);
+  });
+
+  it('sends no flags at all for the fast profile', async () => {
+    const pushed: { comfyArgs?: string }[] = [];
+    const app = await server(ADMIN, {
+      rows: [row()],
+      agent: fakeAgent({
+        updateConfig: async (_t, patch) => {
+          pushed.push(patch);
+        },
+      }),
+    });
+    await app.inject({ method: 'POST', url: `/deployments/${D1}/memory`, payload: { profile: 'fast' } });
+    expect(pushed).toEqual([{ comfyArgs: '' }]);
+  });
+
+  it('saves the choice even when the machine is asleep', async () => {
+    // The case this is built for: you configure a machine while it is off, and
+    // the panel must not silently forget what you chose.
+    const rows = [row({ status: 'offline' })];
+    const app = await server(ADMIN, {
+      rows,
+      agent: fakeAgent({
+        updateConfig: async () => {
+          throw new Error('connect ECONNREFUSED');
+        },
+      }),
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/deployments/${D1}/memory`,
+      payload: { profile: 'minimal-vram' },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ applied: false, restarted: false });
+    expect(res.json().message).toMatch(/did not answer/);
+    // Saved regardless, so the next restart picks it up.
+    expect(rows[0]!.memory_profile).toBe('minimal-vram');
+  });
+
+  it('does not restart a machine that has no ComfyUI running', async () => {
+    const powered: string[] = [];
+    const app = await server(ADMIN, {
+      rows: [row({ comfy: { ...COMFY, running: false } })],
+      agent: fakeAgent({
+        power: async (_t, action) => {
+          powered.push(action);
+          return {};
+        },
+      }),
+    });
+    const res = await app.inject({
+      method: 'POST',
+      url: `/deployments/${D1}/memory`,
+      payload: { profile: 'balanced' },
+    });
+    expect(res.json().restarted).toBe(false);
+    expect(powered).toEqual([]);
+  });
+
+  it('refuses a profile it does not know rather than writing it', async () => {
+    const rows = [row()];
+    const app = await server(ADMIN, { rows });
+    const res = await app.inject({
+      method: 'POST',
+      url: `/deployments/${D1}/memory`,
+      payload: { profile: '--rm -rf' },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(rows[0]!.memory_profile).toBe('balanced');
+  });
+
+  it('is admin-only', async () => {
+    const app = await server(USER, { rows: [row()] });
+    const res = await app.inject({
+      method: 'POST',
+      url: `/deployments/${D1}/memory`,
+      payload: { profile: 'low-vram' },
+    });
+    expect(res.statusCode).toBe(403);
   });
 });

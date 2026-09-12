@@ -28,6 +28,7 @@ import type {
   AgentProbe,
   ComfyState,
   Deployment,
+  MemoryProfile,
   SshInstallInput,
 } from '@comfy/shared';
 import { query as defaultQuery, queryOne as defaultQueryOne } from '../db.js';
@@ -35,6 +36,7 @@ import { env } from '../env.js';
 import { pollBackendNow } from '../lib/backend-poller.js';
 import { AgentError, agentClient as defaultAgentClient, type AgentClient, type AgentTarget } from './agent-client.js';
 import { agentServerUrl, type OriginRequest } from './origin.js';
+import { MEMORY_PROFILES, profileArgs } from './memory-profile.js';
 import {
   AGENT_BINARIES,
   availableBinaries,
@@ -84,6 +86,8 @@ interface DeploymentRow {
   comfy: ComfyState | null;
   backend_id: string | null;
   backend_name: string | null;
+  memory_profile: MemoryProfile;
+  cpu_vae: boolean;
   last_seen_at: Date | null;
   created_at: Date;
 }
@@ -98,6 +102,7 @@ interface PairingRow {
 
 const SELECT = `SELECT d.id, d.name, d.host, d.agent_port, d.platform, d.status, d.token,
                        d.agent_version, d.comfy, d.backend_id, b.name AS backend_name,
+                       d.memory_profile, d.cpu_vae,
                        d.last_seen_at, d.created_at
                   FROM deployments d
                   LEFT JOIN backends b ON b.id = d.backend_id`;
@@ -130,6 +135,8 @@ function toDeployment(row: DeploymentRow): Deployment {
     comfy: row.comfy,
     backendId: row.backend_id,
     backendName: row.backend_name,
+    memoryProfile: row.memory_profile,
+    cpuVae: row.cpu_vae,
     lastSeenAt: row.last_seen_at ? new Date(row.last_seen_at).toISOString() : null,
     createdAt: new Date(row.created_at).toISOString(),
     token: row.token,
@@ -660,6 +667,70 @@ export function makeDeploymentRoutes(deps: DeployDeps = {}) {
         } catch (cause) {
           await db.query(`UPDATE deployments SET status = 'offline' WHERE id = $1`, [row.id]);
           return agentFailure(reply, cause);
+        }
+      },
+    );
+
+    /**
+     * Set how hard this machine should try to fit a job in graphics memory.
+     *
+     * Three steps, in this order, and the order is the point: write the intent,
+     * push the flags, restart. The intent is stored *first* so that a machine
+     * which is asleep still records what it was asked for and applies it on the
+     * next restart — the alternative, only saving once the agent confirms,
+     * means the panel silently forgets what you chose whenever the machine is
+     * off, which is exactly when you are most likely to be setting it up.
+     *
+     * ComfyUI reads its arguments at startup and nowhere else, so a restart is
+     * not an extra courtesy — without it nothing at all has changed. It is done
+     * here rather than left to the operator for the same reason: a control that
+     * appears to have worked and has not is worse than no control.
+     */
+    app.post<{ Params: { id: string }; Body: { profile?: unknown; cpuVae?: unknown } }>(
+      '/deployments/:id/memory',
+      { onRequest: [app.requireAdmin] },
+      async (req, reply) => {
+        const row = await loadOr404(req, reply);
+        if (!row) return;
+
+        const profile = req.body?.profile;
+        if (!MEMORY_PROFILES.some((spec) => spec.id === profile)) {
+          return reply.code(400).send({
+            error: 'invalid_input',
+            field: 'profile',
+            message: `Choose one of ${MEMORY_PROFILES.map((s) => s.id).join(', ')}.`,
+          });
+        }
+        const cpuVae = req.body?.cpuVae === true;
+
+        await db.query(
+          'UPDATE deployments SET memory_profile = $2, cpu_vae = $3 WHERE id = $1',
+          [row.id, profile, cpuVae],
+        );
+
+        const comfyArgs = profileArgs(profile as MemoryProfile, cpuVae);
+        try {
+          await agent.updateConfig(targetOf(row), { comfyArgs });
+          // Only restart when there is something to restart. Asking a machine
+          // with no ComfyUI to restart one produces an error about a state the
+          // operator already knows they are in.
+          const restarted = row.comfy?.installed === true && row.comfy?.running === true;
+          if (restarted) await agent.power(targetOf(row), 'restart');
+          return { profile, cpuVae, comfyArgs, applied: true, restarted };
+        } catch (cause) {
+          // The intent is saved either way. Say which half happened rather than
+          // failing the whole call and leaving the panel unsure what it stored.
+          return reply.code(200).send({
+            profile,
+            cpuVae,
+            comfyArgs,
+            applied: false,
+            restarted: false,
+            message:
+              cause instanceof Error
+                ? `Saved, but the machine did not answer: ${cause.message}`
+                : 'Saved, but the machine did not answer.',
+          });
         }
       },
     );

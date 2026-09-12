@@ -130,6 +130,15 @@ export interface JobProgress {
   phaseLabel?: string | null;
 }
 
+/**
+ * How hard a machine should try to fit a job in graphics memory.
+ *
+ * A closed set rather than raw ComfyUI flags: they change between versions,
+ * several are mutually exclusive, and a typo yields a ComfyUI that will not
+ * start. See `deploy/memory-profile.ts` for what each one launches with.
+ */
+export type MemoryProfile = 'fast' | 'balanced' | 'low-vram' | 'minimal-vram';
+
 /** Why a job failed, sorted into something a person can act on. */
 export type JobFailureKind =
   | 'out-of-memory'
@@ -1005,6 +1014,17 @@ export interface Deployment {
   /** The backend row this deployment's ComfyUI is registered as, if any. */
   backendId: Uuid | null;
   backendName: string | null;
+  /**
+   * How hard this machine should try to fit a job in graphics memory, and
+   * whether the VAE decode runs on the CPU.
+   *
+   * The *intent*, not a reading: it is what rippel last asked for, saved even
+   * when the machine was asleep, so a deployment configured while off applies
+   * it on the next restart. What ComfyUI is actually running with is in the
+   * argv `/system_stats` reports.
+   */
+  memoryProfile: MemoryProfile;
+  cpuVae: boolean;
   lastSeenAt: string | null;
   createdAt: string;
   /**

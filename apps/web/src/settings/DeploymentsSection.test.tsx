@@ -36,6 +36,8 @@ const online: Deployment = {
   comfy: COMFY,
   backendId: null,
   backendName: null,
+  memoryProfile: 'balanced',
+  cpuVae: false,
   lastSeenAt: new Date().toISOString(),
   createdAt: '2026-09-01T00:00:00Z',
   token: 'tok-secret',
@@ -147,6 +149,7 @@ function fakeApi(initial: Deployment[] = [online], over: Partial<DeploymentsApi>
     installComfy: vi.fn(async () => done()),
     updateComfy: vi.fn(async () => done({ kind: 'update-comfyui' })),
     power: vi.fn(async () => ({ started: true })),
+    setMemory: vi.fn(async () => ({ applied: true, restarted: true, comfyArgs: '--lowvram' })),
     installHelper: vi.fn(async () => done({ kind: 'install-helper' })),
     task: vi.fn(async () => ({ task: done(), logOffset: 2 })),
     registerBackend: vi.fn(async () => ({
@@ -588,5 +591,66 @@ describe('an offline machine does not show live-looking state', () => {
     expect(states).toContain('on');
     expect(states).not.toContain('stale');
     expect(screen.queryByText(/Last heard from/)).not.toBeInTheDocument();
+  });
+});
+
+describe('the memory profile control', () => {
+  it('sends the chosen profile and says the engine restarted', async () => {
+    const { api } = fakeApi();
+    render(<DeploymentsSection api={api} />);
+    await screen.findByText('studio-4090');
+
+    await userEvent.click(screen.getByRole('radio', { name: 'Low VRAM' }));
+    await userEvent.click(screen.getByRole('button', { name: /Apply and restart/ }));
+
+    await waitFor(() => expect(api.setMemory).toHaveBeenCalledWith('d1', 'low-vram', false));
+    expect(await screen.findByText(/Applied, and the engine restarted/)).toBeInTheDocument();
+  });
+
+  it('will not apply until something has changed', async () => {
+    // The button is disabled with a reason rather than being a no-op that
+    // restarts the engine for nothing.
+    const { api } = fakeApi();
+    render(<DeploymentsSection api={api} />);
+    await screen.findByText('studio-4090');
+    await userEvent.click(screen.getByRole('button', { name: /Apply and restart/ }));
+    expect(api.setMemory).not.toHaveBeenCalled();
+  });
+
+  it('carries the CPU decode switch independently of the profile', async () => {
+    const { api } = fakeApi();
+    render(<DeploymentsSection api={api} />);
+    await screen.findByText('studio-4090');
+
+    await userEvent.click(screen.getByRole('checkbox', { name: /Decode on the CPU/ }));
+    await userEvent.click(screen.getByRole('button', { name: /Apply and restart/ }));
+
+    // Profile unchanged, VAE switched: the two are separate trades.
+    await waitFor(() => expect(api.setMemory).toHaveBeenCalledWith('d1', 'balanced', true));
+  });
+
+  it('reports a machine that was asleep rather than claiming success', async () => {
+    const { api } = fakeApi();
+    vi.mocked(api.setMemory).mockResolvedValueOnce({
+      applied: false,
+      restarted: false,
+      comfyArgs: '--novram',
+      message: 'Saved, but the machine did not answer: connect ECONNREFUSED',
+    });
+    render(<DeploymentsSection api={api} />);
+    await screen.findByText('studio-4090');
+
+    await userEvent.click(screen.getByRole('radio', { name: 'Minimal' }));
+    await userEvent.click(screen.getByRole('button', { name: /Apply and restart/ }));
+
+    expect(await screen.findByText(/did not answer/)).toBeInTheDocument();
+  });
+
+  it('starts from what the machine was last told', async () => {
+    const { api } = fakeApi([{ ...online, memoryProfile: 'minimal-vram', cpuVae: true }]);
+    render(<DeploymentsSection api={api} />);
+    await screen.findByText('studio-4090');
+    expect(screen.getByRole('radio', { name: 'Minimal' })).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByRole('checkbox', { name: /Decode on the CPU/ })).toBeChecked();
   });
 });

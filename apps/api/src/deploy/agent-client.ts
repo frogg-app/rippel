@@ -56,6 +56,11 @@ export interface AgentClient {
     storageToken: string,
   ): Promise<AgentTask>;
   comfyLog(target: AgentTarget): Promise<string[]>;
+  /**
+   * Rewrite the agent's own config. Only the fields given are touched; the
+   * agent persists them and reports the patch back.
+   */
+  updateConfig(target: AgentTarget, patch: { comfyArgs?: string }): Promise<void>;
 }
 
 /**
@@ -144,6 +149,12 @@ export function makeAgentClient(opts: { fetchImpl?: typeof fetch; timeoutMs?: nu
         })
       ).task,
     comfyLog: async (target) => (await call<{ log: string[] }>(target, '/agent/comfyui/log')).log,
+    updateConfig: async (target, patch) => {
+      await call<{ config: Record<string, unknown> }>(target, '/agent/config', {
+        method: 'POST',
+        body: patch,
+      });
+    },
   };
 }
 

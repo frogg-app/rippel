@@ -483,3 +483,63 @@
   color: var(--text);
   font-weight: 600;
 }
+
+/* ------------------------------------------------------------ memory profile */
+
+.memory {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+.memoryHead {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.memoryLabel {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.memoryBlurb {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.memoryChoices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.memoryToggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.memoryHint {
+  color: var(--text-muted);
+}
+
+.memoryFoot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.memoryNote {
+  font-size: 12px;
+  color: var(--text-muted);
+}

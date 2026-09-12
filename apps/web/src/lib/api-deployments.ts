@@ -15,6 +15,7 @@ import type {
   ComfyState,
   Deployment,
   DeploymentInput,
+  MemoryProfile,
   SshInstallInput,
   SshRun,
   Uuid,
@@ -169,6 +170,16 @@ export interface DeploymentsApi {
   installComfy(id: Uuid, accelerator: string): Promise<AgentTask>;
   updateComfy(id: Uuid): Promise<AgentTask>;
   power(id: Uuid, action: 'start' | 'stop' | 'restart'): Promise<unknown>;
+  /**
+   * Set how hard this machine should try to fit a job in graphics memory.
+   * Resolves even when the machine is asleep — the choice is stored either way
+   * and `applied` says whether the machine heard about it yet.
+   */
+  setMemory(
+    id: Uuid,
+    profile: MemoryProfile,
+    cpuVae: boolean,
+  ): Promise<{ applied: boolean; restarted: boolean; comfyArgs: string; message?: string }>;
   installHelper(id: Uuid): Promise<AgentTask>;
   task(id: Uuid, taskId: string, since: number): Promise<{ task: AgentTask; logOffset: number }>;
   registerBackend(id: Uuid, name?: string): Promise<{ deployment: Deployment; adopted: boolean }>;
@@ -205,6 +216,8 @@ export const deploymentsApi: DeploymentsApi = {
   updateComfy: async (id) =>
     (await request<{ task: AgentTask }>(`/deployments/${id}/comfyui/update`, { method: 'POST' })).task,
   power: (id, action) => request(`/deployments/${id}/comfyui/${action}`, { method: 'POST' }),
+  setMemory: (id, profile, cpuVae) =>
+    request(`/deployments/${id}/memory`, { method: 'POST', body: { profile, cpuVae } }),
   installHelper: async (id) =>
     (await request<{ task: AgentTask }>(`/deployments/${id}/helper/install`, { method: 'POST' })).task,
   task: (id, taskId, since) =>

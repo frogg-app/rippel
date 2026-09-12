@@ -21,6 +21,8 @@ import { preflight } from './preflight.js';
 import type { JobRow } from './jobs.js';
 import { setSizeScore } from './jobs.js';
 import { sizeOfJob } from './cost.js';
+import { withOffload } from '../workflows/offload.js';
+import { memoryProfileForBackend } from './memory.js';
 
 export class DispatchError extends Error {
   constructor(
@@ -160,6 +162,13 @@ export async function dispatch(job: JobRow, clientId: string): Promise<Dispatche
   } catch (err) {
     console.warn(`[orchestrator] ${job.id} could not be scored: ${String(err)}`);
   }
+
+  // Cheapen the graph if this machine has been told to trade speed for memory.
+  // Keyed on the *deployment* that manages this backend, because the profile is
+  // a property of the machine rather than of the ComfyUI registration — and a
+  // backend with no deployment simply gets the default and no rewrite.
+  const profile = await memoryProfileForBackend(backend.id);
+  if (profile) compiled.graph = withOffload(compiled.graph, profile);
 
   // An img2img graph names a file on the *backend's* disk, which only exists
   // once we put it there. This has to happen after compiling (the graph must

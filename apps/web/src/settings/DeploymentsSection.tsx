@@ -4,6 +4,7 @@ import type {
   AgentProbe,
   AgentTask,
   Deployment,
+  MemoryProfile,
   SshRun,
 } from '@comfy/shared';
 import { CheckIcon, CopyIcon, DownloadIcon, PlusIcon } from '../library/icons';
@@ -378,6 +379,7 @@ function DeploymentCard({
 
       <NextAction deployment={deployment} />
       <ComfySummary deployment={deployment} now={now} />
+      <MemoryControl deployment={deployment} api={api} onChange={onChange} onError={onError} />
 
       <div className={shared.cardActions}>
         <button type="button" className={shared.action} onClick={() => void test()} disabled={busy !== null}>
@@ -563,6 +565,127 @@ function heartbeatAge(iso: string, now: number): string {
   if (hours < 48) return `${hours} h ago`;
   return `${Math.round(hours / 24)} d ago`;
 }
+
+/**
+ * How much of this machine's memory a job may use.
+ *
+ * ## Why this is a choice and not a number
+ *
+ * The honest question is not "how much VRAM does this card have" — this project
+ * has a whole README section on why that number cannot be trusted — but "how
+ * much slowness will you accept in exchange for bigger models running at all".
+ * A 16 GB card cannot *hold* a 14B video model and can still run one, several
+ * times slower, by streaming the weights from system RAM. That trade is the
+ * only thing a person actually has to decide, so it is the only thing asked.
+ *
+ * ## Why it is saved even when the machine is asleep
+ *
+ * Setting this up is exactly when a machine is most likely to be off. The
+ * server stores the intent first and pushes the flags second, so an offline
+ * machine still records the choice and applies it on its next restart; the
+ * response says which half happened and that is what the note reports.
+ *
+ * ComfyUI reads its arguments only at startup, so applying a profile restarts
+ * it. That is said out loud on the button rather than discovered.
+ */
+function MemoryControl({
+  deployment,
+  api,
+  onChange,
+  onError,
+}: {
+  deployment: Deployment;
+  api: DeploymentsApi;
+  onChange: (next: Deployment) => void;
+  onError: (message: string) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  const [profile, setProfile] = useState<MemoryProfile>(deployment.memoryProfile);
+  const [cpuVae, setCpuVae] = useState(deployment.cpuVae);
+
+  // What is on screen versus what the machine was last told. Apply is only
+  // offered when they differ, so the button is never a no-op dressed as one.
+  const dirty = profile !== deployment.memoryProfile || cpuVae !== deployment.cpuVae;
+
+  const apply = async () => {
+    setBusy(true);
+    setNote(null);
+    try {
+      const result = await api.setMemory(deployment.id, profile, cpuVae);
+      onChange({ ...deployment, memoryProfile: profile, cpuVae });
+      setNote(
+        result.applied
+          ? result.restarted
+            ? 'Applied, and the engine restarted.'
+            : 'Applied. It takes effect the next time the engine starts.'
+          : (result.message ?? 'Saved. It takes effect the next time the machine is reachable.'),
+      );
+    } catch (cause) {
+      onError(cause instanceof Error ? cause.message : 'Could not set the memory profile.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className={styles.memory}>
+      <div className={styles.memoryHead}>
+        <span className={styles.memoryLabel}>Memory</span>
+        <span className={styles.memoryBlurb}>{MEMORY_BLURB[profile]}</span>
+      </div>
+      <div className={styles.memoryChoices} role="radiogroup" aria-label="Memory profile">
+        {MEMORY_OPTIONS.map((option) => (
+          <button
+            key={option.id}
+            type="button"
+            role="radio"
+            aria-checked={profile === option.id}
+            className={profile === option.id ? `${shared.action} ${shared.actionOn}` : shared.action}
+            onClick={() => setProfile(option.id)}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+      <label className={styles.memoryToggle}>
+        <input type="checkbox" checked={cpuVae} onChange={(e) => setCpuVae(e.target.checked)} />
+        <span>
+          Decode on the CPU
+          <span className={styles.memoryHint}>
+            {' '}
+            — slower last step, and often the whole fix on a card that is merely tight.
+          </span>
+        </span>
+      </label>
+      <div className={styles.memoryFoot}>
+        <ReasonedButton
+          className={shared.action}
+          reason={dirty ? null : 'Nothing has changed yet.'}
+          onClick={() => void apply()}
+        >
+          {busy ? 'Applying…' : 'Apply and restart engine'}
+        </ReasonedButton>
+        {note ? <span className={styles.memoryNote}>{note}</span> : null}
+      </div>
+    </div>
+  );
+}
+
+/** The server owns the flags; the panel owns the words. */
+const MEMORY_OPTIONS: { id: MemoryProfile; label: string }[] = [
+  { id: 'fast', label: 'Fast' },
+  { id: 'balanced', label: 'Balanced' },
+  { id: 'low-vram', label: 'Low VRAM' },
+  { id: 'minimal-vram', label: 'Minimal' },
+];
+
+const MEMORY_BLURB: Record<MemoryProfile, string> = {
+  fast: 'Everything on the card. Fastest, and fails outright on a model that will not fit.',
+  balanced: 'Holds a gigabyte back so the desktop cannot push a job over the edge.',
+  'low-vram': 'Streams the model from system memory. Slower, and runs much bigger models.',
+  'minimal-vram': 'Keeps almost nothing on the card. Very slow, and runs nearly anything.',
+};
 
 /**
  * The ComfyUI on that machine, in one line per fact worth knowing.
