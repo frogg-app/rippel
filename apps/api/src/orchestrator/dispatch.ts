@@ -16,9 +16,11 @@ import { objectInfoFor } from './preflight.js';
 import type { ResolvedValues } from '../compiler/index.js';
 import { chooseTemplate } from '../models/workflow-choice.js';
 import { queryOne } from '../db.js';
-import { filenamesOn, pickBackend, type Candidate } from './select.js';
+import { filenamesOn, pickBackend, sizesOn, type Candidate } from './select.js';
 import { preflight } from './preflight.js';
 import type { JobRow } from './jobs.js';
+import { setSizeScore } from './jobs.js';
+import { sizeOfJob } from './cost.js';
 
 export class DispatchError extends Error {
   constructor(
@@ -140,6 +142,23 @@ export async function dispatch(job: JobRow, clientId: string): Promise<Dispatche
       throw new DispatchError(err.message, false);
     }
     throw err;
+  }
+
+  // What this job costs, recorded before it runs so that however it ends there
+  // is an observation to learn from. Best-effort throughout: a score we cannot
+  // compute is a NULL column and one fewer data point, never a failed dispatch.
+  try {
+    const sizes = await sizesOn(backend.id, modelIds);
+    const size = sizeOfJob({
+      manifest: template.manifest,
+      params: job.params,
+      width: compiled.resolved.width,
+      height: compiled.resolved.height,
+      fileBytes: modelIds.map((id) => sizes[id] ?? null),
+    });
+    await setSizeScore(job.id, size.score);
+  } catch (err) {
+    console.warn(`[orchestrator] ${job.id} could not be scored: ${String(err)}`);
   }
 
   // An img2img graph names a file on the *backend's* disk, which only exists

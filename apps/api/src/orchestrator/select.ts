@@ -109,3 +109,35 @@ export async function filenamesOn(
 
   return Object.fromEntries(rows.map((r) => [r.model_id, r.filename]));
 }
+
+/**
+ * Bytes on disk for every model a job loads, on one backend.
+ *
+ * Separate from `filenamesOn` because the two have different failure modes and
+ * only one of them is fatal. A filename we cannot resolve stops the job — we
+ * would be naming a path the backend cannot open. A *size* we cannot resolve is
+ * merely a less precise score, so a missing row is a `null` here rather than an
+ * absent key, and `cost.ts` folds it into `partial`.
+ *
+ * `size_bytes` is nullable on `models` for anything discovered by scanning a
+ * folder rather than downloaded through the catalogue, which on a
+ * hand-populated machine is most of them. That is the common case, not an edge.
+ */
+export async function sizesOn(
+  backendId: Uuid,
+  modelIds: Uuid[],
+): Promise<Record<Uuid, number | null>> {
+  if (modelIds.length === 0) return {};
+
+  const rows = await query<{ model_id: string; size_bytes: string | null }>(
+    `SELECT mb.model_id, m.size_bytes
+       FROM model_backends mb
+       JOIN models m ON m.id = mb.model_id
+      WHERE mb.backend_id = $1 AND mb.model_id = ANY($2::uuid[])`,
+    [backendId, modelIds],
+  );
+
+  return Object.fromEntries(
+    rows.map((r) => [r.model_id, r.size_bytes === null ? null : Number(r.size_bytes)]),
+  );
+}

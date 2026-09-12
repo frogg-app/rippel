@@ -10,6 +10,7 @@
 import type { GenerationParams, Job, JobProgress, JobStatus, Uuid } from '@comfy/shared';
 import { query, queryOne } from '../db.js';
 import { publish } from './events.js';
+import { classifyFailure } from './failure.js';
 import { phaseForStatus } from './phases.js';
 
 export interface JobRow {
@@ -156,9 +157,25 @@ export async function setProgress(row: JobRow, progress: JobProgress): Promise<v
   publish(row.user_id, { type: 'job.progress', jobId: row.id, progress });
 }
 
+/**
+ * Fail a job, and record *why* in the one form the fit ledger can read.
+ *
+ * The classification happens here, once, rather than at read time. The message
+ * belongs to the backend and can change under us with a torch upgrade; a
+ * machine's learned ceiling moving because we edited a regex would be a bad
+ * surprise, so the verdict is frozen at the moment it was made. See the note on
+ * `oom` in migration 015.
+ */
 export async function failJob(row: JobRow, error: string): Promise<void> {
+  const failure = classifyFailure(error);
   await setStatus(row.id, 'failed', { error });
+  await query('UPDATE jobs SET oom = $2 WHERE id = $1', [row.id, failure.outOfMemory]);
   publish(row.user_id, { type: 'job.failed', jobId: row.id, error });
+}
+
+/** Record what this job is going to cost, for the ledger. See `cost.ts`. */
+export async function setSizeScore(id: Uuid, score: number): Promise<void> {
+  await query('UPDATE jobs SET size_score = $2 WHERE id = $1', [id, Math.round(score)]);
 }
 
 /**
