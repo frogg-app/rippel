@@ -63,6 +63,17 @@ export const FAMILIES = {
   ltxVideo: 'ltx-video',
   svd: 'svd',
   wan: 'wan',
+  /**
+   * Wan 2.2 TI2V 5B gets its own family, and the reason is the same one
+   * `sdxlTurbo` has. "wan" spans 2.1 and 2.2, 5B and 14B, and those are not one
+   * node set: the 5B is a unified model driven by `Wan22ImageToVideoLatent`,
+   * while the 14B needs `WanImageToVideo`, CLIP-Vision and a high/low-noise
+   * expert pair. A single `wan` family would route a 14B file to the 5B graph,
+   * which loads it and produces noise rather than failing. Every other Wan
+   * model stays `wan` and resolves to no template until one is written, which
+   * is the honest outcome.
+   */
+  wan22Ti2v5b: 'wan2.2-ti2v-5b',
 } as const;
 
 export type ModelFamily = (typeof FAMILIES)[keyof typeof FAMILIES];
@@ -77,6 +88,7 @@ const DERIVED_FROM: Partial<Record<ModelFamily, ModelFamily>> = {
   [FAMILIES.pony]: FAMILIES.sdxl,
   [FAMILIES.illustrious]: FAMILIES.sdxl,
   [FAMILIES.sdxlTurbo]: FAMILIES.sdxl,
+  [FAMILIES.wan22Ti2v5b]: FAMILIES.wan,
 };
 
 /**
@@ -161,6 +173,15 @@ const RULES: readonly Rule[] = [
   { family: FAMILIES.svd, pattern: /\bsvd\b|\bstable video diffusion\b/, strength: 'strong' },
   // Anchored on the version: "wan" on its own is too short to trust.
   { family: FAMILIES.wan, pattern: /\bwan2 [12]\b|\bwan 2 [12]\b|\bwan2[12]\b/, strength: 'strong' },
+  // Both halves are required, in either order: "ti2v" alone does not say which
+  // size and "5b" alone says nothing about the family. `wan2.2_ti2v_5B_fp16`
+  // tokenizes to "wan2 2 ti2v 5b fp16", so the bare-`wan` rule above matches
+  // too and `mostSpecific` picks this one off the back of DERIVED_FROM.
+  {
+    family: FAMILIES.wan22Ti2v5b,
+    pattern: /\bti2v\b(?=.*\b5b\b)|\b5b\b(?=.*\bti2v\b)/,
+    strength: 'strong',
+  },
 ];
 
 /**

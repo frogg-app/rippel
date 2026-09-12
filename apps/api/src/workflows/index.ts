@@ -65,6 +65,15 @@ export { isNodeLink, parseInputPath, resolveInputPath } from './paths.js';
 
 export { videoLimitsFor } from './limits.js';
 
+export {
+  WAN22_TEXT_ENCODER_REQUIREMENT,
+  WAN22_TI2V_5B_BASE_MODELS,
+  WAN22_TI2V_REQUIREMENTS,
+  WAN22_VAE_REQUIREMENT,
+  img2vidWan22Ti2v5bManifest,
+  img2vidWan22Ti2v5bTemplate,
+} from './img2vid-wan22-ti2v-5b.js';
+
 export type { CapabilityOffer, TemplateIndex } from './registry.js';
 export {
   TEMPLATES,

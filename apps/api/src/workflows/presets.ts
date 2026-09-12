@@ -242,6 +242,70 @@ export const LTXV_NATIVE_FPS = 25;
 export const LTXV_MIN_FPS = 8;
 export const LTXV_MAX_FPS = 30;
 
+// ---------------------------------------------------------------- wan 2.2
+
+/**
+ * Resolution buckets for Wan 2.2 TI2V 5B.
+ *
+ * ComfyUI's own `video_wan2_2_5B_ti2v` template opens at 1280x704 by 121
+ * frames. That is a 24 GB figure: 0.90 MP a frame through a 5B DiT, and the
+ * Wan 2.2 VAE decodes the whole clip as one tensor. These buckets hold to
+ * ~0.4 MP instead, the same budget as `HUNYUAN_RESOLUTIONS`, which is what
+ * leaves room on the 16 GB card this family was picked for.
+ *
+ * Every value is a multiple of 32, because that is the step
+ * `Wan22ImageToVideoLatent` declares on `width` and `height`.
+ */
+export const WAN22_TI2V_RESOLUTIONS: ResolutionTable = {
+  '1:1': { width: 640, height: 640 },
+  '3:2': { width: 768, height: 512 },
+  '2:3': { width: 512, height: 768 },
+  '16:9': { width: 832, height: 480 },
+  '9:16': { width: 480, height: 832 },
+};
+
+/**
+ * `uni_pc` first because it is what the reference template uses and what the
+ * model was tuned against; the other two are here because they are the two
+ * integrators that stay stable on a flow-matching video model.
+ */
+export const WAN22_SAMPLERS = ['uni_pc', 'euler', 'dpmpp_2m'] as const;
+
+/** The schedules that suit it. `simple` is the reference one. */
+export const WAN22_SCHEDULERS = ['simple', 'normal', 'sgm_uniform'] as const;
+
+/**
+ * Quality presets for Wan 2.2 TI2V 5B. cfg 5.0 and 20 steps are the reference
+ * template's own values, so `balanced` is exactly what ComfyUI ships; `fast`
+ * and `high` step around it without touching the guidance, which Wan is
+ * sensitive to.
+ */
+export const WAN22_QUALITY_PRESETS: PresetTable = {
+  fast: { steps: 12, cfg: 5.0, sampler: 'uni_pc', scheduler: 'simple' },
+  balanced: { steps: 20, cfg: 5.0, sampler: 'uni_pc', scheduler: 'simple' },
+  high: { steps: 30, cfg: 5.0, sampler: 'uni_pc', scheduler: 'simple' },
+};
+
+/**
+ * `Wan22ImageToVideoLatent.length` declares `min 1, step 4`, so a valid length
+ * is `4n + 1`. The floor here is one quantum above nothing — a start frame plus
+ * one group — and the ceiling is the reference template's own 121, which at the
+ * native 24 fps is just over five seconds.
+ */
+export const WAN22_FRAME_QUANTUM = 4;
+export const WAN22_MIN_FRAMES = WAN22_FRAME_QUANTUM + 1;
+export const WAN22_MAX_FRAMES = WAN22_FRAME_QUANTUM * 30 + 1;
+
+/**
+ * Wan 2.2 was trained at 24 fps and the reference template muxes at 24. The
+ * bounds are the same watchability range the other video families use: below
+ * ~8 fps the model's temporal consistency breaks down, and above 30 the frame
+ * budget buys duration nobody perceives.
+ */
+export const WAN22_NATIVE_FPS = 24;
+export const WAN22_MIN_FPS = 8;
+export const WAN22_MAX_FPS = 30;
+
 // -------------------------------------------- generic Stable-Diffusion tiers
 //
 // The two tables below exist for the generic fallback templates (see
