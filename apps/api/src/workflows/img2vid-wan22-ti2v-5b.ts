@@ -101,9 +101,10 @@ export const WAN22_TI2V_5B_BASE_MODELS = ['wan2.2-ti2v-5b', 'wan2.2-5b-ti2v'];
  * report a missing encoder, not silently load the wrong one.
  *
  * Only the fp8 scaled build is preferred: it is the one ComfyUI's own repackaged
- * repo ships for this template, at 6.27 GB. It is loaded, used and freed before
- * the 9.31 GB transformer comes in, so the two never share the card — but an
- * fp16 UMT5 would not fit even on its own alongside the latents.
+ * repo ships for this template, at 6.27 GB, and it is the only UMT5 build in
+ * that repo. Not a VRAM argument — it is loaded, used and freed before the
+ * 9.31 GB transformer comes in, and `CLIPLoader.device` can hold it in system
+ * RAM regardless — just the file this template is built around.
  */
 export const WAN22_TEXT_ENCODER_REQUIREMENT: ModelRequirement = {
   id: 'text-encoder',

@@ -152,16 +152,26 @@ export const LTXV_TEXT_ENCODER_REQUIREMENT: ModelRequirement = {
   //
   // Measured from comfyanonymous/flux_text_encoders, which is where ComfyUI's
   // own LTX-Video templates point: fp16 is 9.79 GB, fp8_e4m3fn_scaled 5.16 GB,
-  // fp8_e4m3fn 4.89 GB. The reference box is a 16 GB card and the LTX-Video 2B
-  // transformer is another 5.72 GB, so fp16 leaves well under a gigabyte for
-  // the latents and the VAE — it is the build that does not fit, not the better
-  // one. `preferred` decides both which installed encoder a dispatch picks and
-  // which file readiness offers to download, so putting fp16 first was
-  // recommending a 9.79 GB download that then cannot be run.
+  // fp8_e4m3fn 4.89 GB.
+  //
+  // To be precise about what fp16 costs, because the obvious reading is wrong:
+  // it is *not* that 9.79 GB of encoder plus 5.72 GB of transformer overflows a
+  // 16 GB card. Those two are never resident together — ComfyUI encodes the
+  // prompt, frees the encoder, then loads the diffusion model — and
+  // `CLIPLoader` takes an optional `device` input (`default` or `cpu`) that can
+  // pin the encoder to system RAM outright, of which the reference box has 64 GB.
+  // fp16 runs here. See Task 19 in MODELS_PLAN.md, which is about binding that
+  // input per backend memory profile.
+  //
+  // What fp8 actually buys is a 4.6 GB smaller download on a backend with no
+  // install transport, and an encoder that stays cached between prompts instead
+  // of being evicted and re-read every time the text changes. Both are real and
+  // neither is "fp16 cannot run". fp16 stays on the list rather than being
+  // removed, and once the profile binding exists this order should follow the
+  // profile instead of being fixed here.
   //
   // Scaled ahead of plain fp8: same size class, and the scaled build keeps
-  // per-tensor scales so it degrades less. fp16 stays on the list last, for a
-  // backend that already has it or has the memory to spare.
+  // per-tensor scales so it degrades less.
   preferred: [
     't5xxl_fp8_e4m3fn_scaled.safetensors',
     't5xxl_fp8_e4m3fn.safetensors',

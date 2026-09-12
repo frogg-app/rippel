@@ -99,9 +99,10 @@ describe('resolveRequirements', () => {
   });
 
   it('prefers an fp8 build over fp16 when a backend has several', () => {
-    // Deliberately the smaller build, not the better one: fp16 is 9.79 GB and
-    // the LTX-Video transformer is another 5.72, which does not fit the 16 GB
-    // card this runs on. See the note on the requirement's `preferred` list.
+    // Deliberately the smaller build, not the better one. Note the reason is
+    // download size and cache churn, not "fp16 overflows the card" — the
+    // encoder and the transformer are never resident together. See the note on
+    // the requirement's `preferred` list.
     const info = infoWithEncoders(
       't5/t5xxl_fp8_e4m3fn.safetensors',
       't5/t5xxl_fp16.safetensors',
