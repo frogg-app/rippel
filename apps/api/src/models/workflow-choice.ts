@@ -15,7 +15,14 @@
  *
  * So the question is now asked here, once, in this order:
  *
- *   override  →  folder-aware registry lookup  →  plain registry lookup
+ *   switched off  →  override  →  folder-aware registry lookup  →  plain registry lookup
+ *
+ * "Switched off" (migration 017) comes first and wins outright: an operator who
+ * turns img2vid off for a model means no graph at all, pinned or not, and the
+ * answer is the same `undefined` a family with no template gets. That reuses
+ * every caller's existing refusal rather than teaching three of them a new one;
+ * the cost is that POST /jobs words the refusal as "no workflow", which is true
+ * from where the user stands and says nothing about why.
  *
  * Every caller is deliberately tolerant of a missing database: the override
  * lookup is an ordinary query, and a failure to read it degrades to the
@@ -42,6 +49,19 @@ export const overrideFor: OverrideLookup = async (modelId, capability) => {
   return row?.template_id ?? null;
 };
 
+export interface SwitchLookup {
+  (modelId: string, capability: JobKind): Promise<boolean>;
+}
+
+/** Whether an operator has switched this capability off for this model. */
+export const switchedOff: SwitchLookup = async (modelId, capability) => {
+  const row = await queryOne<{ model_id: string }>(
+    'SELECT model_id FROM model_capability_switches WHERE model_id = $1 AND capability = $2',
+    [modelId, capability],
+  );
+  return row !== null;
+};
+
 export interface ChooseTemplateInput {
   modelId: string | null;
   capability: JobKind;
@@ -53,6 +73,13 @@ export interface ChooseTemplateInput {
   info?: ObjectInfo | null;
   /** Injectable for tests; defaults to the database. */
   lookupOverride?: OverrideLookup;
+  /**
+   * Injectable for tests. Defaults to the database — except when
+   * `lookupOverride` is injected, where it defaults to "on", so a test that
+   * fakes the pin lookup is not made to reach for a real Postgres by the back
+   * door.
+   */
+  lookupSwitchedOff?: SwitchLookup;
 }
 
 export interface TemplateChoice {
@@ -73,6 +100,18 @@ export async function chooseTemplate(input: ChooseTemplateInput): Promise<Templa
   const folder = input.filename ? folderOfInstalled(input.info ?? null, input.filename) : null;
 
   if (input.modelId) {
+    const isOff =
+      input.lookupSwitchedOff ?? (input.lookupOverride ? async () => false : switchedOff);
+    let off = false;
+    try {
+      off = await isOff(input.modelId, input.capability);
+    } catch {
+      // Same tolerance as the pin: an unreadable switch is not a refusal. A
+      // missing table (017 not yet applied) lands here too.
+      off = false;
+    }
+    if (off) return undefined;
+
     const lookup = input.lookupOverride ?? overrideFor;
     let pinnedId: string | null = null;
     try {

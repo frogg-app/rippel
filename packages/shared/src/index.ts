@@ -435,6 +435,12 @@ export interface MissingCompanion {
   purpose: string | null;
   /** The loader node that would look for it, e.g. "CLIPLoader". */
   loader: string;
+  /**
+   * Where a person can get this exact file by hand, when rippel knows. Absent
+   * rather than null on verdicts built before this existed; see
+   * `ModelDownloadSource` at the end of this file.
+   */
+  source?: ModelDownloadSource | null;
 }
 
 export interface ModelRunnability {
@@ -941,6 +947,11 @@ export interface ModelWorkflows {
   backend: { id: Uuid; name: string } | null;
   /** Pinned template per capability; a capability absent here is automatic. */
   assigned: Partial<Record<JobKind, string>>;
+  /**
+   * Capabilities an administrator has switched off for this model. A job asking
+   * for one is refused as though no workflow existed. See migration 017.
+   */
+  switchedOff: JobKind[];
   options: ModelWorkflowOption[];
 }
 
@@ -1158,4 +1169,63 @@ export interface PairResult {
   token: string;
   /** The address the agent should check in to, as this rippel sees itself. */
   serverUrl: string;
+}
+
+// ---------------------------------------------------------------- manual downloads and the workflow library
+//
+// Appended 2026-09-12. The reference backend lost ComfyUI-Manager, and with it
+// the only install transport rippel had, so "what file, which folder, from
+// where" has to be answerable without a catalogue. These types carry that
+// answer, and the ComfyUI workflow library is where most of it comes from.
+
+/**
+ * One file a person can fetch by hand and drop into a ComfyUI model folder.
+ *
+ * `approxBytes` is approximate on purpose: sizes are recorded from HTTP headers
+ * at the time someone checked, and a repackaged repo can replace a file. It is
+ * for "will this fit on the disk", not for verifying a download.
+ */
+export interface ModelDownloadSource {
+  filename: string;
+  /** The ComfyUI folder under `models/`, e.g. "text_encoders". */
+  folder: string;
+  url: string;
+  approxBytes: number | null;
+  /** Where rippel learned this, in words, e.g. "ComfyUI workflow library (video_wan2_2_5B_ti2v)". */
+  origin: string;
+}
+
+/** A model file a library workflow names, and whether a backend has it. */
+export interface LibraryModelFile {
+  filename: string;
+  folder: string;
+  url: string;
+  /** False when the URL is not HTTPS from Hugging Face or Civitai; shown, never fetched. */
+  trustedSource: boolean;
+  /** The editor node ids that load it. */
+  nodeIds: string[];
+  /** 'present' | 'missing', or 'unknown' when the backend's file lists could not be read. */
+  status: 'present' | 'missing' | 'unknown';
+}
+
+/** Something the library converter could not do, in one sentence. */
+export interface LibraryConversionProblem {
+  nodeId: string | null;
+  nodeClass: string | null;
+  message: string;
+}
+
+/** What rippel can say about one library workflow on one backend. */
+export interface LibraryWorkflowReport {
+  name: string;
+  backendId: Uuid;
+  backendName: string;
+  models: LibraryModelFile[];
+  /** Node classes the backend does not have. A download cannot fix these. */
+  missingNodeClasses: string[];
+  /** Editor nodes shipped bypassed or muted, by id and class, e.g. a disabled LoadImage. */
+  inactiveNodes: { nodeId: string; nodeClass: string }[];
+  /** True when the graph converted to API format with no problems. */
+  converts: boolean;
+  problems: LibraryConversionProblem[];
 }

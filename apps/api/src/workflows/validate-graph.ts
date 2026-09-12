@@ -43,21 +43,34 @@ import fixture from './__fixtures__/object-info.json' with { type: 'json' };
 import type { ComfyApiGraph } from './types.js';
 import { isNodeLink } from './paths.js';
 
-interface InputSpec {
+export interface InputSpec {
   type: string;
   values?: string[];
   enumComplete?: boolean;
   fileList?: boolean;
   min?: number;
   max?: number;
+  /** Declared a socket even though its type would draw a widget. */
+  forceInput?: boolean;
+  /** The frontend adds a "control after generate" value after this widget. */
+  controlAfterGenerate?: boolean;
 }
 
-interface NodeSpec {
+export interface NodeSpec {
   required?: Record<string, InputSpec>;
   optional?: Record<string, InputSpec>;
 }
 
 const NODES = fixture.nodes as unknown as Record<string, NodeSpec>;
+
+/**
+ * The captured specs themselves, for the library converter, which needs the
+ * same facts this check does: which inputs a class declares, in what order,
+ * and which of them are widgets rather than sockets.
+ */
+export function capturedNodeSpecs(): Readonly<Record<string, NodeSpec>> {
+  return NODES;
+}
 
 export interface GraphProblem {
   nodeId: string;

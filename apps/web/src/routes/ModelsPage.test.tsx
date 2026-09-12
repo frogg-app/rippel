@@ -34,7 +34,7 @@ import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom';
-import type { User } from '@comfy/shared';
+import type { JobKind, User } from '@comfy/shared';
 import { AuthContext, type AuthState } from '../auth/context';
 import { ApiRequestError } from '../lib/api';
 import type { ModelsApi } from '../lib/api-models';
@@ -776,6 +776,7 @@ describe('ModelsPage', () => {
         model: { id: 'ltx', displayName: 'LTX-Video 2B', filename: 'ltx-video-2b-v0.9.1.safetensors', family: 'ltx-video', folder: 'diffusion_models' },
         backend: { id: BACKEND_ID, name: 'desktop-6900xt' },
         assigned: {},
+        switchedOff: [] as JobKind[],
         options: [
           makeOption(ckpt, { status: 'wrong-folder', summary: 'On disk, but the workflow cannot see it', detail: 'It is in "diffusion_models", but the workflow loads it from "checkpoints" — it needs moving there, not downloading again.' }),
           makeOption(dm, { status: 'needs-companion', summary: 'Needs another model first', detail: 'Also needs a T5 text encoder, t5xxl_fp16.safetensors and 1 other file, which desktop-6900xt does not have.' }, { automatic: true }),
@@ -822,6 +823,87 @@ describe('ModelsPage', () => {
       await user.click(within(sheet).getByRole('button', { name: 'Use automatic' }));
       await waitFor(() => expect(api.calls).toContain('assign:ltx:txt2vid:auto'));
       expect(await within(sheet).findByText('Chosen automatically')).toBeInTheDocument();
+    });
+
+    it('lets an administrator switch a capability off for one model, and back on', async () => {
+      // "Turn models on and off": the switch is per model and capability, and
+      // off must not throw away a pin — the note says it comes back.
+      const data = workflows();
+      data.ltx.assigned = { txt2vid: 'txt2vid-ltxv' };
+      const api = makeStubApi({ installed, workflows: data });
+      renderPage(api);
+      await ready();
+      const user = await openTab(/Workflows for LTX-Video 2B/);
+      const sheet = await screen.findByRole('dialog', { name: 'Workflows for LTX-Video 2B' });
+
+      const toggle = within(sheet).getByRole('switch', { name: 'Text to video for this model' });
+      expect(toggle).toHaveAttribute('aria-checked', 'true');
+      await user.click(toggle);
+      await waitFor(() => expect(api.calls).toContain('switch:ltx:txt2vid:off'));
+      expect(await within(sheet).findByText('Switched off for this model')).toBeInTheDocument();
+      expect(within(sheet).getByText(/pinned template comes back/)).toBeInTheDocument();
+      // A pin cannot be changed on something that is off.
+      expect(within(sheet).getByRole('radio', { name: 'Pin Text to video (LTX-Video)' })).toBeDisabled();
+
+      await user.click(within(sheet).getByRole('switch', { name: 'Text to video for this model' }));
+      await waitFor(() => expect(api.calls).toContain('switch:ltx:txt2vid:on'));
+      expect(await within(sheet).findByText('Pinned by an administrator')).toBeInTheDocument();
+    });
+
+    it('does not offer the switch to someone who is not an administrator', async () => {
+      const api = makeStubApi({ installed, workflows: workflows() });
+      renderPage(api, { ...admin, role: 'user' });
+      await ready();
+      await openTab(/Workflows for LTX-Video 2B/);
+      const sheet = await screen.findByRole('dialog', { name: 'Workflows for LTX-Video 2B' });
+      expect(within(sheet).queryByRole('switch')).not.toBeInTheDocument();
+    });
+
+    it('lists missing files with their folder, size and download link', async () => {
+      // With no install transport on the backend, this list is the fix. The
+      // folder is the part that matters most: without it a text encoder gets
+      // dropped into checkpoints/ and the card just changes to Wrong folder.
+      const data = workflows();
+      data.ltx.options[1] = makeOption(
+        dm,
+        {
+          status: 'needs-companion',
+          summary: 'Needs another model first',
+          detail: 'Also needs a T5 text encoder.',
+          missing: [
+            {
+              filename: 't5xxl_fp16.safetensors',
+              purpose: 'T5 text encoder',
+              loader: 'CLIPLoader',
+              source: {
+                filename: 't5xxl_fp8_e4m3fn_scaled.safetensors',
+                folder: 'text_encoders',
+                url: 'https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/t5xxl_fp8_e4m3fn_scaled.safetensors',
+                approxBytes: 5_160_000_000,
+                origin: 'test',
+              },
+            },
+            { filename: 'mystery_vae.safetensors', purpose: 'VAE', loader: 'VAELoader', source: null },
+          ],
+        },
+        { automatic: true },
+      );
+      const api = makeStubApi({ installed, workflows: data });
+      renderPage(api);
+      await ready();
+      await openTab(/Workflows for LTX-Video 2B/);
+      const sheet = await screen.findByRole('dialog', { name: 'Workflows for LTX-Video 2B' });
+
+      expect(within(sheet).getByText('models/text_encoders/t5xxl_fp8_e4m3fn_scaled.safetensors')).toBeInTheDocument();
+      expect(within(sheet).getByText('about 5.16 GB')).toBeInTheDocument();
+      expect(within(sheet).getByRole('link', { name: /Download/ })).toHaveAttribute(
+        'href',
+        expect.stringContaining('huggingface.co/comfyanonymous/flux_text_encoders'),
+      );
+      // A different build from the one named says so, rather than looking like a mistake.
+      expect(within(sheet).getByText(/Recommended instead of t5xxl_fp16.safetensors/)).toBeInTheDocument();
+      // And a file with no known source is named honestly, with no invented link.
+      expect(within(sheet).getByText(/no known source for mystery_vae.safetensors/)).toBeInTheDocument();
     });
 
     /**

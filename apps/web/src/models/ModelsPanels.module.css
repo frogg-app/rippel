@@ -1747,3 +1747,73 @@
     margin-left: 0;
   }
 }
+
+/* Files to fetch by hand, under a needs-another-model verdict. */
+.downloads {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: var(--text-xs);
+}
+
+.downloadList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.downloadItem {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.downloadPath {
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+.downloadMeta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  color: var(--text-muted);
+}
+
+.downloadNote {
+  margin: 0;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+/* The per-capability on/off switch in the Workflows sheet. */
+.capSwitch {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-xs);
+  color: var(--text-4);
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  background: var(--surface-2);
+}
+
+.capSwitch[aria-checked='true'] {
+  color: var(--ok-text);
+  border-color: var(--ok-line);
+  background: var(--ok-tint);
+}
+
+.capSwitch:disabled {
+  opacity: 0.6;
+}
+
+.sheetOptionsOff {
+  opacity: 0.55;
+}

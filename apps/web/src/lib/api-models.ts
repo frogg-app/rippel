@@ -77,6 +77,7 @@
 import type {
   Backend,
   JobKind,
+  LibraryWorkflowReport,
   Model,
   ModelCatalogEntry,
   ModelCatalogInfo,
@@ -180,6 +181,11 @@ export interface ModelsApi {
   //   PUT /api/models/:id/workflows             -> { assigned }       admin
   //     body { capability, templateId | null }; 400 for a template of the
   //     wrong capability or family, 404 for an unknown template.
+  //   PUT /api/models/:id/capabilities          -> { switchedOff }    admin
+  //     body { capability, enabled }; a switched-off capability is refused for
+  //     that model by every job path. Switching back on keeps any pin.
+  //   GET /api/backends/:id/library/:name       -> { report }         admin
+  //     A ComfyUI library workflow's files and nodes, judged on that backend.
   //   DELETE /api/models/:id                    -> { removal }        admin
   //     The record goes; the file does not (no backend can delete one yet),
   //     and `removal.note` says so in words meant to be shown.
@@ -191,6 +197,8 @@ export interface ModelsApi {
     capability: JobKind,
     templateId: string | null,
   ): Promise<Partial<Record<JobKind, string>>>;
+  switchCapability(modelId: Uuid, capability: JobKind, enabled: boolean): Promise<JobKind[]>;
+  libraryReport(backendId: Uuid, name: string, signal?: AbortSignal): Promise<LibraryWorkflowReport>;
   removeModel(modelId: Uuid): Promise<ModelRemoval>;
 }
 
@@ -264,6 +272,22 @@ export const modelsApi: ModelsApi = {
         body: { capability, templateId },
       })
     ).assigned ?? {},
+
+  switchCapability: async (modelId, capability, enabled) =>
+    (
+      await request<{ switchedOff: JobKind[] }>(`/models/${modelId}/capabilities`, {
+        method: 'PUT',
+        body: { capability, enabled },
+      })
+    ).switchedOff ?? [],
+
+  libraryReport: async (backendId, name, signal) =>
+    (
+      await request<{ report: LibraryWorkflowReport }>(
+        `/backends/${backendId}/library/${encodeURIComponent(name)}`,
+        { signal },
+      )
+    ).report,
 
   removeModel: async (modelId) =>
     (await request<{ removal: ModelRemoval }>(`/models/${modelId}`, { method: 'DELETE' })).removal,

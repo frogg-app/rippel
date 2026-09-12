@@ -5,7 +5,9 @@
  *   GET    /workflows/templates          every template, for browsing    auth
  *   GET    /models/:id/workflows         options + verdicts for one model auth
  *   PUT    /models/:id/workflows         pin or unpin one per capability  admin
+ *   PUT    /models/:id/capabilities      switch a capability off or on    admin
  *   DELETE /models/:id                   remove the model                 admin
+ *   GET    /backends/:id/library/:name   a ComfyUI library workflow, judged admin
  *
  * The verdicts are the same `runnabilityFor` the Installed list and the
  * catalogue use, run once per template instead of once per family, so what
@@ -20,12 +22,23 @@
  * the record is removed and the response says the file stayed — and, since
  * the backend poller re-lists whatever it finds on disk, that the row will
  * come back on the next scan unless the file is deleted on the machine.
+ *
+ * Switching a capability off (migration 017) is separate from pinning, on
+ * purpose: turning img2vid off and on again brings the pin back. The sheet shows
+ * a switched-off capability's options greyed rather than hiding them, so the
+ * operator can still see what they would be turning back on.
+ *
+ * The library route fetches `/templates/<name>.json` from the backend and
+ * reports what the workflow needs there. It is admin-only because the answer is
+ * a list of downloads and missing custom nodes, which only an operator can act
+ * on, and it imports nothing: see `workflows/library/report.ts`.
  */
 
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import type {
   JobKind,
+  LibraryWorkflowReport,
   ModelRemoval,
   ModelRunnability,
   ModelType,
@@ -47,6 +60,8 @@ import {
   templatesFor,
 } from '../workflows/registry.js';
 import type { WorkflowTemplate } from '../workflows/types.js';
+import { LibraryFormatError } from '../workflows/library/litegraph.js';
+import { libraryWorkflowReport } from '../workflows/library/report.js';
 import { folderForType } from './installs.js';
 import { runnabilityFor } from './runnability.js';
 import { chooseTemplate, overrideFor, type OverrideLookup } from './workflow-choice.js';
@@ -157,7 +172,40 @@ export interface WorkflowRouteDeps {
   objectInfoFor?: (baseUrl: string) => Promise<ObjectInfo>;
   lookupOverride?: OverrideLookup;
   deleteBackendFile?: typeof deleteBackendFile;
+  /** Fetch one library workflow file from a backend. Injectable for tests. */
+  fetchLibraryFile?: (baseUrl: string, name: string) => Promise<unknown>;
 }
+
+/**
+ * `GET <backend>/templates/<name>.json`, which every ComfyUI with the
+ * workflow-templates package serves. Not through `ComfyClient` because this is
+ * the frontend package's static route rather than ComfyUI's API, and a 404 here
+ * means "no such workflow", not "backend down".
+ */
+export async function fetchLibraryFile(baseUrl: string, name: string): Promise<unknown> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 15_000);
+  try {
+    const res = await fetch(`${baseUrl.replace(/\/$/, '')}/templates/${encodeURIComponent(name)}.json`, {
+      signal: controller.signal,
+    });
+    if (res.status === 404) throw new LibraryFileNotFound(name);
+    if (!res.ok) throw new Error(`The backend answered ${res.status} for workflow "${name}".`);
+    return await res.json();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+export class LibraryFileNotFound extends Error {
+  constructor(name: string) {
+    super(`The backend's workflow library has no workflow called "${name}".`);
+    this.name = 'LibraryFileNotFound';
+  }
+}
+
+/** Library names are the file stem: letters, digits, dot, dash, underscore. */
+const LIBRARY_NAME = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/;
 
 interface ModelRow extends Record<string, unknown> {
   id: string;
@@ -182,6 +230,11 @@ const assignBody = z.object({
   templateId: z.string().min(1).max(64).nullable(),
 });
 
+const switchBody = z.object({
+  capability: z.enum(CAPABILITIES),
+  enabled: z.boolean(),
+});
+
 // ---------------------------------------------------------------- routes
 
 export function makeWorkflowRoutes(deps: WorkflowRouteDeps = {}) {
@@ -202,6 +255,7 @@ export function makeWorkflowRoutes(deps: WorkflowRouteDeps = {}) {
         }
       : overrideFor);
   const removeFile = deps.deleteBackendFile ?? deleteBackendFile;
+  const fetchLibrary = deps.fetchLibraryFile ?? fetchLibraryFile;
 
   async function modelOr404(id: string, reply: FastifyReply): Promise<ModelRow | null> {
     const row = await db.queryOne<ModelRow>(
@@ -229,6 +283,14 @@ export function makeWorkflowRoutes(deps: WorkflowRouteDeps = {}) {
       if (findTemplateById(row.template_id)) out[row.capability] = row.template_id;
     }
     return out;
+  }
+
+  async function switchedOffFor(modelId: string): Promise<JobKind[]> {
+    const rows = await db.query<{ capability: JobKind }>(
+      'SELECT capability FROM model_capability_switches WHERE model_id = $1 ORDER BY capability',
+      [modelId],
+    );
+    return rows.map((row) => row.capability);
   }
 
   return async function workflowRoutes(app: FastifyInstance) {
@@ -319,6 +381,7 @@ export function makeWorkflowRoutes(deps: WorkflowRouteDeps = {}) {
           },
           backend: backend ? { id: backend.id as Uuid, name: backend.name } : null,
           assigned,
+          switchedOff: await switchedOffFor(model.id),
           options,
         };
         return body;
@@ -380,6 +443,85 @@ export function makeWorkflowRoutes(deps: WorkflowRouteDeps = {}) {
           [model.id, capability, templateId],
         );
         return { assigned: await assignedFor(model.id) };
+      },
+    );
+
+    app.put<{ Params: { id: string }; Body: unknown }>(
+      '/models/:id/capabilities',
+      { onRequest: [app.requireAdmin] },
+      async (req, reply) => {
+        const model = await modelOr404(req.params.id, reply);
+        if (!model) return;
+        const parsed = switchBody.safeParse(req.body);
+        if (!parsed.success) {
+          return reply.code(400).send({
+            error: 'invalid_input',
+            message: 'Send { capability, enabled } — enabled false switches it off for this model.',
+          });
+        }
+        const { capability, enabled } = parsed.data;
+        if (enabled) {
+          await db.query(
+            'DELETE FROM model_capability_switches WHERE model_id = $1 AND capability = $2',
+            [model.id, capability],
+          );
+        } else {
+          // Idempotent, and the first person to switch it off stays on record.
+          await db.query(
+            `INSERT INTO model_capability_switches (model_id, capability, switched_off_by)
+             VALUES ($1, $2, $3)
+             ON CONFLICT (model_id, capability) DO NOTHING`,
+            [model.id, capability, req.user?.id ?? null],
+          );
+        }
+        return { switchedOff: await switchedOffFor(model.id) };
+      },
+    );
+
+    app.get<{ Params: { id: string; name: string } }>(
+      '/backends/:id/library/:name',
+      { onRequest: [app.requireAdmin] },
+      async (req, reply) => {
+        if (!LIBRARY_NAME.test(req.params.name)) {
+          return reply.code(400).send({ error: 'invalid_input', message: 'That is not a library workflow name.' });
+        }
+        const backend = await db.queryOne<BackendRow>(
+          'SELECT id, name, base_url, status FROM backends WHERE id = $1',
+          [req.params.id],
+        );
+        if (!backend) return reply.code(404).send({ error: 'not_found', message: 'No such backend.' });
+
+        let raw: unknown;
+        let info: ObjectInfo;
+        try {
+          [raw, info] = await Promise.all([
+            fetchLibrary(backend.base_url, req.params.name),
+            objectInfoFor(backend.base_url),
+          ]);
+        } catch (err) {
+          if (err instanceof LibraryFileNotFound) {
+            return reply.code(404).send({ error: 'not_found', message: err.message });
+          }
+          return reply.code(502).send({
+            error: 'backend_error',
+            message: `${backend.name} did not answer: ${err instanceof Error ? err.message : String(err)}`,
+          });
+        }
+
+        try {
+          const report: LibraryWorkflowReport = libraryWorkflowReport({
+            name: req.params.name,
+            raw,
+            info,
+            backend: { id: backend.id as Uuid, name: backend.name },
+          });
+          return { report };
+        } catch (err) {
+          if (err instanceof LibraryFormatError) {
+            return reply.code(422).send({ error: 'unsupported', message: err.message });
+          }
+          throw err;
+        }
       },
     );
 

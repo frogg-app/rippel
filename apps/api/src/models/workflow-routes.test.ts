@@ -22,6 +22,9 @@ import {
   type WorkflowDb,
 } from './workflow-routes.js';
 import { findTemplateById } from '../workflows/registry.js';
+import libraryFile from './__fixtures__/library-template-wan22-5b.json' with { type: 'json' };
+import type { LibraryWorkflowReport } from '@comfy/shared';
+import { chooseTemplate } from './workflow-choice.js';
 
 const BACKEND = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
 const LTX = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
@@ -76,6 +79,7 @@ interface Tables {
   models: Array<{ id: string; display_name: string; filename: string; base_model: string | null; type: string; backend_ids: string[] }>;
   backends: Array<{ id: string; name: string; base_url: string; status: string }>;
   pins: Array<{ model_id: string; capability: string; template_id: string }>;
+  switches: Array<{ model_id: string; capability: string; switched_off_by: string | null }>;
 }
 
 function fakeDb(t: Tables): WorkflowDb {
@@ -107,6 +111,20 @@ function fakeDb(t: Tables): WorkflowDb {
       t.pins.push({ model_id, capability, template_id });
       return [];
     }
+    if (sql.startsWith('SELECT capability FROM model_capability_switches')) {
+      return t.switches.filter((w) => w.model_id === params[0]).sort((a, b) => a.capability.localeCompare(b.capability));
+    }
+    if (sql.startsWith('DELETE FROM model_capability_switches')) {
+      t.switches = t.switches.filter((w) => !(w.model_id === params[0] && w.capability === params[1]));
+      return [];
+    }
+    if (sql.startsWith('INSERT INTO model_capability_switches')) {
+      const [model_id, capability, switched_off_by] = params as [string, string, string | null];
+      if (!t.switches.some((w) => w.model_id === model_id && w.capability === capability)) {
+        t.switches.push({ model_id, capability, switched_off_by });
+      }
+      return [];
+    }
     if (sql.startsWith('DELETE FROM models')) {
       t.models = t.models.filter((m) => m.id !== params[0]);
       return [];
@@ -128,6 +146,7 @@ function tables(): Tables {
     ],
     backends: [{ id: BACKEND, name: 'desktop-6900xt', base_url: 'http://backend:8188', status: 'online' }],
     pins: [],
+    switches: [],
   };
 }
 
@@ -295,3 +314,118 @@ describe('DELETE /models/:id', () => {
     ).rejects.toBeInstanceOf(BackendFileDeletionUnsupported);
   });
 });
+
+describe('PUT /models/:id/capabilities', () => {
+  it('is admin only', async () => {
+    const { app } = await server(user);
+    const res = await app.inject({ method: 'PUT', url: `/models/${LTX}/capabilities`, payload: { capability: 'img2vid', enabled: false } });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it('switches a capability off and on without forgetting the pin', async () => {
+    // The reason switches are a table of their own: turning img2vid off and on
+    // again must bring back the template an operator chose, not reset it.
+    const { app, t } = await server(admin);
+    await app.inject({ method: 'PUT', url: `/models/${LTX}/workflows`, payload: { capability: 'txt2vid', templateId: 'txt2vid-ltxv' } });
+
+    const off = await app.inject({ method: 'PUT', url: `/models/${LTX}/capabilities`, payload: { capability: 'txt2vid', enabled: false } });
+    expect(off.json()).toEqual({ switchedOff: ['txt2vid'] });
+    expect(t.switches[0]!.switched_off_by).toBe(admin.id);
+    const body = (await app.inject({ method: 'GET', url: `/models/${LTX}/workflows` })).json() as ModelWorkflows;
+    expect(body.switchedOff).toEqual(['txt2vid']);
+    expect(body.assigned).toEqual({ txt2vid: 'txt2vid-ltxv' });
+
+    const on = await app.inject({ method: 'PUT', url: `/models/${LTX}/capabilities`, payload: { capability: 'txt2vid', enabled: true } });
+    expect(on.json()).toEqual({ switchedOff: [] });
+    expect(t.pins).toHaveLength(1);
+  });
+
+  it('refuses a body that is not { capability, enabled }', async () => {
+    const { app } = await server(admin);
+    const res = await app.inject({ method: 'PUT', url: `/models/${LTX}/capabilities`, payload: { capability: 'paint', enabled: 'no' } });
+    expect(res.statusCode).toBe(400);
+  });
+});
+
+describe('chooseTemplate with a switch', () => {
+  it('gives a switched-off pairing no template, even when one is pinned', async () => {
+    // Every job path asks this function, so this is the refusal. A pin must not
+    // quietly outrank an operator saying "not at all".
+    const choice = await chooseTemplate({
+      modelId: LTX,
+      capability: 'txt2vid',
+      family: 'ltx-video',
+      lookupOverride: async () => 'txt2vid-ltxv',
+      lookupSwitchedOff: async (_id, capability) => capability === 'txt2vid',
+    });
+    expect(choice).toBeUndefined();
+  });
+
+  it('treats an unreadable switch as on, like an unreadable pin', async () => {
+    const choice = await chooseTemplate({
+      modelId: LTX,
+      capability: 'txt2vid',
+      family: 'ltx-video',
+      lookupOverride: async () => null,
+      lookupSwitchedOff: async () => {
+        throw new Error('relation "model_capability_switches" does not exist');
+      },
+    });
+    expect(choice?.template.manifest.capability).toBe('txt2vid');
+  });
+});
+
+describe('GET /backends/:id/library/:name', () => {
+  /** The reference box as it should look once the transformer alone is installed. */
+  function wanInfo(): ObjectInfo {
+    const info = liveInfo();
+    info.UNETLoader = { input: { required: { unet_name: [['wan2.2_ti2v_5B_fp16.safetensors'], {}] } } };
+    return info;
+  }
+
+  it('lists each file the workflow needs, and which this backend has', async () => {
+    const { app } = await server(admin, tables(), {
+      objectInfoFor: async () => wanInfo(),
+      fetchLibraryFile: async (_url, name) => {
+        expect(name).toBe('video_wan2_2_5B_ti2v');
+        return libraryFile;
+      },
+    });
+    const res = await app.inject({ method: 'GET', url: `/backends/${BACKEND}/library/video_wan2_2_5B_ti2v` });
+    expect(res.statusCode).toBe(200);
+    const { report } = res.json() as { report: LibraryWorkflowReport };
+    expect(report.models.map((m) => [m.folder, m.status])).toEqual([
+      ['diffusion_models', 'present'],
+      ['text_encoders', 'missing'],
+      ['vae', 'missing'],
+    ]);
+    expect(report.inactiveNodes).toEqual([{ nodeId: '56', nodeClass: 'LoadImage' }]);
+    // The fake /object_info declares no inputs for these, so the converter
+    // cannot name their widgets — and says so rather than guessing.
+    expect(report.converts).toBe(false);
+    // The fixture box predates the Wan nodes; these are the ones it lacks.
+    expect(report.missingNodeClasses).toEqual(['CreateVideo', 'SaveVideo', 'Wan22ImageToVideoLatent']);
+  });
+
+  it('is admin only, refuses odd names, and 404s a workflow the library lacks', async () => {
+    const asUser = await server(user);
+    expect((await asUser.app.inject({ method: 'GET', url: `/backends/${BACKEND}/library/x` })).statusCode).toBe(403);
+
+    const { app } = await server(admin, tables(), {
+      fetchLibraryFile: async (_url, name) => {
+        throw new (await import('./workflow-routes.js')).LibraryFileNotFound(name);
+      },
+    });
+    expect((await app.inject({ method: 'GET', url: `/backends/${BACKEND}/library/..%2Fsecrets` })).statusCode).toBe(400);
+    expect((await app.inject({ method: 'GET', url: `/backends/${BACKEND}/library/nope` })).statusCode).toBe(404);
+  });
+
+  it('says a file in the API format is not a library workflow', async () => {
+    const { app } = await server(admin, tables(), {
+      fetchLibraryFile: async () => ({ '3': { class_type: 'KSampler', inputs: {} } }),
+    });
+    const res = await app.inject({ method: 'GET', url: `/backends/${BACKEND}/library/api_graph` });
+    expect(res.statusCode).toBe(422);
+  });
+});
+

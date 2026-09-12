@@ -48,6 +48,7 @@ import { CloseIcon, DownloadCountIcon, ExpandIcon, LinkIcon, WorkflowIcon } from
 import { PreviewLightbox } from './PreviewLightbox';
 import { TypeBadge } from './TypeBadge';
 import { Mark } from '../components/Mark';
+import { ManualDownloads } from './ManualDownloads';
 import styles from './ModelsPanels.module.css';
 
 export interface InstalledCardProps {
@@ -201,6 +202,11 @@ export function InstalledCard({
             <span className={styles.verdictChip}>{RUNNABILITY_LABEL[verdict.status]}</span>
             <span className={styles.verdictText}>{verdict.detail ?? verdict.summary}</span>
           </p>
+        ) : null}
+        {!isSupport && verdict?.status === 'needs-companion' && verdict.missing.some((m) => m.source) ? (
+          // Only when there is somewhere to send them. A bare filename is
+          // already in the sentence above; repeating it adds nothing.
+          <ManualDownloads missing={verdict.missing} />
         ) : null}
 
         <ul className={styles.hosts} aria-label="Backends holding this model">
