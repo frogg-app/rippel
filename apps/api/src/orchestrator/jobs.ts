@@ -10,7 +10,7 @@
 import type { GenerationParams, Job, JobProgress, JobStatus, Uuid } from '@comfy/shared';
 import { query, queryOne } from '../db.js';
 import { publish } from './events.js';
-import { classifyFailure } from './failure.js';
+import { classifyFailure, toJobFailure } from './failure.js';
 import { phaseForStatus } from './phases.js';
 
 export interface JobRow {
@@ -61,6 +61,8 @@ export function toJob(row: JobRow, assets: Job['assets'] = []): Job {
     // tab does instead of an unlabelled empty bar.
     progress: withStatusPhase({ ...EMPTY_PROGRESS, ...row.progress }, row.status),
     error: row.error,
+    // Classified on the way out; see the note on `Job.failure`.
+    failure: row.error ? toJobFailure(classifyFailure(row.error)) : null,
     createdAt: row.created_at.toISOString(),
     startedAt: row.started_at?.toISOString() ?? null,
     finishedAt: row.finished_at?.toISOString() ?? null,

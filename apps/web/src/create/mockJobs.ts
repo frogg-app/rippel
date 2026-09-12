@@ -110,6 +110,7 @@ function newJob(params: GenerationParams): Job {
       previewUrl: null,
     },
     error: null,
+    failure: null,
     createdAt: now,
     startedAt: null,
     finishedAt: null,

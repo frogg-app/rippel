@@ -16,6 +16,7 @@
  * exercise this without a live Postgres, exactly as storage/persist.ts does.
  */
 
+import { classifyFailure, toJobFailure } from '../orchestrator/failure.js';
 import type { Asset, Job, JobKind, JobProgress, JobStatus, GenerationParams } from '@comfy/shared';
 import { query as defaultQuery, queryOne as defaultQueryOne } from '../db.js';
 import { rowToAsset, type AssetRow } from '../storage/persist.js';
@@ -234,6 +235,7 @@ export function rowToJob(row: JobRow, assets: Asset[]): Job {
     backendId: row.backend_id,
     progress: { ...EMPTY_PROGRESS, ...(row.progress ?? {}) },
     error: row.error,
+    failure: row.error ? toJobFailure(classifyFailure(row.error)) : null,
     createdAt: new Date(row.created_at).toISOString(),
     startedAt: row.started_at ? new Date(row.started_at).toISOString() : null,
     finishedAt: row.finished_at ? new Date(row.finished_at).toISOString() : null,

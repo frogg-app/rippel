@@ -37,6 +37,8 @@
  * still the best thing we have to show.
  */
 
+import type { JobFailure } from '@comfy/shared';
+
 /** The closed set. `unknown` is not a failure of this module, it is an answer. */
 export type FailureKind =
   | 'out-of-memory'
@@ -207,4 +209,17 @@ export function classifyFailure(message: string | null | undefined): ClassifiedF
 /** Did this job die for want of memory? The one question `fit.ts` asks. */
 export function isOutOfMemory(message: string | null | undefined): boolean {
   return classifyFailure(message).outOfMemory;
+}
+
+/**
+ * The wire shape. `outOfMemory` is dropped on purpose: it is a flag for the fit
+ * ledger, and a client that wanted it can read `kind`.
+ */
+export function toJobFailure(failure: ClassifiedFailure): JobFailure {
+  return {
+    kind: failure.kind,
+    summary: failure.summary,
+    steps: failure.steps,
+    detail: failure.detail,
+  };
 }

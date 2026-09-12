@@ -130,6 +130,26 @@ export interface JobProgress {
   phaseLabel?: string | null;
 }
 
+/** Why a job failed, sorted into something a person can act on. */
+export type JobFailureKind =
+  | 'out-of-memory'
+  | 'missing-model'
+  | 'missing-node'
+  | 'bad-value'
+  | 'cancelled'
+  | 'backend-unreachable'
+  | 'unknown';
+
+export interface JobFailure {
+  kind: JobFailureKind;
+  /** One sentence about this job. Never the backend's raw text. */
+  summary: string;
+  /** What the person could do about it. Empty when there is nothing honest to say. */
+  steps: string[];
+  /** The backend's own words, kept whole, for a disclosure. */
+  detail: string;
+}
+
 export interface Job {
   id: Uuid;
   userId: Uuid;
@@ -141,6 +161,17 @@ export interface Job {
   backendId: Uuid | null;
   progress: JobProgress;
   error: string | null;
+  /**
+   * `error`, classified. Null unless the job failed.
+   *
+   * Derived when the job is read rather than stored, which is the opposite of
+   * what the fit ledger does with the same classifier — and deliberately. The
+   * ledger freezes its verdict so a learned ceiling cannot move when someone
+   * edits a rule; a *message* has no such requirement, so deriving it means
+   * every improvement to the rules immediately improves what old failed jobs
+   * say.
+   */
+  failure: JobFailure | null;
   createdAt: string;
   startedAt: string | null;
   finishedAt: string | null;

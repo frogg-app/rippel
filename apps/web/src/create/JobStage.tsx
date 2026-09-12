@@ -25,7 +25,7 @@
  * step/fraction behaviour this screen has always had.
  */
 import { useEffect, useState } from 'react';
-import type { Asset, Job, JobProgress } from '@comfy/shared';
+import type { Asset, Job, JobFailure, JobProgress } from '@comfy/shared';
 import { type QueuePlace, ordinal } from '../lib/api-queue';
 import { SparkIcon } from '../components/icons';
 import { Mark } from '../components/Mark';
@@ -95,7 +95,7 @@ export function JobStage({
               body="The job you start appears here at full size, with live preview and per-result actions."
             />
           ) : job.status === 'failed' ? (
-            <Message title="Generation failed" body={job.error ?? 'The backend gave no reason.'} tone="danger" />
+            <Failure job={job} />
           ) : job.status === 'cancelled' ? (
             <Message title="Cancelled" body="Nothing was saved to your library." />
           ) : selected ? (
@@ -459,3 +459,65 @@ function Message({
     </div>
   );
 }
+
+/**
+ * A failed job, led by what it means rather than by what the allocator said.
+ *
+ * The previous version showed `job.error` and nothing else. For the failure
+ * that happens most on a card too small for the clip, that was the allocator's
+ * paragraph — true, and addressed to somebody debugging PyTorch rather than to
+ * the person who typed a prompt and waited three minutes.
+ *
+ * So the server's classification leads: one sentence, then the moves that would
+ * actually change the outcome. The raw text is *not* dropped — it is the only
+ * thing that says precisely what went wrong and it is what gets pasted into a
+ * bug report — but it moves into a disclosure, closed by default, and stays
+ * selectable monospace inside it.
+ *
+ * `failure` is null only for a job stored before the server classified them, so
+ * the old rendering stays as the fallback rather than being deleted.
+ */
+function Failure({ job }: { job: Job }) {
+  const failure = job.failure;
+  if (!failure) {
+    return (
+      <Message title="Generation failed" body={job.error ?? 'The backend gave no reason.'} tone="danger" />
+    );
+  }
+  return (
+    <div className={styles.message}>
+      <p className={`${styles.messageTitle} ${styles.danger}`}>{FAILURE_TITLE[failure.kind]}</p>
+      <p className={styles.messageBody}>{failure.summary}</p>
+      {failure.steps.length > 0 ? (
+        <ul className={styles.failureSteps}>
+          {failure.steps.map((step) => (
+            <li key={step}>{step}</li>
+          ))}
+        </ul>
+      ) : null}
+      {failure.detail ? (
+        <details className={styles.failureDetail}>
+          <summary>What the machine said</summary>
+          <p className={styles.errorBody}>{failure.detail}</p>
+        </details>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * A title per kind, so the headline is already the diagnosis.
+ *
+ * "Generation failed" was the same six words for a card that ran out of memory,
+ * a file someone moved, and a machine that went to sleep — three problems with
+ * three different owners and three different fixes.
+ */
+const FAILURE_TITLE: Record<JobFailure['kind'], string> = {
+  'out-of-memory': 'Ran out of memory',
+  'missing-model': 'A file is missing',
+  'missing-node': 'That machine is missing a custom node',
+  'bad-value': 'The backend refused a setting',
+  cancelled: 'Stopped before it finished',
+  'backend-unreachable': 'Lost contact with the machine',
+  unknown: 'Generation failed',
+};

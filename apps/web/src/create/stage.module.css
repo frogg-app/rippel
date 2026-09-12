@@ -557,3 +557,37 @@
   border: 1px solid var(--danger-line);
   background: var(--danger-tint);
 }
+
+/*
+ * A failed job's next moves, and the machine's own words under a disclosure.
+ *
+ * The steps are the part a person can act on, so they sit in the normal muted
+ * body colour; the raw text keeps `.errorBody`'s monospace because it exists to
+ * be selected and pasted into a bug report, not read as prose.
+ */
+.failureSteps {
+  margin: 10px 0 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-muted);
+  text-align: left;
+}
+
+.failureDetail {
+  margin-top: 12px;
+  text-align: left;
+}
+
+.failureDetail summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.failureDetail summary:hover {
+  color: var(--text);
+}
