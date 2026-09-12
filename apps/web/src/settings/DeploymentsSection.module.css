@@ -75,6 +75,31 @@
   background: var(--text-muted);
 }
 
+/*
+ * "We do not know" — a hollow ring rather than a filled dot.
+ *
+ * Deliberately not a colour. Grey-but-filled reads as a state the machine is
+ * in, and the whole point of this one is that we have no current reading: the
+ * agent has stopped answering and everything beside it is a memory. An outline
+ * is the only shape here that does not make a claim.
+ */
+.pip[data-state='stale'] {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--text-muted);
+}
+
+/* The last-heard line, and the readings it disclaims. */
+.summaryStale {
+  margin: 0 0 8px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.summary[data-stale='true'] dd {
+  color: var(--text-muted);
+}
+
 /* ------------------------------------------------------------ logs */
 
 .logBox {

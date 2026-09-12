@@ -535,3 +535,58 @@ describe('DeploymentsSection', () => {
     expect(screen.queryByLabelText('Password')).not.toBeInTheDocument();
   });
 });
+
+describe('an offline machine does not show live-looking state', () => {
+  /** The card in the bug report: agent silent for four minutes, ComfyUI last seen running. */
+  const offline: Deployment = {
+    ...online,
+    status: 'offline',
+    lastSeenAt: new Date(Date.now() - 4 * 60_000).toISOString(),
+  };
+
+  it('puts the last readings in the past tense', async () => {
+    const { api } = fakeApi([offline]);
+    render(<DeploymentsSection api={api} />);
+
+    // The header already said OFFLINE; the readings beside it used to go on
+    // saying "running" and "answering" in the present tense.
+    expect(await screen.findByText(/was running/)).toBeInTheDocument();
+    expect(screen.getByText('was answering')).toBeInTheDocument();
+    expect(screen.queryByText('answering')).not.toBeInTheDocument();
+  });
+
+  it('says when it last heard from the machine', async () => {
+    const { api } = fakeApi([offline]);
+    render(<DeploymentsSection api={api} />);
+    expect(await screen.findByText(/Last heard from/)).toBeInTheDocument();
+    expect(screen.getByText(/4 min ago/)).toBeInTheDocument();
+  });
+
+  it('shows no green pip anywhere on the machine readings', async () => {
+    // The actual complaint: red header, red banner, green dots. A pip is only
+    // allowed to be "on" while the agent is answering.
+    const { api } = fakeApi([offline]);
+    const { container } = render(<DeploymentsSection api={api} />);
+    await screen.findByText(/was running/);
+
+    const machinePips = container.querySelectorAll('dd [data-state]');
+    const states = [...machinePips].map((pip) => pip.getAttribute('data-state'));
+    expect(states.length).toBeGreaterThan(0);
+    // Backend registration is a fact about rippel's own database and stays
+    // true while the machine sleeps, so it is the one pip still allowed on.
+    expect(states.filter((state) => state === 'on')).toHaveLength(0);
+    expect(states).toContain('stale');
+  });
+
+  it('keeps the pips live while the agent is answering', async () => {
+    const { api } = fakeApi();
+    const { container } = render(<DeploymentsSection api={api} />);
+    await screen.findByText(/running/);
+    const states = [...container.querySelectorAll('dd [data-state]')].map((p) =>
+      p.getAttribute('data-state'),
+    );
+    expect(states).toContain('on');
+    expect(states).not.toContain('stale');
+    expect(screen.queryByText(/Last heard from/)).not.toBeInTheDocument();
+  });
+});

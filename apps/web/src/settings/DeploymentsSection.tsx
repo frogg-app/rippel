@@ -69,7 +69,14 @@ export function DeploymentsSection({ api = defaultApi }: { api?: DeploymentsApi 
     void load(controller.signal);
     // The list is a heartbeat view: an agent that stopped checking in becomes
     // offline without anything on this page having done anything.
-    const timer = setInterval(() => void load(), 15_000);
+    //
+    // 5s, not 15s, and the number is derived rather than picked. The agent
+    // heartbeats every 20s and the server calls it offline after 70s of
+    // silence, so the server's verdict can already be a minute behind the
+    // machine. Polling at 15s added up to another 15s of the card insisting a
+    // dead agent was fine. This is the one interval on the page we control, so
+    // it should not be the largest term in that sum.
+    const timer = setInterval(() => void load(), 5_000);
     return () => {
       controller.abort();
       clearInterval(timer);
@@ -215,6 +222,17 @@ function DeploymentCard({
   const comfy = deployment.comfy;
   const online = deployment.status === 'online';
 
+  // "Last heard from 8s ago" has to keep counting between polls, or it freezes
+  // at whatever it said when the list last loaded and becomes another confident
+  // stale number on a card about stale numbers. Only ticks while offline: there
+  // is nothing to count up to while the agent is answering.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (online) return;
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [online]);
+
   /**
    * Why a control is refusing, in the words the card would use out loud.
    *
@@ -359,7 +377,7 @@ function DeploymentCard({
       </div>
 
       <NextAction deployment={deployment} />
-      <ComfySummary deployment={deployment} />
+      <ComfySummary deployment={deployment} now={now} />
 
       <div className={shared.cardActions}>
         <button type="button" className={shared.action} onClick={() => void test()} disabled={busy !== null}>
@@ -528,9 +546,52 @@ function NextAction({ deployment }: { deployment: Deployment }) {
   return null;
 }
 
-/** The ComfyUI on that machine, in one line per fact worth knowing. */
-function ComfySummary({ deployment }: { deployment: Deployment }) {
+/**
+ * "Last heard from 8s ago" — seconds, because this is a heartbeat view.
+ *
+ * `ageLabel` in lib/api-storage rounds everything under a minute to "just now",
+ * which is the right call for a stored asset and the wrong one here: the whole
+ * question a reader has is whether the last check-in was 8 seconds ago or 80,
+ * and "just now" cannot tell them.
+ */
+function heartbeatAge(iso: string, now: number): string {
+  const seconds = Math.max(0, Math.round((now - new Date(iso).getTime()) / 1000));
+  if (seconds < 90) return `${seconds}s ago`;
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 48) return `${hours} h ago`;
+  return `${Math.round(hours / 24)} d ago`;
+}
+
+/**
+ * The ComfyUI on that machine, in one line per fact worth knowing.
+ *
+ * ## Everything here is a memory, and it says so when it is only a memory
+ *
+ * `deployment.comfy` is the last blob the agent reported, held on the row and
+ * returned verbatim. It is never cleared when the agent stops answering,
+ * because "what was on that machine" is still the most useful thing to show —
+ * but it is not a live reading, and this panel used to draw it as one.
+ *
+ * That produced the screenshot this was written for: the header said OFFLINE in
+ * red, a banner said the agent had stopped answering, and between them three
+ * green pips said the engine was running and the file access ready. Two of the
+ * three claims were about a process on a machine that had not spoken in
+ * minutes. The red text was right and the green dots were louder.
+ *
+ * So the pips are gated on `deployment.status`. Offline or pending, every one
+ * goes to the `stale` state and the words move into the past tense: "was
+ * running" rather than "running". The only row still stated in the present is
+ * Backend, which is a fact about rippel's own database rather than about the
+ * machine, and stays true while the machine is asleep.
+ *
+ * The `as of` line is not decoration. It is the difference between "this is
+ * wrong" and "this is old", and only one of those is alarming.
+ */
+function ComfySummary({ deployment, now }: { deployment: Deployment; now: number }) {
   const comfy = deployment.comfy;
+  const live = deployment.status === 'online';
   if (!comfy) {
     return (
       <p className={`${styles.summary} ${styles.summaryEmpty}`}>
@@ -538,54 +599,77 @@ function ComfySummary({ deployment }: { deployment: Deployment }) {
       </p>
     );
   }
+  /** A pip is only allowed to be green while the agent is actually answering. */
+  const pip = (state: 'on' | 'warn' | 'off') => (live ? state : 'stale');
   return (
-    <dl className={styles.summary}>
-      <div>
-        <dt>ComfyUI</dt>
-        <dd>
-          {comfy.installed ? (
-            <>
-              <span data-state={comfy.running ? 'on' : 'off'} className={styles.pip} />
-              {comfy.running ? 'running' : 'installed, stopped'}
-              {comfy.version ? <span className="mono"> · {comfy.version}</span> : null}
-              {comfy.commit ? <span className="mono"> · {comfy.commit}</span> : null}
-            </>
-          ) : (
-            'not installed'
-          )}
-        </dd>
-      </div>
-      <div>
-        <dt>Storage helper</dt>
-        <dd>
-          <span data-state={comfy.helperReady ? 'on' : comfy.helperInstalled ? 'warn' : 'off'} className={styles.pip} />
-          {comfy.helperReady
-            ? 'answering'
-            : comfy.helperInstalled
-              ? 'installed, not answering — restart ComfyUI'
-              : 'not installed'}
-        </dd>
-      </div>
-      <div>
-        <dt>Backend</dt>
-        <dd>
-          {deployment.backendName ? (
-            <>
-              <span data-state="on" className={styles.pip} />
-              {deployment.backendName}
-            </>
-          ) : (
-            'not registered'
-          )}
-        </dd>
-      </div>
-      {comfy.path ? (
-        <div>
-          <dt>Path</dt>
-          <dd className="mono">{comfy.path}</dd>
-        </div>
+    <>
+      {!live && deployment.lastSeenAt ? (
+        <p className={styles.summaryStale} role="status">
+          Last heard from <strong>{heartbeatAge(deployment.lastSeenAt, now)}</strong>. The readings
+          below are what the agent reported then, not what is true now.
+        </p>
       ) : null}
-    </dl>
+      <dl className={styles.summary} data-stale={!live}>
+        <div>
+          <dt>ComfyUI</dt>
+          <dd>
+            {comfy.installed ? (
+              <>
+                <span data-state={pip(comfy.running ? 'on' : 'off')} className={styles.pip} />
+                {comfy.running
+                  ? live
+                    ? 'running'
+                    : 'was running'
+                  : live
+                    ? 'installed, stopped'
+                    : 'installed, was stopped'}
+                {comfy.version ? <span className="mono"> · {comfy.version}</span> : null}
+                {comfy.commit ? <span className="mono"> · {comfy.commit}</span> : null}
+              </>
+            ) : (
+              'not installed'
+            )}
+          </dd>
+        </div>
+        <div>
+          <dt>Storage helper</dt>
+          <dd>
+            <span
+              data-state={pip(comfy.helperReady ? 'on' : comfy.helperInstalled ? 'warn' : 'off')}
+              className={styles.pip}
+            />
+            {comfy.helperReady
+              ? live
+                ? 'answering'
+                : 'was answering'
+              : comfy.helperInstalled
+                ? 'installed, not answering — restart ComfyUI'
+                : 'not installed'}
+          </dd>
+        </div>
+        <div>
+          <dt>Backend</dt>
+          <dd>
+            {deployment.backendName ? (
+              <>
+                {/* Registered with rippel, which is true whether or not the
+                    machine is awake — so this pip is not gated. */}
+                <span data-state="on" className={styles.pip} />
+                {deployment.backendName}
+              </>
+            ) : (
+              'not registered'
+            )}
+          </dd>
+        </div>
+        {comfy.path ? (
+          <div>
+            <dt>Path</dt>
+            <dd className="mono">{comfy.path}</dd>
+          </div>
+        ) : null}
+      </dl>
+    </>
   );
 }
 
