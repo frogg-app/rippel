@@ -98,16 +98,29 @@ describe('resolveRequirements', () => {
     expect(resolved!.filename).toBe('t5\\t5xxl_fp8_e4m3fn.safetensors');
   });
 
-  it('prefers the fp16 build when a backend has several', () => {
+  it('prefers an fp8 build over fp16 when a backend has several', () => {
+    // Deliberately the smaller build, not the better one: fp16 is 9.79 GB and
+    // the LTX-Video transformer is another 5.72, which does not fit the 16 GB
+    // card this runs on. See the note on the requirement's `preferred` list.
     const info = infoWithEncoders(
       't5/t5xxl_fp8_e4m3fn.safetensors',
       't5/t5xxl_fp16.safetensors',
       'clip_l.safetensors',
     );
     const [resolved] = resolveRequirements(txt2vidLtxvTemplate, info);
-    expect(resolved!.filename).toBe('t5/t5xxl_fp16.safetensors');
+    expect(resolved!.filename).toBe('t5/t5xxl_fp8_e4m3fn.safetensors');
     // `clip_l` is a text encoder but not a T5, so it is not a candidate.
     expect(resolved!.candidates).not.toContain('clip_l.safetensors');
+  });
+
+  it('prefers the scaled fp8 over the plain one', () => {
+    // Same size class; the scaled build keeps per-tensor scales.
+    const info = infoWithEncoders(
+      't5/t5xxl_fp8_e4m3fn.safetensors',
+      't5/t5xxl_fp8_e4m3fn_scaled.safetensors',
+    );
+    const [resolved] = resolveRequirements(txt2vidLtxvTemplate, info);
+    expect(resolved!.filename).toBe('t5/t5xxl_fp8_e4m3fn_scaled.safetensors');
   });
 
   it('is stable: the same backend resolves to the same file every time', () => {
@@ -118,11 +131,13 @@ describe('resolveRequirements', () => {
   });
 
   it('ranks a preferred file first regardless of its subfolder', () => {
+    // The subject is the folder being ignored, not which build wins: the
+    // deeper path holds the *more* preferred file and still comes first.
     const ranked = rankCandidates(LTXV_TEXT_ENCODER_REQUIREMENT, [
-      'nested/deep/t5xxl_fp8_e4m3fn.safetensors',
       'sub/t5xxl_fp16.safetensors',
+      'nested/deep/t5xxl_fp8_e4m3fn.safetensors',
     ]);
-    expect(ranked[0]).toBe('sub/t5xxl_fp16.safetensors');
+    expect(ranked[0]).toBe('nested/deep/t5xxl_fp8_e4m3fn.safetensors');
   });
 });
 

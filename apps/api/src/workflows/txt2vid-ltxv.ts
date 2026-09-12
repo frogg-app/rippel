@@ -148,13 +148,24 @@ export const LTXV_TEXT_ENCODER_REQUIREMENT: ModelRequirement = {
     catalogueBase: ['t5'],
     catalogueFilename: /t5xxl/i,
   },
-  // fp16 is the reference build; the fp8s are the ones that fit on a 16 GB card
-  // alongside the transformer, and are ordered after it only because a backend
-  // that has both should use the better one.
+  // fp8 first, and the order is a memory decision rather than a quality one.
+  //
+  // Measured from comfyanonymous/flux_text_encoders, which is where ComfyUI's
+  // own LTX-Video templates point: fp16 is 9.79 GB, fp8_e4m3fn_scaled 5.16 GB,
+  // fp8_e4m3fn 4.89 GB. The reference box is a 16 GB card and the LTX-Video 2B
+  // transformer is another 5.72 GB, so fp16 leaves well under a gigabyte for
+  // the latents and the VAE — it is the build that does not fit, not the better
+  // one. `preferred` decides both which installed encoder a dispatch picks and
+  // which file readiness offers to download, so putting fp16 first was
+  // recommending a 9.79 GB download that then cannot be run.
+  //
+  // Scaled ahead of plain fp8: same size class, and the scaled build keeps
+  // per-tensor scales so it degrades less. fp16 stays on the list last, for a
+  // backend that already has it or has the memory to spare.
   preferred: [
-    't5xxl_fp16.safetensors',
     't5xxl_fp8_e4m3fn_scaled.safetensors',
     't5xxl_fp8_e4m3fn.safetensors',
+    't5xxl_fp16.safetensors',
   ],
 };
 

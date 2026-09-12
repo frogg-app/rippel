@@ -72,7 +72,22 @@ export const LTXV_VAE_REQUIREMENT: ModelRequirement = {
     catalogueBase: ['ltxv', 'ltx-video', 'LTX-Video'],
     catalogueFilename: /ltx/i,
   },
-  preferred: ['ltx-video-2b-v0.9.1-vae.safetensors', 'ltx-video-2b-v0.9.1.safetensors'],
+  // The full checkpoint, because a VAE-only LTX-Video file does not exist.
+  //
+  // `ltx-video-2b-v0.9.1-vae.safetensors` was the first entry here and there is
+  // no such file: Lightricks/LTX-Video ships the 2B and 13B checkpoints plus
+  // `vae/diffusion_pytorch_model.safetensors`, which is the diffusers layout
+  // and matches neither this requirement's `/ltx/i` filename pattern nor
+  // anything ComfyUI's `vae/` folder would name. So the head of this list was a
+  // 404 offered as the recommended download.
+  //
+  // Copying the checkpoint into `vae/` is the real answer and it works, because
+  // ComfyUI's VAE loader detects the LTXV VAE from the tensor keys — see the
+  // note above on why the match is on the family rather than a specific build.
+  // It costs 5.72 GB of disk for a second copy of a file the machine already
+  // has, which is worth saying out loud in the instruction rather than hiding
+  // behind a filename that cannot be fetched.
+  preferred: ['ltx-video-2b-v0.9.1.safetensors', 'ltx-video-2b-v0.9.5.safetensors'],
 };
 
 /** Every companion the diffusion_models graphs load: the T5, plus the VAE. */
