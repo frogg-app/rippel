@@ -600,7 +600,7 @@ describe('the memory profile control', () => {
     render(<DeploymentsSection api={api} />);
     await screen.findByText('studio-4090');
 
-    await userEvent.click(screen.getByRole('radio', { name: 'Low VRAM' }));
+    await userEvent.click(screen.getByRole('radio', { name: 'Always' }));
     await userEvent.click(screen.getByRole('button', { name: /Apply and restart/ }));
 
     await waitFor(() => expect(api.setMemory).toHaveBeenCalledWith('d1', 'low-vram', false));
@@ -622,7 +622,7 @@ describe('the memory profile control', () => {
     render(<DeploymentsSection api={api} />);
     await screen.findByText('studio-4090');
 
-    await userEvent.click(screen.getByRole('checkbox', { name: /Decode on the CPU/ }));
+    await userEvent.click(screen.getByRole('checkbox', { name: /Decode the final image/ }));
     await userEvent.click(screen.getByRole('button', { name: /Apply and restart/ }));
 
     // Profile unchanged, VAE switched: the two are separate trades.
@@ -640,7 +640,7 @@ describe('the memory profile control', () => {
     render(<DeploymentsSection api={api} />);
     await screen.findByText('studio-4090');
 
-    await userEvent.click(screen.getByRole('radio', { name: 'Minimal' }));
+    await userEvent.click(screen.getByRole('radio', { name: 'Maximum' }));
     await userEvent.click(screen.getByRole('button', { name: /Apply and restart/ }));
 
     expect(await screen.findByText(/did not answer/)).toBeInTheDocument();
@@ -650,7 +650,51 @@ describe('the memory profile control', () => {
     const { api } = fakeApi([{ ...online, memoryProfile: 'minimal-vram', cpuVae: true }]);
     render(<DeploymentsSection api={api} />);
     await screen.findByText('studio-4090');
-    expect(screen.getByRole('radio', { name: 'Minimal' })).toHaveAttribute('aria-checked', 'true');
-    expect(screen.getByRole('checkbox', { name: /Decode on the CPU/ })).toBeChecked();
+    expect(screen.getByRole('radio', { name: 'Maximum' })).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByRole('checkbox', { name: /Decode the final image/ })).toBeChecked();
+  });
+});
+
+describe('the system-memory control says when, not how fast', () => {
+  it('offers the policy in order, least system memory to most', async () => {
+    // "Fast / Balanced / Low VRAM / Minimal" named the consequence and left the
+    // policy to be guessed. These name the policy.
+    const { api } = fakeApi();
+    render(<DeploymentsSection api={api} />);
+    await screen.findByText('studio-4090');
+    const group = screen.getByRole('radiogroup', { name: 'Use system memory' });
+    const labels = [...group.querySelectorAll('[role="radio"]')].map((el) => el.textContent);
+    expect(labels).toEqual(['None', 'Overflow', 'Always', 'Maximum']);
+  });
+
+  it('spells out that the default is a fallback on overflow', async () => {
+    // The question the label could not answer before: is system memory a
+    // fallback, or used on every run?
+    const { api } = fakeApi();
+    render(<DeploymentsSection api={api} />);
+    await screen.findByText('studio-4090');
+    expect(screen.getByText(/Only when the card runs out/)).toBeInTheDocument();
+  });
+
+  it('explains each policy as you choose it', async () => {
+    const { api } = fakeApi();
+    render(<DeploymentsSection api={api} />);
+    await screen.findByText('studio-4090');
+
+    await userEvent.click(screen.getByRole('radio', { name: 'Always' }));
+    expect(screen.getByText(/On every run/)).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('radio', { name: 'None' }));
+    expect(screen.getByText(/does not fit fails instead of slowing down/)).toBeInTheDocument();
+  });
+
+  it('keeps the final decode as its own switch, described as the last step', async () => {
+    // `--cpu-vae` is two-state with no overflow in between, so it stays a
+    // switch rather than being dressed as a third policy list.
+    const { api } = fakeApi();
+    render(<DeploymentsSection api={api} />);
+    await screen.findByText('studio-4090');
+    expect(screen.getByRole('checkbox', { name: /Decode the final image/ })).toBeInTheDocument();
+    expect(screen.getByText(/the last step only/i)).toBeInTheDocument();
   });
 });

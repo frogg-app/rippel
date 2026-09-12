@@ -989,7 +989,12 @@ describe('setting how much memory a machine may use', () => {
     expect(rows[0]!.cpu_vae).toBe(true);
   });
 
-  it('sends no flags at all for the fast profile', async () => {
+  it('forces the model to stay on the card when system memory is set to None', async () => {
+    // This asserted `comfyArgs: ''` and was pinning a bug. ComfyUI with no
+    // flags runs NORMAL_VRAM with smart memory on, which quietly offloads to
+    // system RAM the moment a model does not fit — so the option promising
+    // never to use system memory was the one that used it silently. `--highvram`
+    // is what actually keeps the weights resident.
     const pushed: { comfyArgs?: string }[] = [];
     const app = await server(ADMIN, {
       rows: [row()],
@@ -1000,7 +1005,27 @@ describe('setting how much memory a machine may use', () => {
       }),
     });
     await app.inject({ method: 'POST', url: `/deployments/${D1}/memory`, payload: { profile: 'fast' } });
-    expect(pushed).toEqual([{ comfyArgs: '' }]);
+    expect(pushed).toEqual([{ comfyArgs: '--highvram' }]);
+  });
+
+  it('leaves the overflow default unforced, plus a reserve', async () => {
+    // The overflow itself is ComfyUI's own behaviour and needs no flag; the
+    // reserve is what stops the desktop tipping a job over the edge.
+    const pushed: { comfyArgs?: string }[] = [];
+    const app = await server(ADMIN, {
+      rows: [row()],
+      agent: fakeAgent({
+        updateConfig: async (_t, patch) => {
+          pushed.push(patch);
+        },
+      }),
+    });
+    await app.inject({
+      method: 'POST',
+      url: `/deployments/${D1}/memory`,
+      payload: { profile: 'balanced' },
+    });
+    expect(pushed).toEqual([{ comfyArgs: '--reserve-vram 1' }]);
   });
 
   it('saves the choice even when the machine is asleep', async () => {

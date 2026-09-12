@@ -567,16 +567,22 @@ function heartbeatAge(iso: string, now: number): string {
 }
 
 /**
- * How much of this machine's memory a job may use.
+ * When this machine may use system memory instead of the card.
  *
- * ## Why this is a choice and not a number
+ * ## Why the question is "when", not "how fast"
  *
- * The honest question is not "how much VRAM does this card have" — this project
- * has a whole README section on why that number cannot be trusted — but "how
- * much slowness will you accept in exchange for bigger models running at all".
- * A 16 GB card cannot *hold* a 14B video model and can still run one, several
- * times slower, by streaming the weights from system RAM. That trade is the
- * only thing a person actually has to decide, so it is the only thing asked.
+ * This shipped as a row of performance tiers — Fast, Balanced, Low VRAM,
+ * Minimal — which named the *consequence* and left the policy to be inferred.
+ * Reading them, you could not tell whether system memory was a fallback that
+ * engages only on overflow or something used on every run, and that is the only
+ * thing anyone is actually asking. So the options are the answers to it:
+ * **None**, **Overflow**, **Always**, **Maximum**, in order of how much system
+ * memory each one will reach for.
+ *
+ * The honest framing matters more here than usual because the reported VRAM
+ * figure cannot be trusted (see the README), so the panel cannot say "you have
+ * 16 GB, this model is 9 GB, you are fine". What it can say is what the machine
+ * will *do* when a model does not fit, and let the person choose that.
  *
  * ## Why it is saved even when the machine is asleep
  *
@@ -631,10 +637,10 @@ function MemoryControl({
   return (
     <div className={styles.memory}>
       <div className={styles.memoryHead}>
-        <span className={styles.memoryLabel}>Memory</span>
+        <span className={styles.memoryLabel}>Use system memory</span>
         <span className={styles.memoryBlurb}>{MEMORY_BLURB[profile]}</span>
       </div>
-      <div className={styles.memoryChoices} role="radiogroup" aria-label="Memory profile">
+      <div className={styles.memoryChoices} role="radiogroup" aria-label="Use system memory">
         {MEMORY_OPTIONS.map((option) => (
           <button
             key={option.id}
@@ -648,13 +654,23 @@ function MemoryControl({
           </button>
         ))}
       </div>
+      {/*
+        The final decode, separately, because it is genuinely a different
+        question. ComfyUI's `--cpu-vae` is a two-state flag with no "overflow"
+        in between, so this stays a switch rather than being dressed as a third
+        policy list that would have to invent a middle setting. It is worth its
+        own control because the decode is one large allocation at the very end:
+        on a card that is merely tight, moving only that off it is often the
+        whole fix, and it costs far less than moving the model.
+      */}
       <label className={styles.memoryToggle}>
         <input type="checkbox" checked={cpuVae} onChange={(e) => setCpuVae(e.target.checked)} />
         <span>
-          Decode on the CPU
+          Decode the final image in system memory too
           <span className={styles.memoryHint}>
             {' '}
-            — slower last step, and often the whole fix on a card that is merely tight.
+            — the last step only. Slower, and often enough on its own when a job dies right at the
+            end.
           </span>
         </span>
       </label>
@@ -672,19 +688,25 @@ function MemoryControl({
   );
 }
 
-/** The server owns the flags; the panel owns the words. */
+/**
+ * The server owns the flags; the panel owns the words. Ordered by how much
+ * system memory each one reaches for, so the row reads as a dial.
+ */
 const MEMORY_OPTIONS: { id: MemoryProfile; label: string }[] = [
-  { id: 'fast', label: 'Fast' },
-  { id: 'balanced', label: 'Balanced' },
-  { id: 'low-vram', label: 'Low VRAM' },
-  { id: 'minimal-vram', label: 'Minimal' },
+  { id: 'fast', label: 'None' },
+  { id: 'balanced', label: 'Overflow' },
+  { id: 'low-vram', label: 'Always' },
+  { id: 'minimal-vram', label: 'Maximum' },
 ];
 
 const MEMORY_BLURB: Record<MemoryProfile, string> = {
-  fast: 'Everything on the card. Fastest, and fails outright on a model that will not fit.',
-  balanced: 'Holds a gigabyte back so the desktop cannot push a job over the edge.',
-  'low-vram': 'Streams the model from system memory. Slower, and runs much bigger models.',
-  'minimal-vram': 'Keeps almost nothing on the card. Very slow, and runs nearly anything.',
+  fast: 'Never. The whole model stays on the card, and one that does not fit fails instead of slowing down.',
+  balanced:
+    'Only when the card runs out. System memory catches the overflow, and a gigabyte is held back so the desktop cannot tip a job over the edge. The default.',
+  'low-vram':
+    'On every run. The model lives in system memory and streams onto the card a layer at a time — slower always, and fits much bigger models.',
+  'minimal-vram':
+    'As much as possible. Almost nothing stays on the card: slowest by a distance, and runs nearly anything that fits in system memory.',
 };
 
 /**

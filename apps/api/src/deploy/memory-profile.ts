@@ -1,5 +1,5 @@
 /**
- * How hard a machine should try to fit a job in its graphics memory.
+ * When a machine is allowed to use system memory instead of the card.
  *
  * ## The problem this exists for
  *
@@ -31,6 +31,8 @@
  * ask for that check. `profileArgs` is therefore written so the check is one
  * table to read, and a wrong flag is recoverable: the agent keeps the previous
  * `comfyArgs` until a restart succeeds, and the panel shows the ComfyUI log.
+ * `--highvram` is the newest addition to that table and the first thing to
+ * confirm.
  */
 
 import type { MemoryProfile } from '@comfy/shared';
@@ -38,39 +40,68 @@ import type { MemoryProfile } from '@comfy/shared';
 /** What each profile asks ComfyUI to do, and what it costs. */
 export interface ProfileSpec {
   id: MemoryProfile;
+  /**
+   * The answer to "when is system memory used", not a performance tier.
+   *
+   * These were "Fast / Balanced / Low VRAM / Minimal", which named the
+   * *consequence* and left the actual policy to be inferred. Nobody could tell
+   * from them whether system memory was a fallback that engages on overflow or
+   * something used all the time — which is the only question being asked.
+   */
   label: string;
   /** One sentence for the panel: what it does, and what it costs. */
   blurb: string;
   args: readonly string[];
 }
 
+/**
+ * Four answers to one question, from least system memory to most.
+ *
+ * The ids are the ones migration 016 already stores and are not renamed — they
+ * are internal, and a migration to make four labels read better would be a poor
+ * trade.
+ *
+ * ## `None` used to send no flags, and that was wrong
+ *
+ * It shipped as "Fast — keep everything on the card, fails outright on a model
+ * that will not fit", with `args: []`. ComfyUI with no flags runs NORMAL_VRAM
+ * with smart memory *on*, which partially offloads to system RAM the moment a
+ * model does not fit. So the profile that promised never to use system memory
+ * was in fact the one that used it silently, and the description was the
+ * opposite of the behaviour. `--highvram` is what actually keeps the weights
+ * resident, and with it the sentence is true.
+ */
 export const MEMORY_PROFILES: readonly ProfileSpec[] = [
   {
     id: 'fast',
-    label: 'Fast',
-    blurb: 'Keep everything on the card. Fastest, and fails outright on a model that will not fit.',
-    args: [],
+    label: 'None',
+    blurb:
+      'Keep the whole model on the card. Fastest, and a model that does not fit fails instead of slowing down.',
+    args: ['--highvram'],
   },
   {
     id: 'balanced',
-    label: 'Balanced',
+    label: 'Overflow',
     blurb:
-      'Hold a gigabyte back so the desktop and the browser do not push a job over the edge. The default.',
-    // Reserving a little is what stops the *other* things on a desktop — a
-    // compositor, a browser with hardware acceleration — turning a job that
-    // fits in isolation into one that does not.
+      'The card first, and system memory catches whatever overflows. A gigabyte is held back so the desktop cannot tip a job over the edge. The default.',
+    // The reserve is what stops the *other* things on a desktop — a compositor,
+    // a browser with hardware acceleration — turning a job that fits in
+    // isolation into one that does not. The overflow itself is ComfyUI's own
+    // behaviour and needs no flag; this profile is the unforced one.
     args: ['--reserve-vram', '1'],
   },
   {
     id: 'low-vram',
-    label: 'Low VRAM',
-    blurb: 'Stream the model from system memory a layer at a time. Slower, and runs much bigger models.',
+    label: 'Always',
+    blurb:
+      'Keep the model in system memory and stream it onto the card a layer at a time. Slower every run, and fits much bigger models.',
     args: ['--lowvram'],
   },
   {
     id: 'minimal-vram',
-    label: 'Minimal VRAM',
-    blurb: 'Keep almost nothing on the card. Very slow, and runs anything that fits in system memory.',
+    label: 'Maximum',
+    blurb:
+      'Hold almost nothing on the card. Slowest by a distance, and runs nearly anything that fits in system memory.',
     args: ['--novram'],
   },
 ];
