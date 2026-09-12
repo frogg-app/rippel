@@ -23,29 +23,80 @@ Three things are broken or missing:
 
 ## The backend you will test against
 
-`desktop-6900xt` at `http://192.168.1.10:8188`. ComfyUI 0.34.0 on Windows with
-ROCm, an RX 6900 XT with 16 GB VRAM, and 64 GB of system RAM. It is already
-launched with `--cpu-vae`. Check the current state yourself with:
+`desktop-6900xt` at `http://192.168.1.10:8188`. ComfyUI **0.35.0** on Windows
+with ROCm (torch 2.13.0+rocm10.0.0), an RX 6900 XT with 16 GB VRAM, and 64 GB of
+system RAM. Check the current state yourself with:
 
 ```bash
 curl -s http://192.168.1.10:8188/system_stats
 curl -s http://192.168.1.10:8188/models/checkpoints    # or any folder name
 curl -s http://192.168.1.10:8188/object_info/WanImageToVideo
+curl -s http://192.168.1.10:8188/templates/index.json  # the workflow library
 ```
 
-State on 2026-09-11. Re-query it, because it goes stale.
+**State on 2026-09-12, re-queried. It had gone very stale, and two of the
+changes invalidate parts of the plan below — read this before starting a task.**
+
+Most of the video models the plan was written around are **gone**.
+`diffusion_models/`, `text_encoders/` and `clip_vision/` are all empty. The
+launch arguments no longer include `--cpu-vae`; they are now
+`--listen 0.0.0.0 --port 8188 --cuda-device 1`.
 
 | Model | Folder | Status |
 | --- | --- | --- |
-| `SVD/svd.safetensors` | `checkpoints/` | **Runs.** Through `img2vid-svd`. 512x288, 14 frames, 12 steps took 90 s. |
-| `ltx-video-2b-v0.9.1` | `diffusion_models/` | Blocked. Needs a T5 text encoder and a VAE, and `text_encoders/` and `vae/` are empty. |
-| `hunyuan_video_720p_fp8_e4m3fn` | `checkpoints/` | Misfiled. It is diffusion-only and belongs in `diffusion_models/`. Also needs its LLaVA encoder, CLIP-L and VAE. |
-| `ltxv-097-ic-lora-depth`, `ltx-2.3-22b-ic-lora-motion-track` | `loras/` | Orphans. Their base models are not installed. |
-| `hunyuan_dit_1.2` | `checkpoints/` | Image model with no workflow. |
-| `SDXL/sd_xl_base_1.0`, `SDXL/sd_xl_refiner_1.0` | `checkpoints/` | Runs. |
+| `SVD/svd.safetensors` | `checkpoints/` | **Runs.** Through `img2vid-svd`. 512x288, **25 frames**, 12 steps took 93 s on 2026-09-12. |
+| `SDXL/sd_xl_base_1.0_0.9vae` | `checkpoints/` | Runs. Note the filename changed and the refiner is gone. |
+| `seedvr2_ema_vae_fp16` | `vae/` | Unrelated to any template here. |
+| `lightx2v_I2V_14B_...`, `krea2_style_reference`, 2 SDXL LoRAs | `loras/` | Orphans. No base model installed. |
+| *everything else the old table listed* | — | **Removed from the box.** No LTX-Video, no Hunyuan Video, no Hunyuan DiT, no LTX LoRAs. |
 
-The backend already has ComfyUI's native Wan, LTX and Hunyuan nodes. Custom
-nodes such as ComfyUI-GGUF are not installed.
+Two consequences:
+
+1. **Nothing with a video template can be verified end to end except SVD.**
+   Tasks 2, 3 and 4 can be built and structurally validated — post the compiled
+   graph to `/prompt` and read `node_errors`, which reports missing *files* only
+   after every class name, link and input range has passed — but "a real job
+   succeeded" is not available until someone installs weights.
+2. **ComfyUI-Manager is no longer installed.** `/customnode/getmappings` and
+   `/externalmodel/getlist` both 404, so this backend has **no install
+   transport**: `models/installs.ts` cannot queue a download to it and no Fix
+   button in Run 3 can close a gap on this machine. Run 3 still has a job to do
+   in the app, but its verification story needs a person or a new transport.
+   This is the biggest unplanned blocker in this file.
+
+The backend has ComfyUI's native Wan, LTX and Hunyuan nodes, including
+`Wan22ImageToVideoLatent`, `CreateVideo` and `SaveVideo`. Custom nodes such as
+ComfyUI-GGUF are not installed. The workflow library is present at version
+**0.11.59** and serves **547** templates.
+
+### Files a person needs to install
+
+Nothing below can be fetched by the app; all of it has to be dropped on the box
+by hand. Each group unblocks the task named.
+
+Task 2, LTX-Video image-to-video — 10.9 GB:
+
+```
+models/checkpoints/ltx-video-2b-v0.9.5.safetensors              5.72 GB
+  https://huggingface.co/Lightricks/LTX-Video/resolve/main/ltx-video-2b-v0.9.5.safetensors
+models/text_encoders/t5xxl_fp8_e4m3fn_scaled.safetensors        5.16 GB
+  https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/t5xxl_fp8_e4m3fn_scaled.safetensors
+```
+
+Task 3, Wan 2.2 TI2V 5B image-to-video — 16.9 GB:
+
+```
+models/diffusion_models/wan2.2_ti2v_5B_fp16.safetensors         9.31 GB
+  https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_ti2v_5B_fp16.safetensors
+models/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors     6.27 GB
+  https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors
+models/vae/wan2.2_vae.safetensors                               1.31 GB
+  https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/vae/wan2.2_vae.safetensors
+```
+
+Do not substitute `wan_2.1_vae.safetensors`, which sits in the same directory of
+the same repo: it decodes 2.2 latents as noise rather than failing. Only fp16 is
+published for the 5B transformer.
 
 ## Workflows
 
@@ -584,6 +635,25 @@ Any time, and ideally first if you want safer ground for the other runs.
 - The form and the Animate action no longer send a fixed motion value of 127,
   which LTX rejected. Motion is optional in the shared type.
 - Duplicate keys in `apps/api/src/lib/comfy.ts` that failed the typecheck.
+
+Done on 2026-09-12:
+
+- **Task 1.** Per-model video limits. `videoLimitsFor` projects each manifest's
+  `frameCount`/`fps`/`motion` constraints and `frameQuantum` into a
+  `VideoLimits`, carried on `GET /backends/:id/readiness` rather than a new
+  route — readiness already resolves the exact template for a model on a backend
+  and the form already fetches it. The form derives its duration bound from the
+  frame budget per selected rate and clamps during render and at submit.
+  Verified with a real SVD job.
+- **Task 2.** Not the install, but the two wrong recommendations: the T5
+  `preferred` list led with fp16 (9.79 GB, does not fit beside the transformer on
+  16 GB) and the LTX VAE list led with a filename that 404s. Both fixed, all
+  sizes checked against live HTTP headers. A real LTX job still needs the two
+  files above.
+- **Task 3.** `img2vid-wan22-ti2v-5b`: graph, manifest, presets, its own family
+  (`wan2.2-ti2v-5b`, derived from `wan`, so a 14B file is not routed into a 5B
+  graph), UMT5 and Wan-2.2-VAE requirements, registry entry, 17 tests. The
+  compiled graph validates on the backend down to the three missing files.
 
 Also measured, not built: the backend serves the workflow library at
 `/templates/index.json`, and library files carry model download URLs.
