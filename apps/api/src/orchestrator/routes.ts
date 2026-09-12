@@ -12,7 +12,7 @@ import { z } from 'zod';
 import type { GenerationParams, Job, JobEvent, JobFit } from '@comfy/shared';
 import { query, queryOne } from '../db.js';
 import { compile, TemplateError, ValidationError } from '../compiler/index.js';
-import { chooseTemplate } from '../models/workflow-choice.js';
+import { chooseTemplate, switchedOff } from '../models/workflow-choice.js';
 import { candidatesFor, filenamesOn, sizesOn } from './select.js';
 import { sizeOfJob } from './cost.js';
 import { assessOn } from './fit.js';
@@ -121,6 +121,15 @@ export default async function jobRoutes(app: FastifyInstance) {
       });
       const template = choice?.template;
       if (!template) {
+        // A capability an admin switched off also yields no template, and
+        // "there is no workflow" would be false — one exists and was turned off
+        // on purpose. Say that instead, so nobody goes looking for a graph.
+        if (await switchedOff(params.modelId, params.kind).catch(() => false)) {
+          return reply.code(409).send({
+            error: 'switched_off',
+            message: `${model.display_name} has ${params.kind} switched off. An admin can turn it back on from the model's Workflows sheet.`,
+          });
+        }
         return reply.code(501).send({
           error: 'no_template',
           message: model.base_model
