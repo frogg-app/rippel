@@ -244,6 +244,7 @@ func Run(task *Task, dir string, env []string, command string, args ...string) e
 	task.Appendf("$ %s %s", command, strings.Join(args, " "))
 
 	cmd := exec.Command(command, args...)
+	hideConsole(cmd)
 	cmd.Dir = dir
 	cmd.Env = env
 

@@ -69,3 +69,9 @@ func hideConsole(cmd *exec.Cmd) {}
 func looksLikeDoubleClick() bool { return false }
 
 var _ = os.Getpid
+
+func prepareBackground()                                 {}
+func openInstalledPanel() bool                           { return false }
+func startDesktop(a *Agent, quit func()) (func(), error) { return nil, nil }
+
+func prepareForeground(command string, argc int) {}

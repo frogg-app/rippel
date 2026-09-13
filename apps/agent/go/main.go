@@ -42,8 +42,10 @@ func main() {
 		command = strings.ToLower(args[0])
 	}
 
+	prepareForeground(command, len(args))
 	switch command {
 	case "run":
+		prepareBackground()
 		if err := runAgent(); err != nil {
 			serviceLog("%s", err)
 			os.Exit(1)
@@ -71,6 +73,9 @@ func main() {
 				return
 			}
 			os.Exit(commandInstall(args))
+			return
+		}
+		if openInstalledPanel() {
 			return
 		}
 		os.Exit(welcome())
@@ -123,6 +128,7 @@ func runAgent() error {
 
 	agent := NewAgent(cfg, nil)
 	heartbeat := StartHeartbeat(agent, serviceLog)
+	defer heartbeat.Stop()
 	agent.onChange = heartbeat.Now
 
 	address := net.JoinHostPort(cfg.Host, strconv.Itoa(cfg.Port))
@@ -145,6 +151,15 @@ func runAgent() error {
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
+	desktopStop := make(chan struct{})
+	closeDesktop, err := startDesktop(agent, func() { close(desktopStop) })
+	if err != nil {
+		serviceLog("tray unavailable: %s", err)
+	}
+	if closeDesktop != nil {
+		defer closeDesktop()
+	}
+
 	serviceLog("v%s on %s listening on %s", AgentVersion, hostname(), address)
 	serviceLog("managing ComfyUI at %s (port %d)", cfg.ComfyPath, cfg.ComfyPort)
 	if cfg.ServerURL != "" {
@@ -164,6 +179,8 @@ func runAgent() error {
 	}()
 
 	select {
+	case <-desktopStop:
+		serviceLog("quit from tray")
 	case sig := <-signals:
 		serviceLog("%s received, stopping", sig)
 	case err := <-serverErr:
