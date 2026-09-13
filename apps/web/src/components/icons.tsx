@@ -82,6 +82,15 @@ export function CubeIcon(props: IconProps) {
   );
 }
 
+export function UserIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <circle cx="12" cy="8" r="4" />
+      <path d="M5 21v-2a7 7 0 0 1 14 0v2" />
+    </Svg>
+  );
+}
+
 export function SignOutIcon(props: IconProps) {
   return (
     <Svg {...props}>

@@ -1,11 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../auth/context';
-import { initial } from '../lib/format';
-import { SettingsIcon, SignOutIcon } from '../components/icons';
+import { SettingsIcon, SignOutIcon, UserIcon } from '../components/icons';
 import { SettingsModal } from '../settings/SettingsModal';
 import styles from './UserMenu.module.css';
 
-/** The avatar chip, and what is behind it: Settings for an administrator, and sign out. */
+/** The account button, and what is behind it: Settings for an administrator, and sign out. */
 export function UserMenu({ placement = 'bar' }: { placement?: 'bar' | 'rail' }) {
   const { user, signOut } = useAuth();
   const [open, setOpen] = useState(false);
@@ -34,13 +33,13 @@ export function UserMenu({ placement = 'bar' }: { placement?: 'bar' | 'rail' }) 
     <div className={placement === 'rail' ? `${styles.wrap} ${styles.rail}` : styles.wrap} ref={container}>
       <button
         type="button"
-        className={styles.avatar}
+        className={styles.accountButton}
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label={`Account: ${user.email}`}
         onClick={() => setOpen((was) => !was)}
       >
-        {initial(user.displayName, user.email)}
+        <UserIcon size={19} />
       </button>
 
       {open ? (
