@@ -2,29 +2,22 @@
   position: relative;
 }
 
-.avatar {
+.accountButton {
   width: 34px;
   height: 34px;
-  border-radius: 50%;
-  background: var(--avatar);
-  border: 1px solid var(--line-input);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  border: none;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 12.5px;
-  /* 500, not 600: only 300/400/500 are loaded, and a synthesised bold smears
-     the glyph a pixel to the right, which read as off-centre. */
-  font-weight: 500;
-  line-height: 1;
   color: var(--text-2);
-  box-shadow: var(--edge-highlight);
 }
 
-.avatar:hover,
-.avatar[aria-expanded='true'] {
-  border-color: var(--accent-line);
+.accountButton:hover,
+.accountButton[aria-expanded='true'] {
+  background: var(--surface-hover);
   color: var(--text);
-  box-shadow: 0 0 0 4px var(--accent-tint);
 }
 
 .menu {
@@ -42,7 +35,7 @@
   overflow: hidden;
 }
 
-/* In the rail the menu opens to the right, bottom-aligned with the avatar. */
+/* In the rail the menu opens to the right, bottom-aligned with the account button. */
 .rail .menu {
   top: auto;
   right: auto;

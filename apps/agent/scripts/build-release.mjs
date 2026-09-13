@@ -83,7 +83,7 @@ function build({ name, goos, goarch }, go) {
       // -s -w drop the symbol table and DWARF debug info. Nothing debugs these
       // binaries with a debugger — a failure on a user's machine comes back as
       // the agent's own log — and it is roughly a third of the file size.
-      '-ldflags=-s -w',
+      goos === 'windows' ? '-ldflags=-s -w -H=windowsgui' : '-ldflags=-s -w',
       // Reproducible-ish: keep the build machine's paths out of the binary.
       '-trimpath',
       '-o',

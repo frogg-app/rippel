@@ -101,11 +101,20 @@ func (hb *Heartbeat) Stop() {
 
 func (hb *Heartbeat) beat() {
 	cfg := hb.agent.config()
-	if cfg.ServerURL == "" {
+	if hb.agent.isPaused() || cfg.ServerURL == "" {
 		return
 	}
 
 	err := hb.postCheckin(cfg)
+	hb.agent.mu.Lock()
+	hb.agent.connection.CheckedAt = time.Now().UTC()
+	hb.agent.connection.Error = ""
+	if err != nil {
+		hb.agent.connection.Error = err.Error()
+	} else {
+		hb.agent.connection.LastSuccess = time.Now().UTC()
+	}
+	hb.agent.mu.Unlock()
 	if err != nil {
 		message := err.Error()
 		// Say it once, not every twenty seconds, until it changes.
