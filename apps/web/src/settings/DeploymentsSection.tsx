@@ -290,15 +290,27 @@ function DeploymentCard({
     }
   };
 
-  const refresh = () =>
-    act('read the machine', async () => {
+  /**
+   * "Check now" — one button where there used to be Test and Refresh.
+   *
+   * They were two halves of one question. Test pinged the agent and reported a
+   * latency; Refresh asked the agent for its full state and saved it. Nobody
+   * reaching for either wants half an answer, and the pair made people guess
+   * which one would clear a stale card. So this does both, in the order that
+   * works on a machine that may be asleep: ping first, because it is the only
+   * call that can say *why* nothing answered, then read the full state only if
+   * the ping got through.
+   */
+  const checkNow = () =>
+    act('check the machine', async () => {
+      const result = await api.probe(deployment.id);
+      setProbe(result);
+      if (!result.ok) {
+        onChange({ ...deployment, status: 'offline' });
+        return;
+      }
       const status = await api.status(deployment.id);
       onChange({ ...deployment, comfy: status.comfy, status: 'online' });
-    });
-
-  const test = () =>
-    act('test the agent', async () => {
-      setProbe(await api.probe(deployment.id));
     });
 
   const install = () =>
@@ -381,96 +393,108 @@ function DeploymentCard({
       <ComfySummary deployment={deployment} now={now} />
       <MemoryControl deployment={deployment} api={api} onChange={onChange} onError={onError} />
 
+      {/*
+        Grouped by what each button acts on, not by what kind of verb it is.
+        The previous single column put "Update" for ComfyUI beside the agent's
+        install button and "Test" beside "Refresh", so the reader had to work
+        out from the label alone which machine part a button would touch. Each
+        group is headed by the thing it changes, and the one control that is
+        always safe and always first — checking the machine — sits at the top.
+      */}
       <div className={shared.cardActions}>
-        <button type="button" className={shared.action} onClick={() => void test()} disabled={busy !== null}>
-          {busy === 'test the agent' ? 'Testing…' : 'Test'}
-        </button>
-        <ReasonedButton
-          className={shared.action}
-          reason={busyReason ?? offlineReason}
-          onClick={() => void refresh()}
-        >
-          {busy === 'read the machine' ? 'Reading…' : 'Refresh'}
-        </ReasonedButton>
-
-        {comfy?.installed ? (
-          <>
-            <ReasonedButton
-              className={shared.action}
-              reason={busyReason ?? offlineReason}
-              onClick={() => void power(comfy.running ? 'restart' : 'start')}
-            >
-              {busy?.endsWith('ComfyUI') && busy.startsWith(comfy.running ? 'restart' : 'start')
-                ? 'Working…'
-                : comfy.running
-                  ? 'Restart ComfyUI'
-                  : 'Start ComfyUI'}
-            </ReasonedButton>
-            {comfy.running ? (
-              <ReasonedButton className={shared.action} reason={busyReason} onClick={() => void power('stop')}>
-                Stop
-              </ReasonedButton>
-            ) : null}
-            <ReasonedButton
-              className={shared.action}
-              reason={busyReason ?? offlineReason}
-              onClick={() => void update()}
-            >
-              {busy === 'update ComfyUI' ? 'Updating…' : 'Update'}
-            </ReasonedButton>
-          </>
-        ) : (
-          <ReasonedButton
-            className={`${shared.action} ${shared.actionPrimary}`}
-            reason={busyReason ?? offlineReason}
-            onClick={() => void install()}
-          >
-            {busy === 'install ComfyUI' ? 'Installing…' : 'Install ComfyUI'}
-          </ReasonedButton>
-        )}
-
-        {comfy?.installed && !comfy.helperReady ? (
-          <ReasonedButton
+        <ActionGroup label="Machine">
+          <button
+            type="button"
             className={shared.action}
-            reason={busyReason ?? offlineReason}
-            onClick={() => void helper()}
+            onClick={() => void checkNow()}
+            disabled={busy !== null}
           >
-            {busy === 'install the storage helper' ? 'Installing…' : 'Install storage helper'}
-          </ReasonedButton>
-        ) : null}
+            {busy === 'check the machine' ? 'Checking…' : 'Check now'}
+          </button>
+          {/* The label is fixed. Swapping it to "Hide install options"
+              re-measured the button mid-row and shunted its neighbours under
+              the cursor; the open state is said in colour instead. */}
+          <button
+            type="button"
+            className={showInstall ? `${shared.action} ${shared.actionOn}` : shared.action}
+            aria-expanded={showInstall}
+            onClick={() => setShowInstall((v) => !v)}
+          >
+            Install agent
+          </button>
+        </ActionGroup>
+
+        <ActionGroup label="ComfyUI">
+          {comfy?.installed ? (
+            <>
+              <ReasonedButton
+                className={shared.action}
+                reason={busyReason ?? offlineReason}
+                onClick={() => void power(comfy.running ? 'restart' : 'start')}
+              >
+                {busy?.endsWith('ComfyUI') && busy.startsWith(comfy.running ? 'restart' : 'start')
+                  ? 'Working…'
+                  : comfy.running
+                    ? 'Restart ComfyUI'
+                    : 'Start ComfyUI'}
+              </ReasonedButton>
+              {comfy.running ? (
+                <ReasonedButton className={shared.action} reason={busyReason} onClick={() => void power('stop')}>
+                  Stop
+                </ReasonedButton>
+              ) : null}
+              <ReasonedButton
+                className={shared.action}
+                reason={busyReason ?? offlineReason}
+                onClick={() => void update()}
+              >
+                {busy === 'update ComfyUI' ? 'Updating…' : 'Update ComfyUI'}
+              </ReasonedButton>
+              {!comfy.helperReady ? (
+                <ReasonedButton
+                  className={shared.action}
+                  reason={busyReason ?? offlineReason}
+                  onClick={() => void helper()}
+                >
+                  {busy === 'install the storage helper' ? 'Installing…' : 'Install storage helper'}
+                </ReasonedButton>
+              ) : null}
+            </>
+          ) : (
+            <ReasonedButton
+              className={`${shared.action} ${shared.actionPrimary}`}
+              reason={busyReason ?? offlineReason}
+              onClick={() => void install()}
+            >
+              {busy === 'install ComfyUI' ? 'Installing…' : 'Install ComfyUI'}
+            </ReasonedButton>
+          )}
+        </ActionGroup>
 
         {comfy?.installed && !deployment.backendId ? (
-          <ReasonedButton
-            className={`${shared.action} ${shared.actionPrimary}`}
-            reason={busyReason}
-            onClick={() => void register()}
-          >
-            {busy === 'register the backend' ? 'Adding…' : 'Add as backend'}
-          </ReasonedButton>
+          <ActionGroup label="rippel">
+            <ReasonedButton
+              className={`${shared.action} ${shared.actionPrimary}`}
+              reason={busyReason}
+              onClick={() => void register()}
+            >
+              {busy === 'register the backend' ? 'Adding…' : 'Send jobs here'}
+            </ReasonedButton>
+          </ActionGroup>
         ) : null}
 
-        {/* The label is fixed. Swapping it to "Hide install options" re-measured
-            the button mid-row and shunted Remove sideways under the cursor; the
-            open state is worth saying, but not at the cost of moving a target
-            someone is aiming at. It says it in colour instead. */}
-        <button
-          type="button"
-          className={showInstall ? `${shared.action} ${shared.actionOn}` : shared.action}
-          aria-expanded={showInstall}
-          onClick={() => setShowInstall((v) => !v)}
-        >
-          Install Agent
-        </button>
-
-        <button
-          type="button"
-          className={armed ? `${shared.action} ${shared.actionDanger}` : shared.action}
-          onClick={() => void remove()}
-          disabled={busy !== null}
-          aria-label={armed ? `Really remove ${deployment.name}` : `Remove ${deployment.name}`}
-        >
-          {armed ? 'Really remove?' : 'Remove'}
-        </button>
+        {/* Destructive, so apart from everything else and last. */}
+        <div className={styles.actionDanger}>
+          <button
+            type="button"
+            className={armed ? `${shared.action} ${shared.actionDanger}` : shared.action}
+            onClick={() => void remove()}
+            disabled={busy !== null}
+            aria-label={armed ? `Really remove ${deployment.name}` : `Remove ${deployment.name}`}
+          >
+            {armed ? 'Really remove?' : 'Remove'}
+          </button>
+        </div>
       </div>
 
       {probe ? (
@@ -564,6 +588,16 @@ function heartbeatAge(iso: string, now: number): string {
   const hours = Math.round(minutes / 60);
   if (hours < 48) return `${hours} h ago`;
   return `${Math.round(hours / 24)} d ago`;
+}
+
+/** A labelled cluster of buttons that all act on the same part of the machine. */
+function ActionGroup({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className={styles.actionGroup} role="group" aria-label={label}>
+      <span className={styles.actionGroupLabel}>{label}</span>
+      {children}
+    </div>
+  );
 }
 
 /**
@@ -793,17 +827,33 @@ function ComfySummary({ deployment, now }: { deployment: Deployment; now: number
           </dd>
         </div>
         <div>
-          <dt>Backend</dt>
+          {/*
+            "Jobs", not "Backend", and never green on registration alone.
+
+            This row used to show a green pip whenever the machine was
+            registered, on the grounds that registration is a fact about rippel's
+            own database. True, and the wrong thing to colour: a green dot next
+            to a stopped ComfyUI reads as "this machine can generate", which is
+            exactly what it cannot do. So the setting and the consequence are
+            both stated — whether rippel sends jobs here, and whether they would
+            run right now — and only the second one is allowed to be green.
+          */}
+          <dt>Jobs</dt>
           <dd>
             {deployment.backendName ? (
               <>
-                {/* Registered with rippel, which is true whether or not the
-                    machine is awake — so this pip is not gated. */}
-                <span data-state="on" className={styles.pip} />
-                {deployment.backendName}
+                <span
+                  data-state={live && comfy.running ? 'on' : live ? 'warn' : 'stale'}
+                  className={styles.pip}
+                />
+                {live && comfy.running
+                  ? `sent here, as ${deployment.backendName}`
+                  : live
+                    ? 'sent here, but waiting — ComfyUI is stopped'
+                    : 'sent here when the machine is back'}
               </>
             ) : (
-              'not registered'
+              'not sent here yet'
             )}
           </dd>
         </div>

@@ -543,3 +543,29 @@
   font-size: 12px;
   color: var(--text-muted);
 }
+
+/* ------------------------------------------------------------ action groups */
+
+.actionGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.actionGroup + .actionGroup {
+  margin-top: 10px;
+}
+
+.actionGroupLabel {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.actionDanger {
+  margin-top: auto;
+  padding-top: 14px;
+  display: flex;
+  flex-direction: column;
+}

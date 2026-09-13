@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, within, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { AgentTask, ComfyState, Deployment } from '@comfy/shared';
 import { ApiRequestError } from '../lib/api';
@@ -174,7 +174,7 @@ describe('DeploymentsSection', () => {
     expect(screen.getByText('agent 0.1.0')).toBeInTheDocument();
     expect(screen.getByText(/running/)).toBeInTheDocument();
     expect(screen.getByText('answering')).toBeInTheDocument();
-    expect(screen.getByText('not registered')).toBeInTheDocument();
+    expect(screen.getByText('not sent here yet')).toBeInTheDocument();
   });
 
   it('offers Install ComfyUI when there is none, and the run controls when there is', async () => {
@@ -205,9 +205,9 @@ describe('DeploymentsSection', () => {
   it('registers the ComfyUI as a backend', async () => {
     const { api } = fakeApi();
     render(<DeploymentsSection api={api} />);
-    await userEvent.click(await screen.findByRole('button', { name: 'Add as backend' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Send jobs here' }));
     await waitFor(() => expect(api.registerBackend).toHaveBeenCalledWith('d1'));
-    expect(await screen.findByText('studio-4090', { selector: 'dd' })).toBeInTheDocument();
+    expect(await screen.findByText(/sent here, as studio-4090/)).toBeInTheDocument();
   });
 
   it('asks twice before removing a machine', async () => {
@@ -227,7 +227,7 @@ describe('DeploymentsSection', () => {
       }),
     });
     render(<DeploymentsSection api={api} />);
-    await userEvent.click(await screen.findByRole('button', { name: 'Refresh' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Check now' }));
     expect(await screen.findByText('studio-4090 did not answer within 15s.')).toBeInTheDocument();
     expect(screen.getByText('studio-4090')).toBeInTheDocument();
   });
@@ -523,7 +523,7 @@ describe('DeploymentsSection', () => {
     it('is not offered to a machine that is already paired', async () => {
       const { api } = fakeApi([online]);
       render(<DeploymentsSection api={api} />);
-      await userEvent.click(await screen.findByRole('button', { name: 'Install Agent' }));
+      await userEvent.click(await screen.findByRole('button', { name: 'Install agent' }));
       expect(await screen.findByText(/is paired/)).toBeInTheDocument();
       expect(api.pairingCode).not.toHaveBeenCalled();
     });
@@ -696,5 +696,58 @@ describe('the system-memory control says when, not how fast', () => {
     await screen.findByText('studio-4090');
     expect(screen.getByRole('checkbox', { name: /Decode the final image/ })).toBeInTheDocument();
     expect(screen.getByText(/the last step only/i)).toBeInTheDocument();
+  });
+});
+
+describe('the machine card reads by subject', () => {
+  it('has one check button, where Test and Refresh used to be two', async () => {
+    const { api } = fakeApi();
+    render(<DeploymentsSection api={api} />);
+    await screen.findByText('studio-4090');
+    expect(screen.queryByRole('button', { name: 'Test' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Refresh' })).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Check now' }));
+    // Ping first, then the full read — both halves of the old pair.
+    await waitFor(() => expect(api.probe).toHaveBeenCalledWith('d1'));
+    await waitFor(() => expect(api.status).toHaveBeenCalledWith('d1'));
+  });
+
+  it('does not ask for the full state when the ping fails', async () => {
+    const { api } = fakeApi([online], {
+      probe: vi.fn(async () => ({ ok: false, latencyMs: 15000, error: 'No answer.' })),
+    });
+    render(<DeploymentsSection api={api} />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Check now' }));
+    expect(await screen.findByText('No answer.')).toBeInTheDocument();
+    expect(api.status).not.toHaveBeenCalled();
+  });
+
+  it('puts each button under the part of the machine it changes', async () => {
+    const { api } = fakeApi();
+    render(<DeploymentsSection api={api} />);
+    await screen.findByText('studio-4090');
+    const machine = screen.getByRole('group', { name: 'Machine' });
+    const comfy = screen.getByRole('group', { name: 'ComfyUI' });
+    expect(within(machine).getByRole('button', { name: 'Check now' })).toBeInTheDocument();
+    expect(within(comfy).getByRole('button', { name: 'Update ComfyUI' })).toBeInTheDocument();
+    // The old column put ComfyUI's update beside the agent's install.
+    expect(within(machine).queryByRole('button', { name: /Update/ })).not.toBeInTheDocument();
+  });
+
+  it('never shows jobs as green while ComfyUI is stopped', async () => {
+    const registered = {
+      ...online,
+      backendId: 'b1',
+      backendName: 'studio-4090',
+      comfy: { ...COMFY, running: false },
+    };
+    const { api } = fakeApi([registered]);
+    const { container } = render(<DeploymentsSection api={api} />);
+    expect(await screen.findByText(/waiting — ComfyUI is stopped/)).toBeInTheDocument();
+    const jobsPip = [...container.querySelectorAll('dt')]
+      .find((dt) => dt.textContent === 'Jobs')!
+      .nextElementSibling!.querySelector('[data-state]')!;
+    expect(jobsPip.getAttribute('data-state')).toBe('warn');
   });
 });
