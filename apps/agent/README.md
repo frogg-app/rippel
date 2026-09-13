@@ -1,6 +1,6 @@
 # rippel agent
 
-One process per machine you want rippel to manage. It installs and updates
+One background agent per machine you want rippel to manage. It installs and updates
 ComfyUI, starts and stops it, keeps the `comfyui-rippel-storage` helper in
 place, and tells rippel what it finds.
 
@@ -17,6 +17,45 @@ It is also the **same file for everybody**. There is no per-rippel or
 per-machine build: `rippel-agent-windows-amd64.exe` is the same bytes wherever
 it came from, which is what lets it be cached, mirrored, or copied onto a box on
 a USB stick.
+
+## Windows tray panel
+
+After setup, the agent starts at sign-in without a terminal. Click its icon in
+Windows' notification area to open the compact dark panel; closing the panel
+hides it to the tray. Double-clicking an installed agent opens the running panel.
+Windows may initially place the icon in the notification area's overflow menu.
+
+The panel shows the local agent's availability separately from its latest
+successful rippel check-in, running and queued **ComfyUI job IDs**, and recent
+agent maintenance tasks. These are this machine's ComfyUI queue, not jobs still
+waiting in rippel's central scheduler. Queue failures appear as unknown, and
+results carry their observation time. The panel refreshes every three seconds.
+
+**Pause agent** persists across restarts, stops check-ins and rejects new remote
+management commands. It does not stop ComfyUI or cancel accepted maintenance
+work. **Resume agent** restores management. **Quit agent** in the tray menu exits
+until the next launch/sign-in, leaves ComfyUI running, and refuses to quit while
+maintenance tasks are running. It does not remove the startup entry.
+
+The native panel uses Windows PowerShell and WinForms already supplied with
+Windows; no Electron or additional runtime is bundled. The embedded panel script
+is extracted to the agent directory and supervised by the Go process. It talks
+to a separate loopback-only HTTP listener with a random per-launch credential;
+the deployment token is never passed to the panel. Managed Windows installations
+that block PowerShell may prevent the panel from opening; failures go to
+`~/.rippel-agent/agent.log`. Initial pairing still uses a temporary setup console.
+The Windows release uses the GUI subsystem; explicit CLI commands attach to the
+calling console, preserving redirected input/output.
+
+Windows smoke check before release (cannot run on the Linux build host):
+
+- Install, sign out/in, and verify a tray icon appears with no persistent terminals.
+- Open, close, and reopen the panel, including by double-clicking the executable.
+- Submit ComfyUI jobs and check running/queued IDs; stop ComfyUI and check unknown queue state.
+- Disconnect rippel and verify the connection changes after a failed check-in.
+- Pause, restart the agent, verify pause persists, then resume.
+- Run maintenance and check no helper consoles appear; quitting should be refused until it completes.
+- Quit and restart; verify the icon disappears and ComfyUI remains running.
 
 ## Installing it
 

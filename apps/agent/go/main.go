@@ -42,6 +42,7 @@ func main() {
 		command = strings.ToLower(args[0])
 	}
 
+	prepareForeground(command, len(args))
 	switch command {
 	case "apply-update":
 		if err := applyAgentUpdate(args[1:]); err != nil {
@@ -50,6 +51,7 @@ func main() {
 		}
 		return
 	case "run":
+		prepareBackground()
 		if err := runAgent(); err != nil {
 			serviceLog("%s", err)
 			os.Exit(1)
@@ -77,6 +79,9 @@ func main() {
 				return
 			}
 			os.Exit(commandInstall(args))
+			return
+		}
+		if openInstalledPanel() {
 			return
 		}
 		os.Exit(welcome())
@@ -129,6 +134,7 @@ func runAgent() error {
 
 	agent := NewAgent(cfg, nil)
 	heartbeat := StartHeartbeat(agent, serviceLog)
+	defer heartbeat.Stop()
 	agent.onChange = heartbeat.Now
 
 	address := net.JoinHostPort(cfg.Host, strconv.Itoa(cfg.Port))
@@ -149,6 +155,15 @@ func runAgent() error {
 		// install POST is answered in milliseconds (it returns a task id), so
 		// these can be short.
 		ReadHeaderTimeout: 10 * time.Second,
+	}
+
+	desktopStop := make(chan struct{})
+	closeDesktop, err := startDesktop(agent, func() { close(desktopStop) })
+	if err != nil {
+		serviceLog("tray unavailable: %s", err)
+	}
+	if closeDesktop != nil {
+		defer closeDesktop()
 	}
 
 	serviceLog("v%s on %s listening on %s", AgentVersion, hostname(), address)
@@ -172,6 +187,8 @@ func runAgent() error {
 	}()
 
 	select {
+	case <-desktopStop:
+		serviceLog("quit from tray")
 	case sig := <-signals:
 		serviceLog("%s received, stopping", sig)
 	case err := <-serverErr:

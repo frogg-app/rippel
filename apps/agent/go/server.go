@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -32,6 +33,9 @@ const maxBody = 1024 * 1024
 // can change under a running server) and the task registry.
 type Agent struct {
 	taskStartMu sync.Mutex
+	control     sync.RWMutex
+	paused      bool
+	connection  ConnectionState
 	mu          sync.RWMutex
 	cfg         *Config
 	tasks       *Tasks
@@ -42,7 +46,8 @@ func NewAgent(cfg *Config, onChange func()) *Agent {
 	if onChange == nil {
 		onChange = func() {}
 	}
-	return &Agent{cfg: cfg, tasks: NewTasks(), onChange: onChange}
+	_, pausedErr := os.Stat(filepath.Join(cfg.Home, "paused"))
+	return &Agent{cfg: cfg, tasks: NewTasks(), onChange: onChange, paused: pausedErr == nil}
 }
 
 // config hands out a copy, so a long ComfyUI install reads consistent settings
@@ -201,6 +206,14 @@ func (a *Agent) route(w http.ResponseWriter, r *http.Request) {
 
 	if r.Method == http.MethodGet && path == "/agent/comfyui/log" {
 		writeJSON(w, http.StatusOK, map[string]any{"log": TailComfyLog(cfg, 500)})
+		return
+	}
+
+	// Pause applies to remote management; work already accepted can finish.
+	a.control.RLock()
+	defer a.control.RUnlock()
+	if a.paused && r.Method != http.MethodGet {
+		writeError(w, http.StatusServiceUnavailable, "paused", "The owner has paused this agent.")
 		return
 	}
 

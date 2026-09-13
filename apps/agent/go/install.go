@@ -458,6 +458,10 @@ func registerWindowsAutostart(exe, home string, say func(string, ...any)) error 
 	command := windowsRunCommand(exe)
 	var problems []string
 
+	// A task left by a version of the agent that predates this one would start a
+	// second agent at logon, in a console window, fighting this one for the port.
+	_ = quiet("schtasks", "/Delete", "/TN", serviceName, "/F")
+
 	// The Run key first: it is the mechanism Windows itself documents for this,
 	// and it leaves nothing on the desktop or in a folder to be tidied away.
 	if out, err := output("reg", "add", windowsRunKey,

@@ -73,3 +73,8 @@ var _ = os.Getpid
 func replaceAgentProcess(target string) error {
 	return syscall.Exec(target, []string{target, "run"}, os.Environ())
 }
+func prepareBackground()                                 {}
+func openInstalledPanel() bool                           { return false }
+func startDesktop(a *Agent, quit func()) (func(), error) { return nil, nil }
+
+func prepareForeground(command string, argc int) {}

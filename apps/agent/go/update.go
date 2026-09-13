@@ -189,26 +189,12 @@ func applyAgentUpdate(args []string) error {
 	if err := os.Rename(next, target); err != nil {
 		return err
 	}
-	// Task Scheduler can report success while the old task is still winding
-	// down. Verify a listener before falling back to a detached process.
-	_ = quiet("schtasks", "/Run", "/TN", serviceName)
-	if cfg, err := LoadConfig(); err == nil {
-		client := &http.Client{Timeout: time.Second}
-		for i := 0; i < 5; i++ {
-			time.Sleep(time.Second)
-			request, _ := http.NewRequest(http.MethodGet, fmt.Sprintf("http://127.0.0.1:%d/agent/ping", cfg.Port), nil)
-			request.Header.Set("X-Rippel-Agent-Token", cfg.Token)
-			response, err := client.Do(request)
-			if err == nil {
-				response.Body.Close()
-				if response.StatusCode == 200 {
-					return nil
-				}
-			}
-		}
-	}
+	// The startup entry is a per-user Run key now, not a scheduled task, so there
+	// is nothing to ask to restart: launch the new binary the way install does,
+	// detached and without a console window.
 	cmd := exec.Command(target, "run")
 	cmd.Env = os.Environ()
+	hideConsole(cmd)
 	detach(cmd)
 	if err := cmd.Start(); err != nil {
 		return err
