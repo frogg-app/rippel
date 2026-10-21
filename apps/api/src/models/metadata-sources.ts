@@ -45,6 +45,9 @@
  * then which one the file came from is a guess. That hop adds 29 repos.
  */
 
+import type { ModelTags } from '@comfy/shared';
+import { normaliseTags } from './tags.js';
+
 /** A model page we know how to read. */
 export type SourceRef =
   | { kind: 'huggingface'; repo: string }
@@ -95,12 +98,18 @@ export function sourceUrl(ref: SourceRef): string {
 export interface SourceFacts {
   description: string | null;
   baseModels: string[];
-  tags: string[];
+  /** The page's raw `tags[]`, kept for free-text search. */
+  rawTags: string[];
   referenceUrl: string;
   license: string | null;
   downloads: number | null;
   likes: number | null;
   pipelineTag: string | null;
+  /**
+   * The page's tags, sorted and with HuggingFace's plumbing removed. See
+   * tags.ts for what is dropped and why.
+   */
+  tags: ModelTags;
   /** Absolute image URLs, best first. Empty is the common case. */
   imageCandidates: string[];
   /**
@@ -135,6 +144,9 @@ interface HfModel {
   downloads?: number;
   likes?: number;
   pipeline_tag?: string;
+  /** The flat list: task, library, format, language, licence and plumbing, mixed. */
+  tags?: unknown[];
+  library_name?: string;
   cardData?: { license?: unknown; base_model?: unknown; thumbnail?: unknown };
   siblings?: { rfilename?: string }[];
 }
@@ -249,16 +261,30 @@ async function huggingFaceFacts(repo: string): Promise<SourceFacts> {
 
   const license = model.cardData?.license;
   const parent = firstDeclaredBaseModel(model.cardData);
+  const licenseId =
+    typeof license === 'string' ? license : Array.isArray(license) ? String(license[0] ?? '') || null : null;
+  const pipelineTag = typeof model.pipeline_tag === 'string' ? model.pipeline_tag : null;
+  // Every declared base, unlike `parent` above: as a *tag* "built on one of
+  // these fourteen" is true and worth filtering on, where as a picture source
+  // it would be a guess. HuggingFace usually also writes these into `tags[]`
+  // as `base_model:…`; the normaliser de-duplicates.
+  const declaredBases = model.cardData?.base_model;
+  const baseModels = (Array.isArray(declaredBases) ? declaredBases : [declaredBases]).filter(
+    (value): value is string => typeof value === 'string',
+  );
+  const rawTags = [...(model.tags ?? [])];
+  if (typeof model.library_name === 'string') rawTags.push(`library:${model.library_name}`);
 
   return {
     description: modelCardDescription(card),
     baseModels: declaredBaseModels(model.cardData?.base_model),
-    tags: (model.tags ?? []).filter(tag => typeof tag === 'string').slice(0, 50),
+    rawTags: (model.tags ?? []).filter(tag => typeof tag === 'string').slice(0, 50),
     referenceUrl: `https://huggingface.co/${repo}`,
-    license: typeof license === 'string' ? license : Array.isArray(license) ? String(license[0] ?? '') || null : null,
+    license: licenseId,
     downloads: typeof model.downloads === 'number' ? model.downloads : null,
     likes: typeof model.likes === 'number' ? model.likes : null,
-    pipelineTag: typeof model.pipeline_tag === 'string' ? model.pipeline_tag : null,
+    pipelineTag,
+    tags: normaliseTags(rawTags, { pipelineTag, license: licenseId, baseModels }),
     imageCandidates: [...new Set(candidates)],
     derivedFrom:
       parent && /^[^/\s]+\/[^/\s]+$/.test(parent) ? { kind: 'huggingface', repo: parent } : null,
@@ -269,6 +295,9 @@ export async function fetchSourceFacts(ref: SourceRef): Promise<SourceFacts> {
   if (ref.kind === 'civitai') {
     // Not a failure to retry: this machine gets 451 REGION_BLOCKED from every
     // Civitai endpoint that carries images. Recorded so the sweep stops asking.
+    // Its `tags[]` would go through the same normaliseTags() as HuggingFace's
+    // if the endpoint ever answers; until then a Civitai entry carries no tags
+    // rather than tags guessed from a name search.
     throw new UnsupportedSource(
       'Civitai answers 451 (region blocked) to this server, so its model pages cannot be read from here.',
     );

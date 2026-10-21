@@ -3,9 +3,10 @@
  * so it can be tested on its own and reused by anything else that hands out
  * bytes (a future signed-download endpoint, an export job).
  *
- * The rule is deliberately dull: an asset is readable by exactly one user, and
- * "not yours" is reported identically to "does not exist" so the endpoint can
- * never be used to discover which asset ids are real.
+ * The rule is deliberately dull: an asset is readable by its owner and by the
+ * users it was shared with by name, and "not yours" is reported identically to
+ * "does not exist" so the endpoint can never be used to discover which asset
+ * ids are real.
  */
 
 import type { AssetDb } from './persist.js';
@@ -28,10 +29,15 @@ export async function resolveAssetForRead(
   userId: string,
   variant: 'full' | 'thumb',
 ): Promise<AssetAccess> {
-  const row = await db.queryOne<AssetKeyRow>(
-    `SELECT storage_key, thumb_key, mime_type
-       FROM assets
-      WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL`,
+  const row = await db.queryOne<AssetKeyRow & { user_id: string }>(
+    `SELECT a.storage_key, a.thumb_key, a.mime_type, a.user_id
+       FROM assets a
+      WHERE a.id = $1
+        -- Yours, archived included (the archive grid shows them); or live
+        -- and shared with you by name.
+        AND (a.user_id = $2
+             OR (a.deleted_at IS NULL AND EXISTS (
+                   SELECT 1 FROM asset_shares s WHERE s.asset_id = a.id AND s.user_id = $2)))`,
     [assetId, userId],
   );
   if (!row) return { ok: false, reason: 'not_found' };
@@ -44,7 +50,7 @@ export async function resolveAssetForRead(
   // Belt and braces. Keys are written under `u/<userId>/`, so one that is not
   // means the row is corrupt or was written by an older, buggier path — never
   // that this read should be allowed.
-  if (!keyBelongsToUser(key, userId)) return { ok: false, reason: 'corrupt', key };
+  if (!keyBelongsToUser(key, row.user_id)) return { ok: false, reason: 'corrupt', key };
 
   return { ok: true, key, contentType: isThumb ? 'image/webp' : row.mime_type, isThumb };
 }

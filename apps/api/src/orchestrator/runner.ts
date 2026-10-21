@@ -403,6 +403,7 @@ export function startOrchestrator(log: (msg: string) => void = console.log): () 
         jobId: row.id,
         backendUrl: baseUrl,
         outputs: outcome.outputs,
+        visibility: row.params.visibility,
         // The last stretch is ours, not the backend's: a 4-image batch off a
         // LAN box plus thumbnailing is seconds the bar would otherwise spend
         // pinned at 100%.

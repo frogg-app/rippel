@@ -10,10 +10,16 @@
  *
  * The page resets whenever the filtered set changes, which is what makes
  * typing feel instant: a search that narrows 372 to 6 renders 6.
+ *
+ * The grid also owns the detail drawer, by ref rather than by entry object:
+ * the catalogue is re-read while previews fill in, and a drawer holding a stale
+ * copy would show an install button for a file that has since landed.
  */
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { ModelCatalogEntry, ModelInstall } from '@comfy/shared';
 import { CatalogueCard } from './CatalogueCard';
+import { CatalogueDrawer } from './CatalogueDrawer';
+import type { TagKey } from './discover';
 import { KIND_HEADINGS, basename, splitByKind } from './catalogue';
 import styles from './ModelsPanels.module.css';
 
@@ -30,7 +36,14 @@ export interface CatalogueGridProps {
   failure: { ref: string; message: string } | null;
   now: number;
   onWorkflows?: (entry: ModelCatalogEntry) => void;
+  /** Toggle a tag filter, from a card chip or the drawer. */
+  onTag?: (key: TagKey) => void;
+  activeTags?: ReadonlySet<TagKey>;
+  /** Named in the drawer beside the verdict. */
+  backendName?: string | null;
 }
+
+const NO_TAGS: ReadonlySet<TagKey> = new Set();
 
 export function CatalogueGrid({
   entries,
@@ -41,8 +54,15 @@ export function CatalogueGrid({
   failure,
   now,
   onWorkflows,
+  onTag,
+  activeTags = NO_TAGS,
+  backendName = null,
 }: CatalogueGridProps) {
   const [limit, setLimit] = useState(PAGE_SIZE);
+  const [openRef, setOpenRef] = useState<string | null>(null);
+  const open = openRef ? entries.find((entry) => entry.ref === openRef) ?? null : null;
+  const openDrawer = useCallback((entry: ModelCatalogEntry) => setOpenRef(entry.ref), []);
+  const closeDrawer = useCallback(() => setOpenRef(null), []);
 
   // Any change to the result set puts us back at the top of it; holding a
   // limit of 300 across a new search would defeat the point of paging.
@@ -78,6 +98,9 @@ export function CatalogueGrid({
                   index={Math.min(index, 14)}
                   entry={entry}
                   onWorkflows={onWorkflows}
+                  onOpen={openDrawer}
+                  onTag={onTag}
+                  activeTags={activeTags}
                   install={installByFile.get(basename(entry.filename)) ?? null}
                   starting={starting.has(entry.ref)}
                   canInstall={canInstall}
@@ -104,6 +127,23 @@ export function CatalogueGrid({
             {shown.length} of {entries.length}
           </span>
         </div>
+      ) : null}
+
+      {open ? (
+        <CatalogueDrawer
+          entry={open}
+          onClose={closeDrawer}
+          onTag={onTag ?? (() => {})}
+          activeTags={activeTags}
+          onWorkflows={onWorkflows}
+          backendName={backendName}
+          install={installByFile.get(basename(open.filename)) ?? null}
+          starting={starting.has(open.ref)}
+          canInstall={canInstall}
+          onInstall={onInstall}
+          failure={failure?.ref === open.ref ? failure.message : null}
+          now={now}
+        />
       ) : null}
     </>
   );

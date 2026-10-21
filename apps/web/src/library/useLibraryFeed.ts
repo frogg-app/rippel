@@ -107,6 +107,7 @@ export function useLibraryFeed({
   // Filters are a fresh object every render; comparing their *contents* is what
   // stops every parent render from restarting the feed.
   const filterKey = JSON.stringify([
+    filters.view ?? 'everything',
     filters.kind ?? null,
     filters.starred ?? false,
     filters.collectionId ?? null,

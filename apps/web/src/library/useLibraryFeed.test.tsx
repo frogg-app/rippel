@@ -147,6 +147,20 @@ describe('useLibraryFeed', () => {
     expect(api.requests.at(-1)?.cursor).toBeNull();
   });
 
+  it('restarts from the top, asking for the new view, when the view changes', async () => {
+    const api = fakeLibrary(assets(3));
+    const { result, rerender } = renderHook(
+      ({ view }: { view?: 'mine' | 'archived' }) =>
+        useLibraryFeed({ filters: { view }, pageSize: PAGE, api }),
+      { initialProps: {} as { view?: 'mine' | 'archived' } },
+    );
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    rerender({ view: 'archived' });
+    await waitFor(() => expect(api.requests.at(-1)?.view).toBe('archived'));
+    expect(api.requests.at(-1)?.cursor).toBeNull();
+  });
+
   it('does not restart the feed when the parent re-renders with equal filters', async () => {
     const api = fakeLibrary(assets(5));
     const { result, rerender } = renderHook(

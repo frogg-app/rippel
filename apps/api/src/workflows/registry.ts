@@ -204,7 +204,15 @@ export function resolveTemplate(
    */
   folder: string | null = null,
 ): WorkflowTemplate | undefined {
-  if (!baseModel) return index.unknownFamily.get(capability);
+  if (!baseModel) {
+    // The unknown-family graph is for unrecognised SD merges, read out of its
+    // own loader's folder. A file of no known family somewhere else — a bare
+    // DiT in diffusion_models — is not one, and offering the generic image
+    // graph is what made a MiniMax video model read as "an image model".
+    const unknown = index.unknownFamily.get(capability);
+    if (unknown && folder && loaderFolderOf(unknown) !== folder) return undefined;
+    return unknown;
+  }
   const k = key(capability, baseModel);
   const specifics = index.specific.get(k);
   if (specifics && specifics.length > 0) {

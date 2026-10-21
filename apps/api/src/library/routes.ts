@@ -27,8 +27,15 @@ import {
   realDb,
   removeAssetFromCollection,
   setStarred,
+  setVisibility,
   softDeleteAsset,
+  getAssetShares,
+  listShareableUsers,
+  purgeArchived,
+  setAssetShares,
 } from './queries.js';
+import { removeObjects } from './archive.js';
+import { env } from '../env.js';
 
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 200;
@@ -44,6 +51,7 @@ const listQuery = z.object({
   limit: z.coerce.number().int().min(1).max(MAX_LIMIT).default(DEFAULT_LIMIT),
   cursor: z.string().min(1).optional(),
   kind: z.enum(['image', 'video']).optional(),
+  view: z.enum(['everything', 'mine', 'shared', 'archived']).default('mine'),
   // Query strings carry text, so accept the two spellings a browser produces.
   starred: z
     .union([z.literal('true'), z.literal('false'), z.boolean()])
@@ -55,7 +63,10 @@ const listQuery = z.object({
 
 const createCollectionBody = z.object({ name: z.string().trim().min(1).max(120) });
 
-const patchAssetBody = z.object({ starred: z.boolean().optional() });
+const patchAssetBody = z.object({
+  starred: z.boolean().optional(),
+  visibility: z.enum(['private', 'link', 'public']).optional(),
+});
 
 export default async function libraryRoutes(app: FastifyInstance) {
   const db = realDb;
@@ -79,8 +90,9 @@ export default async function libraryRoutes(app: FastifyInstance) {
       return reply.code(400).send(badRequest('That page cursor is not one of ours.'));
     }
 
-    return listAssets(db, {
+    const page = await listAssets(db, {
       userId: user.id,
+      view: parsed.data.view,
       limit: parsed.data.limit,
       cursor,
       kind: parsed.data.kind,
@@ -88,6 +100,7 @@ export default async function libraryRoutes(app: FastifyInstance) {
       collectionId: parsed.data.collectionId,
       q: parsed.data.q,
     });
+    return { ...page, retentionDays: env.storage.archiveRetentionDays };
   });
 
   app.get('/library/assets/:id', { onRequest: [app.requireAuth] }, async (req, reply) => {
@@ -100,8 +113,10 @@ export default async function libraryRoutes(app: FastifyInstance) {
 
     // Read the raw column rather than trusting Asset.jobId, which flattens a
     // detached asset's null to '' for the shared type.
-    const { jobId } = await getAssetJobId(db, parsed.data.id, user.id);
-    const job = await getJobForAsset(db, jobId, user.id);
+    // Looked up as the owner: getAsset has already decided this viewer may
+    // read the asset, and a share carries the settings that made it.
+    const { jobId } = await getAssetJobId(db, parsed.data.id, asset.ownerId);
+    const job = await getJobForAsset(db, jobId, asset.ownerId);
 
     return { asset, job };
   });
@@ -112,6 +127,12 @@ export default async function libraryRoutes(app: FastifyInstance) {
     const body = patchAssetBody.safeParse(req.body ?? {});
     if (!body.success) return reply.code(400).send(badRequest('Bad asset patch.'));
     const user = req.user!;
+
+    if (body.data.visibility !== undefined) {
+      const changed = await setVisibility(db, parsed.data.id, user.id, body.data.visibility);
+      if (!changed) return reply.code(404).send(notFound);
+      if (body.data.starred === undefined) return { asset: changed };
+    }
 
     if (body.data.starred === undefined) {
       // Nothing to change: report the asset as it stands, still ownership-checked.
@@ -140,6 +161,48 @@ export default async function libraryRoutes(app: FastifyInstance) {
    * restores the same asset rather than producing a new one — which is what
    * makes the grid's undo bar something other than a lie.
    */
+  // -------------------------------------------------------------- sharing
+
+  app.get('/library/users', { onRequest: [app.requireAuth] }, async (req) => {
+    return { users: await listShareableUsers(db, req.user!.id) };
+  });
+
+  app.get('/library/assets/:id/shares', { onRequest: [app.requireAuth] }, async (req, reply) => {
+    const parsed = idParams.safeParse(req.params);
+    if (!parsed.success) return reply.code(404).send(notFound);
+    const users = await getAssetShares(db, parsed.data.id, req.user!.id);
+    if (!users) return reply.code(404).send(notFound);
+    return { users };
+  });
+
+  app.put('/library/assets/:id/shares', { onRequest: [app.requireAuth] }, async (req, reply) => {
+    const parsed = idParams.safeParse(req.params);
+    if (!parsed.success) return reply.code(404).send(notFound);
+    const body = z.object({ userIds: z.array(z.string().uuid()).max(200) }).safeParse(req.body ?? {});
+    if (!body.success) return reply.code(400).send(badRequest('Bad share list.'));
+    const users = await setAssetShares(db, parsed.data.id, req.user!.id, body.data.userIds);
+    if (!users) return reply.code(404).send(notFound);
+    return { users };
+  });
+
+  // -------------------------------------------------------------- archive
+
+  /** Delete forever: only what is already in the archive. */
+  app.post('/library/archive/purge', { onRequest: [app.requireAuth] }, async (req, reply) => {
+    const body = z.object({ ids: z.array(z.string().uuid()).min(1).max(500) }).safeParse(req.body ?? {});
+    if (!body.success) return reply.code(400).send(badRequest('Bad purge list.'));
+    const keys = await purgeArchived(db, { userId: req.user!.id, ids: body.data.ids });
+    await removeObjects(keys, undefined, (msg) => req.log.warn(msg));
+    return { purged: keys.length };
+  });
+
+  /** Empty the archive. */
+  app.post('/library/archive/empty', { onRequest: [app.requireAuth] }, async (req) => {
+    const keys = await purgeArchived(db, { userId: req.user!.id, all: true });
+    await removeObjects(keys, undefined, (msg) => req.log.warn(msg));
+    return { purged: keys.length };
+  });
+
   app.post('/library/assets/:id/restore', { onRequest: [app.requireAuth] }, async (req, reply) => {
     const parsed = idParams.safeParse(req.params);
     if (!parsed.success) return reply.code(404).send(notFound);

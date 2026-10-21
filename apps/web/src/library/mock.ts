@@ -26,6 +26,9 @@ import type {
   LibraryPageRequest,
 } from '../lib/api-library';
 
+/** The mock's "me". Every eighth row belongs to someone else and is shared. */
+export const MOCK_ME = 'mock-me';
+
 // ---------------------------------------------------------------- fixtures
 
 const PROMPTS = [
@@ -149,10 +152,17 @@ function makeRow(index: number): MockRow {
       height,
       duration: isVideo ? 4 : null,
       starred: index % 7 === 1,
+      // A few of each, so both badges are on screen in the mock.
+      visibility: index % 9 === 2 ? 'public' : index % 6 === 4 ? 'link' : 'private',
+      shareUrl: index % 9 === 2 || index % 6 === 4 ? `/api/share/mock-${index}` : null,
       createdAt,
       prompt,
       modelName,
       collectionIds: index % 5 === 0 ? ['c1'] : [],
+      ownerId: index % 8 === 5 ? 'mock-sam' : MOCK_ME,
+      ownerName: index % 8 === 5 ? 'Sam' : 'You',
+      archivedAt: null,
+      purgesAt: null,
     },
     job: {
       id: jobId,
@@ -185,8 +195,22 @@ function latency<T>(value: T, ms = 220): Promise<T> {
   return new Promise((resolve) => setTimeout(() => resolve(value), ms));
 }
 
+const MOCK_USERS = [
+  { id: 'mock-sam', name: 'Sam', email: 'sam@example.com' },
+  { id: 'mock-ari', name: 'Ari', email: 'ari@example.com' },
+];
+const mockShares = new Map<string, string[]>();
+
 function matches(row: MockRow, filters: LibraryPageRequest): boolean {
-  if (row.deleted) return false;
+  const view = filters.view ?? 'everything';
+  const mine = row.asset.ownerId === MOCK_ME;
+  if (view === 'archived') {
+    if (!row.deleted || !mine) return false;
+  } else {
+    if (row.deleted) return false;
+    if (view === 'mine' && !mine) return false;
+    if (view === 'shared' && mine) return false;
+  }
   if (filters.kind && row.asset.kind !== filters.kind) return false;
   if (filters.starred && !row.asset.starred) return false;
   if (filters.collectionId && !row.asset.collectionIds.includes(filters.collectionId)) return false;
@@ -235,6 +259,14 @@ export const mockLibrary: LibraryApi = {
       return latency({ asset: { ...row.asset }, job: { ...row.job } }, 120);
     },
 
+    setVisibility(id, visibility) {
+      const row = findRow(id);
+      row.asset.visibility = visibility;
+      if (visibility !== 'private' && !row.asset.shareUrl) row.asset.shareUrl = `/api/share/mock-${id}`;
+      if (visibility === 'private') row.asset.shareUrl = null;
+      return latency({ asset: { ...row.asset } }, 200);
+    },
+
     setStarred(id, starred) {
       const row = findRow(id);
       // One tile in ten refuses, so the optimistic update's revert path is
@@ -249,14 +281,48 @@ export const mockLibrary: LibraryApi = {
     },
 
     remove(id) {
-      findRow(id).deleted = true;
+      const row = findRow(id);
+      row.deleted = true;
+      const now = Date.now();
+      row.asset.archivedAt = new Date(now).toISOString();
+      row.asset.purgesAt = new Date(now + 30 * 86_400_000).toISOString();
       return latency(undefined, 180);
     },
 
     restore(id) {
       const row = findRow(id);
       row.deleted = false;
+      row.asset.archivedAt = null;
+      row.asset.purgesAt = null;
       return latency({ asset: { ...row.asset } }, 180);
+    },
+
+    shares(id) {
+      const ids = mockShares.get(id) ?? [];
+      return latency({ users: MOCK_USERS.filter((u) => ids.includes(u.id)) }, 120);
+    },
+
+    setShares(id, userIds) {
+      mockShares.set(id, [...userIds]);
+      return latency({ users: MOCK_USERS.filter((u) => userIds.includes(u.id)) }, 160);
+    },
+  },
+
+  users: () => latency({ users: MOCK_USERS }, 100),
+
+  archive: {
+    purge(ids) {
+      const before = rows.length;
+      for (const id of ids) {
+        const at = rows.findIndex((row) => row.asset.id === id && row.deleted);
+        if (at >= 0) rows.splice(at, 1);
+      }
+      return latency({ purged: before - rows.length }, 200);
+    },
+    empty() {
+      const before = rows.length;
+      for (let i = rows.length - 1; i >= 0; i--) if (rows[i]!.deleted) rows.splice(i, 1);
+      return latency({ purged: before - rows.length }, 200);
     },
   },
 

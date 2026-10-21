@@ -23,6 +23,8 @@ import deploymentRoutes from './deploy/routes.js';
 import healthRoutes from './routes/health.js';
 import modelRoutes from './routes/models.js';
 import assetRoutes from './storage/routes.js';
+import shareRoutes from './storage/share.js';
+import { purgeExpired } from './library/archive.js';
 import modelInstallRoutes from './models/routes.js';
 import modelWorkflowRoutes from './models/workflow-routes.js';
 import fixRoutes from './models/fix-routes.js';
@@ -59,6 +61,7 @@ await app.register(
     await api.register(tunnelRoutes);
     await api.register(modelRoutes);
     await api.register(assetRoutes);
+    await api.register(shareRoutes);
     await api.register(modelInstallRoutes);
     await api.register(modelWorkflowRoutes);
     await api.register(fixRoutes);
@@ -101,12 +104,20 @@ async function main() {
   const pruneTimer = setInterval(() => {
     void pruneSessions().catch((err) => app.log.warn({ err }, 'session prune failed'));
   }, 60 * 60 * 1000);
+  // The archive's retention rule. Hourly is plenty for a rule counted in days.
+  const purge = () =>
+    void purgeExpired((msg) => app.log.info(msg)).catch((err) =>
+      app.log.warn({ err }, 'archive purge failed'),
+    );
+  purge();
+  const purgeTimer = setInterval(purge, 60 * 60 * 1000);
 
   await app.listen({ port: env.port, host: env.host });
 
   const shutdown = async (signal: string) => {
     app.log.info(`${signal} received, shutting down`);
     clearInterval(pruneTimer);
+    clearInterval(purgeTimer);
     stopPoller();
     stopInstallPoller();
     stopModelOperations();

@@ -352,6 +352,21 @@ describe('runnabilityFor', () => {
     expect(verdict.status).toBe('generic');
   });
 
+  it('does not send an unrecognised diffusion model to checkpoints for the generic graph', () => {
+    // A bare DiT, correctly filed in diffusion_models. The generic graph reads
+    // checkpoints/, and could not load it there either.
+    const verdict = runnabilityFor({
+      ...base,
+      installed: true,
+      filename: 'minimax_h3_ref2va_pruned_int8_convrot.safetensors',
+      type: 'checkpoint',
+      catalogueBase: null,
+      folder: 'diffusion_models',
+    });
+    expect(verdict.status).toBe('no-workflow');
+    expect(verdict.detail).toContain('in the right folder');
+  });
+
   it('does not accuse the backend of hiding a file it lists under a subfolder', () => {
     // A catalogue row names `sd_xl_base_1.0.safetensors`; ComfyUI, having put
     // it in checkpoints/SDXL, lists `SDXL\\sd_xl_base_1.0.safetensors`. Matching

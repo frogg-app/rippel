@@ -25,7 +25,22 @@ import {
   remaining,
   transferRate,
 } from './catalogue';
-import { makeEntry, makeInstall, makeModel, makeRunnability } from './testing';
+import {
+  cardTags,
+  entryTags,
+  facetRows,
+  parseSearch,
+  parseToken,
+  readDiscover,
+  resolverFor,
+  sortCatalogue,
+  suggestTags,
+  tagFacets,
+  vocabulary,
+  writeDiscover,
+  DEFAULT_DISCOVER,
+} from './discover';
+import { makeEntry, makeInfo, makeInstall, makeModel, makeRunnability } from './testing';
 
 describe('foldFamily', () => {
   it('folds both vocabularies onto the same key', () => {
@@ -274,5 +289,182 @@ describe('remaining', () => {
 
   it('is null once nothing is left, rather than counting down past zero', () => {
     expect(remaining(6_000_000_000, 6_000_000_000, 10_000_000)).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------- tags
+
+/** Three entries with tags, shaped like the API's grouped output. */
+function tagged() {
+  const tags = (over: Partial<ReturnType<typeof makeInfo>['tags']>) => ({
+    task: [], base: [], library: [], format: [], language: [], license: [], tag: [], ...over,
+  });
+  return [
+    makeEntry({
+      ref: 'flux', name: 'FLUX.1 dev', type: 'checkpoint', base: 'FLUX.1',
+      info: makeInfo({ downloads: 2_000, likes: 10, tags: tags({
+        task: ['text-to-image'], license: ['other'], tag: ['photorealistic', 'typography'],
+      }) }),
+    }),
+    makeEntry({
+      ref: 'wan', name: 'Wan 2.2', type: 'checkpoint', base: 'Wan',
+      info: makeInfo({ downloads: 500, likes: 90, tags: tags({
+        task: ['text-to-video'], license: ['apache-2.0'], tag: ['video', 'anime'],
+      }) }),
+    }),
+    makeEntry({
+      ref: 'pixel', name: 'pixel art', type: 'lora', base: 'SDXL',
+      info: makeInfo({ downloads: 1_000, likes: 40, tags: tags({
+        task: ['text-to-image'], base: ['stabilityai/sdxl-base'], tag: ['anime', 'pixel-art'],
+      }) }),
+    }),
+    // Not reached by the metadata sweep yet: no info at all.
+    makeEntry({ ref: 'bare', name: 'Aardvark', type: 'vae', base: 'SDXL', info: null }),
+  ];
+}
+
+describe('the search parser', () => {
+  it('reads a prefixed word as a tag and a bare word as text', () => {
+    expect(parseToken('task:Text-To-Image')).toEqual({ key: 'task:text-to-image', negate: false });
+    expect(parseToken('licence:mit')).toEqual({ key: 'license:mit', negate: false });
+    expect(parseToken('anime')).toBeNull();
+  });
+
+  it('reads a leading minus as an exclusion, resolving the group when none is given', () => {
+    expect(parseToken('-base:sdxl')).toEqual({ key: 'base:sdxl', negate: true });
+    expect(parseToken('-anime')).toEqual({ key: 'tag:anime', negate: true });
+    expect(parseToken('-sdxl', (value) => (value === 'sdxl' ? 'base' : null))).toEqual({
+      key: 'base:sdxl',
+      negate: true,
+    });
+  });
+
+  it('treats an unknown prefix as text, not as an error', () => {
+    expect(parseToken('fp8:e4m3')).toBeNull();
+  });
+
+  it('splits a whole line into includes, excludes and the text left over', () => {
+    expect(parseSearch('flux task:text-to-image -tag:anime  dev -license:other')).toEqual({
+      include: ['task:text-to-image'],
+      exclude: ['tag:anime', 'license:other'],
+      text: 'flux dev',
+    });
+  });
+
+  it('does not search for a half-typed prefix or a lone minus', () => {
+    expect(parseSearch('flux task: -').text).toBe('flux');
+  });
+});
+
+describe('entryTags and cardTags', () => {
+  it('puts the catalogue family at the front of base, folded', () => {
+    const [, , pixel, bare] = tagged();
+    expect(entryTags(pixel!).base).toEqual(['sdxl', 'stabilityai/sdxl-base']);
+    // No model page yet still has a family.
+    expect(entryTags(bare!).base).toEqual(['sdxl']);
+  });
+
+  it('shows task, then base, then free tags, at most five, and counts the rest', () => {
+    const [flux] = tagged();
+    const { shown, more } = cardTags(flux!, 3);
+    expect(shown.map((tag) => `${tag.group}:${tag.value}`)).toEqual([
+      'task:text-to-image',
+      'base:flux.1',
+      'tag:photorealistic',
+    ]);
+    // typography and the licence are in the drawer.
+    expect(more).toBe(2);
+  });
+});
+
+describe('filtering by tag', () => {
+  const base = { type: null, base: null, q: '', run: 'all' as const };
+
+  it('ANDs includes and drops anything excluded', () => {
+    const entries = tagged();
+    const names = (include: string[], exclude: string[] = []) =>
+      filterCatalogue(entries, { ...base, include, exclude }).map((entry) => entry.ref);
+    expect(names(['task:text-to-image'])).toEqual(['flux', 'pixel']);
+    expect(names(['task:text-to-image', 'tag:anime'])).toEqual(['pixel']);
+    expect(names(['base:sdxl'])).toEqual(['pixel', 'bare']);
+    expect(names([], ['tag:anime'])).toEqual(['flux', 'bare']);
+  });
+
+  it('finds a tag value from the plain text search too', () => {
+    expect(filterCatalogue(tagged(), { ...base, q: 'pixel-art' }).map((e) => e.ref)).toEqual(['pixel']);
+  });
+
+  it('counts each facet among the current results', () => {
+    const entries = tagged();
+    const current = filterCatalogue(entries, { ...base, include: ['tag:anime'] });
+    const counts = tagFacets(current);
+    expect(counts.get('tag:anime')).toBe(2);
+    expect(counts.get('task:text-to-video')).toBe(1);
+    expect(counts.get('tag:photorealistic')).toBeUndefined();
+
+    // The rail keeps a selected row even at zero, so it can be switched off.
+    const rows = facetRows('tag', vocabulary(entries), counts, ['tag:typography']);
+    expect(rows.map((row) => row.value)).toEqual(['anime', 'pixel-art', 'video', 'typography']);
+  });
+
+  it('suggests by group, by substring and by count, and never an active tag', () => {
+    const entries = tagged();
+    const known = vocabulary(entries);
+    const counts = tagFacets(entries);
+    expect(suggestTags('ani', known, counts, []).map((s) => s.key)).toEqual(['tag:anime']);
+    expect(suggestTags('task:', known, counts, []).map((s) => s.key)).toEqual([
+      'task:text-to-image',
+      'task:text-to-video',
+    ]);
+    expect(suggestTags('-task:video', known, counts, [])[0]).toMatchObject({
+      key: 'task:text-to-video',
+      negate: true,
+    });
+    expect(suggestTags('anime', known, counts, ['tag:anime'])).toEqual([]);
+    expect(suggestTags('', known, counts, [])).toEqual([]);
+  });
+
+  it('resolves a bare excluded word to the group the catalogue has it in', () => {
+    const resolve = resolverFor(vocabulary(tagged()));
+    expect(resolve('sdxl')).toBe('base');
+    expect(resolve('anime')).toBe('tag');
+    expect(resolve('nothing')).toBeNull();
+  });
+});
+
+describe('sortCatalogue', () => {
+  it('sorts by downloads, likes or name, with unread entries last', () => {
+    const entries = tagged();
+    expect(sortCatalogue(entries, 'downloads').map((e) => e.ref)).toEqual(['flux', 'pixel', 'wan', 'bare']);
+    expect(sortCatalogue(entries, 'likes').map((e) => e.ref)).toEqual(['wan', 'pixel', 'flux', 'bare']);
+    expect(sortCatalogue(entries, 'name').map((e) => e.ref)).toEqual(['bare', 'flux', 'pixel', 'wan']);
+  });
+});
+
+describe('the Discover query string', () => {
+  it('leaves every default out, and keeps the tab', () => {
+    const params = writeDiscover(new URLSearchParams('tab=discover'), DEFAULT_DISCOVER);
+    expect(params.toString()).toBe('tab=discover');
+    expect(readDiscover(params)).toEqual(DEFAULT_DISCOVER);
+  });
+
+  it('round-trips tags, exclusions, type, sort and the toggle', () => {
+    const state = {
+      include: ['task:text-to-image', 'base:sdxl'],
+      exclude: ['tag:anime'],
+      q: 'pixel',
+      type: null,
+      sort: 'likes' as const,
+      runs: true,
+    };
+    const params = writeDiscover(new URLSearchParams('tab=discover'), state);
+    expect(params.getAll('tag')).toEqual(['task:text-to-image', 'base:sdxl', '-tag:anime']);
+    expect(params.get('type')).toBe('all');
+    expect(readDiscover(params)).toEqual(state);
+  });
+
+  it('ignores what it cannot parse rather than trusting it', () => {
+    const state = readDiscover(new URLSearchParams('tag=nonsense&tag=colour:blue&type=sofa&sort=random'));
+    expect(state).toEqual(DEFAULT_DISCOVER);
   });
 });

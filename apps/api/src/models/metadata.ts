@@ -39,7 +39,9 @@
 import { createHash } from 'node:crypto';
 import sharp from 'sharp';
 import type { ModelCatalogEntry, ModelCatalogInfo } from '@comfy/shared';
+import type { ModelTags } from '@comfy/shared';
 import { query } from '../db.js';
+import { normaliseTags, tagKeys, tagsFromKeys } from './tags.js';
 import {
   fetchSourceFacts,
   parseReference,
@@ -91,6 +93,7 @@ const PREVIEW_REV = 3;
 export interface MetaRow {
   description: string | null;
   base_models: string[];
+  /** Hugging Face's raw `tags[]`, as read (migration 022). */
   tags: string[];
   source_key: string;
   preview_id: string;
@@ -99,6 +102,8 @@ export interface MetaRow {
   downloads: string | null;
   likes: number | null;
   pipeline_tag: string | null;
+  /** `group:value` keys (migration 028). Null on a row fetched before they were. */
+  tag_keys: string[] | null;
   preview_source: string | null;
   preview_borrowed_from: string | null;
   preview_type: string | null;
@@ -121,7 +126,6 @@ function toInfo(row: MetaRow): ModelCatalogInfo {
   return {
     description: row.description,
     baseModels: row.base_models,
-    tags: row.tags,
     previewUrl: row.has_preview ? `/api/model-previews/${row.preview_id}` : null,
     // Only offered when a bigger rendition really exists, so the UI can decide
     // whether a card is worth making clickable rather than guessing.
@@ -135,14 +139,27 @@ function toInfo(row: MetaRow): ModelCatalogInfo {
     likes: row.likes,
     pipelineTag: row.pipeline_tag,
     referenceUrl: row.reference_url,
+    tags: infoTags(row),
   };
+}
+
+/**
+ * The grouped tags for a row.
+ *
+ * A row from before migration 028 has no keys yet — it is stale and will be
+ * re-read — but in the meantime it still knows its task and its licence, and a
+ * card showing those is better than one showing nothing until the sweep lands.
+ */
+export function infoTags(row: Pick<MetaRow, 'tag_keys' | 'pipeline_tag' | 'license'>): ModelTags {
+  if (row.tag_keys) return tagsFromKeys(row.tag_keys);
+  return normaliseTags([], { pipelineTag: row.pipeline_tag, license: row.license });
 }
 
 /** Everything we hold for a set of model pages. */
 async function loadRows(keys: string[]): Promise<Map<string, MetaRow>> {
   if (keys.length === 0) return new Map();
   const rows = await query<MetaRow>(
-    `SELECT source_key, preview_id, reference_url, license, downloads, likes, pipeline_tag, description, base_models, tags,
+    `SELECT source_key, preview_id, reference_url, license, downloads, likes, pipeline_tag, description, base_models, tags, tag_keys,
             preview_source, preview_borrowed_from, preview_type, preview_rev,
             preview_bytes IS NOT NULL AS has_preview,
             preview_full_bytes IS NOT NULL AS has_full,
@@ -159,6 +176,9 @@ function isStale(row: MetaRow): boolean {
   // written: that is how a change to the rendition sizes reaches rows that are
   // otherwise good for another month.
   if (row.preview_rev < PREVIEW_REV && !row.error) return true;
+  // Likewise a row read before tags were: null is "never asked", where an
+  // empty array is "asked, and there are none" (see migration 018).
+  if (row.tag_keys === null && !row.error) return true;
   const age = Date.now() - row.fetched_at.getTime();
   return row.error ? age > RETRY_MS : age > FRESH_MS;
 }
@@ -298,12 +318,13 @@ async function resolveOne(ref: SourceRef): Promise<boolean> {
     key,
     description: facts.description,
     baseModels: facts.baseModels,
-    tags: facts.tags,
+    tags: facts.rawTags,
     referenceUrl: facts.referenceUrl,
     license: facts.license,
     downloads: facts.downloads,
     likes: facts.likes,
     pipelineTag: facts.pipelineTag,
+    tagKeys: tagKeys(facts.tags),
     preview,
     borrowedFrom,
   });
@@ -375,6 +396,8 @@ async function store(params: {
   downloads?: number | null;
   likes?: number | null;
   pipelineTag?: string | null;
+  /** Null for a failed read, so the row is not mistaken for "has no tags". */
+  tagKeys?: string[] | null;
   preview?: Preview | null;
   borrowedFrom?: string | null;
   error?: string | null;
@@ -384,8 +407,8 @@ async function store(params: {
     `INSERT INTO model_catalogue_meta
        (source_key, preview_id, reference_url, license, downloads, likes, pipeline_tag,
         preview_source, preview_borrowed_from, preview_bytes, preview_type, error, fetched_at,
-        preview_full_bytes, preview_full_type, preview_rev, description, base_models, tags)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, now(), $13, $14, $15, $16, $17::jsonb, $18::jsonb)
+        preview_full_bytes, preview_full_type, preview_rev, description, base_models, tags, tag_keys)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, now(), $13, $14, $15, $16, $17::jsonb, $18::jsonb, $19)
      ON CONFLICT (source_key) DO UPDATE SET
        description = COALESCE(EXCLUDED.description, model_catalogue_meta.description),
        base_models = CASE WHEN EXCLUDED.error IS NULL THEN EXCLUDED.base_models ELSE model_catalogue_meta.base_models END,
@@ -395,6 +418,7 @@ async function store(params: {
        downloads = EXCLUDED.downloads,
        likes = EXCLUDED.likes,
        pipeline_tag = EXCLUDED.pipeline_tag,
+       tag_keys = EXCLUDED.tag_keys,
        -- A refresh that found no picture keeps the one we already have: repos
        -- reorganise, and a card that loses its image on a routine re-read is a
        -- regression nobody asked for.
@@ -435,6 +459,7 @@ async function store(params: {
       params.description ?? null,
       JSON.stringify(params.baseModels ?? []),
       JSON.stringify(params.tags ?? []),
+      params.tagKeys ?? null,
     ],
   );
 }

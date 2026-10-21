@@ -20,6 +20,7 @@ export function AssetGrid({
   selectedId,
   onOpen,
   onToggleStar,
+  me = null,
   onEndReached,
   hasMore,
   loadingMore,
@@ -29,6 +30,7 @@ export function AssetGrid({
   selectedId: string | null;
   onOpen: (asset: LibraryAsset) => void;
   onToggleStar: (asset: LibraryAsset) => void;
+  me?: string | null;
   onEndReached: () => void;
   hasMore: boolean;
   loadingMore: boolean;
@@ -68,6 +70,7 @@ export function AssetGrid({
                 selected={asset.id === selectedId}
                 onOpen={onOpen}
                 onToggleStar={onToggleStar}
+                me={me}
               />
             ))}
           </div>

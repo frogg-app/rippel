@@ -167,3 +167,38 @@
   color: var(--text-muted);
   animation: pulse 1.6s var(--ease-in-out) infinite;
 }
+
+/* Link-only or public: always on, bottom-left, the duration badge's shape. */
+.shared {
+  position: absolute;
+  bottom: 9px;
+  left: 9px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--badge);
+  backdrop-filter: blur(8px);
+  font-size: 10.5px;
+  color: var(--accent);
+  pointer-events: auto;
+}
+
+/* Whose it is, or how long the archive keeps it: top-right, where the star
+   would be, because neither kind of tile has one. */
+.byline {
+  position: absolute;
+  top: 9px;
+  right: 9px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--badge);
+  backdrop-filter: blur(8px);
+  font-size: 10.5px;
+  color: var(--text-bright);
+  max-width: 60%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

@@ -106,3 +106,10 @@ export const ChevronIcon = (props: IconProps) => (
     <path d="M6 9l6 6 6-6" />
   </Icon>
 );
+
+/** Likes at the source: the stats row on a card, and the drawer's like pill. */
+export const HeartIcon = (props: IconProps) => (
+  <Icon {...props} strokeWidth={1.7}>
+    <path d="M12 19.5s-7.5-4.4-7.5-10A4.2 4.2 0 0112 7a4.2 4.2 0 017.5 2.5c0 5.6-7.5 10-7.5 10z" />
+  </Icon>
+);

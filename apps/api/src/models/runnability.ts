@@ -246,6 +246,27 @@ export function runnabilityFor(input: RunnabilityInput): ModelRunnability {
     };
   }
 
+  // The generic graph is for unrecognised SD merges: full checkpoints, loaded
+  // whole by CheckpointLoaderSimple out of `checkpoints/`. A file of no known
+  // family sitting in `diffusion_models/` is a bare UNet or DiT — no CLIP, no
+  // VAE inside it — so that graph cannot run it wherever it lives. Measuring it
+  // against the generic graph used to call it "Wrong folder" and tell the user
+  // to move a correctly filed model somewhere it still would not load.
+  if (
+    family === null &&
+    input.folder &&
+    input.folder !== 'checkpoints' &&
+    candidates.every((template) => template.manifest.isFallback === true)
+  ) {
+    return {
+      ...base,
+      status: 'no-workflow',
+      capabilities: [],
+      summary: 'No workflow for this yet',
+      detail: `No workflow for this kind of ${input.folder === 'diffusion_models' ? 'diffusion model' : 'model'} yet — it is in the right folder, rippel just cannot generate with it.`,
+    };
+  }
+
   const attempts: Attempt[] = [];
   for (const template of candidates) {
     const offer = {

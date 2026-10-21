@@ -14,6 +14,7 @@ import type {
   Backend,
   Model,
   ModelCatalogEntry,
+  ModelCatalogInfo,
   ModelInstall,
   ModelInstallStatus,
   ModelRemoval,
@@ -99,6 +100,23 @@ export function makeEntry(overrides: Partial<ModelCatalogEntry> = {}): ModelCata
   };
 }
 
+/** A model page's facts with nothing found, to override field by field. */
+export function makeInfo(overrides: Partial<ModelCatalogInfo> = {}): ModelCatalogInfo {
+  return {
+    previewUrl: null,
+    previewFullUrl: null,
+    previewFrom: null,
+    previewBorrowedFrom: null,
+    license: null,
+    downloads: null,
+    likes: null,
+    pipelineTag: null,
+    referenceUrl: null,
+    tags: { task: [], base: [], library: [], format: [], language: [], license: [], tag: [] },
+    ...overrides,
+  };
+}
+
 export function makeInstall(overrides: Partial<ModelInstall> = {}): ModelInstall {
   return {
     id: 'e6b56eac-a95b-4b5c-bc96-aed1a07020d4',
@@ -150,6 +168,17 @@ export function makeCatalogue(): ModelCatalogEntry[] {
         likes: 8113,
         pipelineTag: 'text-to-image',
         referenceUrl: 'https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0',
+        // As the API sorts the repo's real `tags[]`: HuggingFace's plumbing
+        // (`region:us`, `endpoints_compatible`) is already gone.
+        tags: {
+          task: ['text-to-image'],
+          base: [],
+          library: ['diffusers'],
+          format: ['safetensors', 'onnx'],
+          language: ['english'],
+          license: ['openrail++'],
+          tag: ['stable-diffusion', 'stable-diffusion-xl'],
+        },
       },
       runnability: makeRunnability({
         status: 'ready',
@@ -168,7 +197,24 @@ export function makeCatalogue(): ModelCatalogEntry[] {
       size: '148MB',
       description: 'Analog film grain and halation',
       url: 'https://example.invalid/flux-cinematic.safetensors',
+      reference: 'https://huggingface.co/someone/flux-cinematic',
       savePath: 'loras',
+      info: makeInfo({
+        likes: 412,
+        downloads: 9_210,
+        license: 'apache-2.0',
+        pipelineTag: 'text-to-image',
+        referenceUrl: 'https://huggingface.co/someone/flux-cinematic',
+        tags: {
+          task: ['text-to-image'],
+          base: ['black-forest-labs/flux.1-dev'],
+          library: ['diffusers'],
+          format: ['safetensors'],
+          language: [],
+          license: ['apache-2.0'],
+          tag: ['lora', 'film', 'photorealistic'],
+        },
+      }),
     }),
     makeEntry({
       ref: 'vae/ae.safetensors',

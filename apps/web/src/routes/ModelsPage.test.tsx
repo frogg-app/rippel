@@ -23,6 +23,9 @@
  *     that list looking available while every job against them failed.
  *  7. The open tab survives a reload, because it is in the URL. It used to be
  *     component state, so every refresh dropped the operator back on Installed.
+ *  8. Tags filter: from the search box (with `-` exclusion and Backspace), from
+ *     the facet rail, from a card and from the detail drawer — and the result
+ *     is in the URL, so a filtered view can be reloaded and shared.
  *
  * Plus the admin gate, since every install route 403s for a non-admin.
  *
@@ -110,6 +113,13 @@ function renderPage(api: ModelsApi, user: User = admin, url = '/models', storage
 /** The query string as the address bar would show it. */
 function search() {
   return screen.getByTestId('search').textContent;
+}
+
+/** The "N of M models" line above the grid. */
+function resultCount() {
+  return screen.getByText((_, element) =>
+    Boolean(element?.tagName === 'SPAN' && /^\d+ of \d+ models$/.test(element.textContent ?? '')),
+  ).textContent;
 }
 
 /** Wait for the initial backends+models load to land. */
@@ -267,7 +277,7 @@ describe('ModelsPage', () => {
 
       await user.type(search, 'halation');
       // Matched on the description, which is where the useful words live.
-      await waitFor(() => expect(screen.getByText('1 / 100')).toBeInTheDocument());
+      await waitFor(() => expect(resultCount()).toBe('1 of 100 models'));
       expect(screen.getByRole('article', { name: 'Cinematic Film Look' })).toBeInTheDocument();
       expect(screen.queryByRole('article', { name: 'RealESRGAN x2' })).not.toBeInTheDocument();
 
@@ -301,14 +311,20 @@ describe('ModelsPage', () => {
       expect(
         within(sdxl).getByText('An SDXL model, with a workflow written for it.'),
       ).toBeInTheDocument();
-      expect(within(sdxl).getByText('openrail++')).toBeInTheDocument();
-      // 1,767,210 downloads, in the width a card has for it.
+      // 1,767,210 downloads and 8,113 likes, in the width a card has for them.
       expect(within(sdxl).getByText('1.8M')).toBeInTheDocument();
+      expect(within(sdxl).getByText('8.1k')).toBeInTheDocument();
+      // The owner, from the model page, in front of the name.
+      expect(within(sdxl).getByRole('heading')).toHaveTextContent('stabilityai/SDXL Base 1.0');
+      // The licence is a drawer fact now, not card furniture.
+      expect(within(sdxl).queryByText('openrail++')).not.toBeInTheDocument();
 
       // One entry in the fixture runs; everything else is a support file, and
       // a support file is not offered as either working or broken.
-      await user.click(screen.getByRole('button', { name: /Will run here/ }));
-      await waitFor(() => expect(screen.getByText('1 / 100')).toBeInTheDocument());
+      await user.click(screen.getByRole('button', { name: /All types/ }));
+      await user.click(screen.getByRole('checkbox', { name: 'Runs on this backend' }));
+      await waitFor(() => expect(resultCount()).toBe('1 of 100 models'));
+      expect(search()).toContain('runs=1');
       expect(screen.getByRole('article', { name: 'SDXL Base 1.0' })).toBeInTheDocument();
       expect(screen.queryByRole('article', { name: 'RealESRGAN x2' })).not.toBeInTheDocument();
     });
@@ -322,9 +338,12 @@ describe('ModelsPage', () => {
       await ready();
       const user = await openTab(/Discover/);
 
+      // The card's art opens the drawer; the drawer's art opens the lightbox.
       const sdxl = await screen.findByRole('article', { name: 'SDXL Base 1.0' });
+      await user.click(within(sdxl).getByRole('button', { name: 'Details of SDXL Base 1.0' }));
+      const drawer = await screen.findByRole('dialog', { name: 'Details of SDXL Base 1.0' });
       await user.click(
-        within(sdxl).getByRole('button', { name: /See the full-size preview of SDXL Base 1.0/ }),
+        within(drawer).getByRole('button', { name: /See the full-size preview of SDXL Base 1.0/ }),
       );
 
       const dialog = await screen.findByRole('dialog', { name: 'Preview of SDXL Base 1.0' });
@@ -333,6 +352,12 @@ describe('ModelsPage', () => {
         '/api/model-previews/2f2a1b0c9d8e7f6a5b4c?full=1',
       );
 
+      // One Escape, one layer: the lightbox goes, the drawer stays.
+      await user.keyboard('{Escape}');
+      await waitFor(() =>
+        expect(screen.queryByRole('dialog', { name: 'Preview of SDXL Base 1.0' })).not.toBeInTheDocument(),
+      );
+      expect(screen.getByRole('dialog', { name: 'Details of SDXL Base 1.0' })).toBeInTheDocument();
       await user.keyboard('{Escape}');
       await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     });
@@ -570,7 +595,9 @@ describe('ModelsPage', () => {
       const user = await openTab(/Discover/);
       await waitFor(() => expect(search()).toBe('?tab=discover'));
 
-      await user.click(screen.getByRole('button', { name: /Downloads/ }));
+      // Scoped to the tab strip: Discover has a "Downloads" sort button too.
+      const tabs = screen.getByRole('navigation', { name: 'Models sections' });
+      await user.click(within(tabs).getByRole('button', { name: /Downloads/ }));
       await waitFor(() => expect(search()).toBe('?tab=downloads'));
 
       // Installed is the default, and is spelled by the absence of the
@@ -1003,6 +1030,97 @@ describe('ModelsPage', () => {
     });
   });
 
+  describe('tags', () => {
+    it('takes a tag from the autocomplete, and Backspace gives it back', async () => {
+      const api = makeStubApi();
+      renderPage(api);
+      await ready();
+      const user = await openTab(/Discover/);
+      await user.click(screen.getByRole('button', { name: /All types/ }));
+
+      const box = screen.getByRole('combobox', { name: 'Search the catalogue' });
+      await user.type(box, 'tag:fil');
+      const list = await screen.findByRole('listbox', { name: 'Matching tags' });
+      expect(within(list).getAllByRole('option')[0]).toHaveTextContent('film');
+      await user.keyboard('{Enter}');
+
+      // A token now, not text: the box is empty and the grid is narrowed.
+      expect(box).toHaveValue('');
+      expect(screen.getByRole('button', { name: 'Remove tag film' })).toBeInTheDocument();
+      await waitFor(() => expect(resultCount()).toBe('1 of 100 models'));
+      expect(new URLSearchParams(search()!).getAll('tag')).toEqual(['tag:film']);
+
+      await user.keyboard('{Backspace}');
+      await waitFor(() => expect(resultCount()).toBe('100 of 100 models'));
+      expect(screen.queryByRole('button', { name: 'Remove tag film' })).not.toBeInTheDocument();
+    });
+
+    it('excludes a tag typed with a minus', async () => {
+      const api = makeStubApi();
+      renderPage(api);
+      await ready();
+      const user = await openTab(/Discover/);
+      await user.click(screen.getByRole('button', { name: /All types/ }));
+
+      await user.type(screen.getByRole('combobox', { name: 'Search the catalogue' }), '-task:text-to-image');
+      await user.keyboard('{Enter}');
+
+      // Both entries with a task are gone; the 98 with none remain.
+      await waitFor(() => expect(resultCount()).toBe('98 of 100 models'));
+      expect(screen.getByRole('button', { name: 'Remove exclusion task text-to-image' })).toBeInTheDocument();
+      expect(new URLSearchParams(search()!).getAll('tag')).toEqual(['-task:text-to-image']);
+    });
+
+    it('restores tags, type and sort from the URL', async () => {
+      const api = makeStubApi();
+      renderPage(api, admin, '/models?tab=discover&type=all&tag=tag:photorealistic&sort=likes');
+      await ready();
+
+      expect(await screen.findByRole('article', { name: 'Cinematic Film Look' })).toBeInTheDocument();
+      expect(resultCount()).toBe('1 of 100 models');
+      expect(screen.getByRole('button', { name: 'Remove tag photorealistic' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Likes' })).toHaveAttribute('aria-pressed', 'true');
+    });
+
+    it('filters by a chip on a card, and by any tag in the drawer', async () => {
+      const api = makeStubApi();
+      renderPage(api);
+      await ready();
+      const user = await openTab(/Discover/);
+      await user.click(screen.getByRole('button', { name: /All types/ }));
+
+      // Card chips: task, then base, then free tags.
+      const cinematic = await screen.findByRole('article', { name: 'Cinematic Film Look' });
+      // The glyph is decoration; the chip is named by its value alone. Five
+      // fit; the other four (library, format, licence, a last free tag) are
+      // behind "+4", which opens the drawer.
+      expect(within(cinematic).getByRole('button', { name: 'film' })).toBeInTheDocument();
+      expect(within(cinematic).queryByRole('button', { name: 'photorealistic' })).not.toBeInTheDocument();
+      expect(
+        within(cinematic).getByRole('button', { name: '4 more tags on Cinematic Film Look' }),
+      ).toHaveTextContent('+4');
+      await user.click(within(cinematic).getByRole('button', { name: /text-to-image/ }));
+      await waitFor(() => expect(resultCount()).toBe('2 of 100 models'));
+
+      // The drawer has the whole row, licence included; a chip there closes
+      // the drawer and filters.
+      const sdxl = screen.getByRole('article', { name: 'SDXL Base 1.0' });
+      await user.click(within(sdxl).getByRole('button', { name: 'Details of SDXL Base 1.0' }));
+      const drawer = await screen.findByRole('dialog', { name: 'Details of SDXL Base 1.0' });
+      const row = within(drawer).getByRole('group', { name: 'Tags' });
+      expect(row).toHaveTextContent('Licence:openrail++');
+      expect(within(drawer).getByText('sd_xl_base_1.0.safetensors')).toBeInTheDocument();
+      await user.click(within(row).getByRole('button', { name: /onnx/ }));
+
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+      await waitFor(() => expect(resultCount()).toBe('1 of 100 models'));
+      expect(new URLSearchParams(search()!).getAll('tag')).toEqual([
+        'task:text-to-image',
+        'format:onnx',
+      ]);
+    });
+  });
+
   describe('the pickers that used to be native selects', () => {
     it('opens from the selector label and drops a removed backend after settings change', async () => {
       const remaining = makeBackend({ id: 'backend-2', name: 'steve-pc' });
@@ -1045,28 +1163,26 @@ describe('ModelsPage', () => {
       expect(picker).toHaveFocus();
     });
 
-    it('filters the catalogue by family, and gives "All" back again', async () => {
+    it('filters the catalogue by base from the facet rail, and back again', async () => {
       const api = makeStubApi();
       renderPage(api);
       await ready();
       const user = await openTab(/Discover/);
+      await user.click(screen.getByRole('button', { name: /All types/ }));
 
-      const family = screen.getByRole('combobox', { name: /base/i });
-      expect(family).toHaveTextContent('All');
+      // The catalogue's own family spelling, folded into the base facet.
+      const base = screen.getByRole('group', { name: 'Filter by Base model' });
+      const flux = within(base).getByRole('button', { name: /^flux\.1/ });
+      expect(flux).toHaveTextContent('2');
+      await user.click(flux);
 
-      await user.click(family);
-      const options = screen.getAllByRole('option');
-      // "All" is a real option, not a blank first row.
-      expect(options[0]).toHaveTextContent('All');
-      expect(options.length).toBeGreaterThan(1);
+      expect(flux).toHaveAttribute('aria-pressed', 'true');
+      await waitFor(() => expect(resultCount()).toBe('2 of 100 models'));
+      expect(new URLSearchParams(search()!).getAll('tag')).toEqual(['base:flux.1']);
+      expect(screen.getByRole('article', { name: 'FLUX VAE' })).toBeInTheDocument();
 
-      await user.click(options[1]!);
-      expect(family).not.toHaveTextContent('All');
-
-      // And back: the empty value still reaches the parent as "no filter".
-      await user.click(family);
-      await user.click(screen.getByRole('option', { name: 'All' }));
-      expect(family).toHaveTextContent('All');
+      await user.click(flux);
+      await waitFor(() => expect(resultCount()).toBe('100 of 100 models'));
     });
   });
 

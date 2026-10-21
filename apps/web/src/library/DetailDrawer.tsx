@@ -5,6 +5,7 @@ import type {
   LibraryApi,
   LibraryAsset,
   LibraryJob,
+  ShareUser,
 } from '../lib/api-library';
 import { downloadAsset, libraryApi as defaultApi } from '../lib/api-library';
 import { renderTime } from './grouping';
@@ -21,8 +22,13 @@ import {
   PlayIcon,
   RemixIcon,
   StarIcon,
+  UndoIcon,
+  GlobeIcon,
+  LinkIcon,
+  LockIcon,
   TrashIcon,
 } from './icons';
+import { VISIBILITIES, VISIBILITY_HINT, VISIBILITY_LABEL, absoluteShareUrl } from '../lib/sharing';
 import styles from './DetailDrawer.module.css';
 
 /**
@@ -57,6 +63,9 @@ export function DetailDrawer({
   onAddToCollection,
   onRemoveFromCollection,
   onAssetPatched,
+  me = null,
+  onRestore,
+  onPurge,
   api = defaultApi,
 }: {
   asset: LibraryAsset;
@@ -82,8 +91,19 @@ export function DetailDrawer({
   ) => Promise<boolean>;
   /** So membership ticks stay right in the grid's copy of the row too. */
   onAssetPatched: (id: string, patch: Partial<LibraryAsset>) => void;
+  /** The signed-in user, to tell your assets from ones shared with you. */
+  me?: string | null;
+  onRestore?: (asset: LibraryAsset) => void;
+  onPurge?: (asset: LibraryAsset) => void;
   api?: LibraryApi;
 }) {
+  // Three kinds of asset, and what you may do to each:
+  //   yours, live       everything
+  //   shared with you   look, download, remix — nothing that changes it
+  //   archived          restore or delete forever; nothing else
+  const archived = asset.archivedAt !== null;
+  const mine = me === null || asset.ownerId === me;
+  const editable = mine && !archived;
   const [job, setJob] = useState<LibraryJob | null>(null);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
@@ -107,6 +127,8 @@ export function DetailDrawer({
         // the grid row may have been listed before either changed.
         onAssetPatched(asset.id, {
           starred: detail.asset.starred,
+          visibility: detail.asset.visibility,
+          shareUrl: detail.asset.shareUrl,
           collectionIds: detail.asset.collectionIds,
         });
       })
@@ -240,6 +262,12 @@ export function DetailDrawer({
             <span className={`mono ${styles.headMeta}`}>
               {asset.width} × {asset.height}
             </span>
+            {!mine ? (
+              <span className={styles.headMeta}>Shared by {asset.ownerName}</span>
+            ) : null}
+            {archived && asset.purgesAt ? (
+              <span className={styles.headMeta}>{purgeWords(asset.purgesAt)}</span>
+            ) : null}
             {position && position.index >= 0 ? (
               <span
                 className={`mono ${styles.headMeta}`}
@@ -250,25 +278,52 @@ export function DetailDrawer({
             ) : null}
           </span>
           <div className={styles.headActions}>
+            {archived && mine ? (
+              <>
+                <button
+                  type="button"
+                  className={styles.action}
+                  onClick={() => onRestore?.(asset)}
+                >
+                  <UndoIcon size={14} />
+                  Restore
+                </button>
+                <button
+                  type="button"
+                  className={`${styles.action} ${styles.actionDanger}`}
+                  onClick={() => {
+                    if (window.confirm('Delete this for good? It cannot be restored.')) {
+                      onPurge?.(asset);
+                    }
+                  }}
+                >
+                  <TrashIcon size={14} />
+                  Delete forever
+                </button>
+              </>
+            ) : editable ? (
+              <>
             <button
-              type="button"
-              className={`${styles.iconButton} ${asset.starred ? styles.iconOn : ''}`}
-              onClick={() => onToggleStar(asset)}
-              aria-pressed={asset.starred}
-              aria-label={asset.starred ? 'Unstar' : 'Star'}
-              title={asset.starred ? 'Unstar' : 'Star'}
-            >
-              <StarIcon size={17} filled={asset.starred} />
-            </button>
-            <button
-              type="button"
-              className={styles.iconButton}
-              onClick={() => onDelete(asset)}
-              aria-label="Delete"
-              title="Delete"
-            >
-              <TrashIcon size={17} />
-            </button>
+                  type="button"
+                  className={`${styles.iconButton} ${asset.starred ? styles.iconOn : ''}`}
+                  onClick={() => onToggleStar(asset)}
+                  aria-pressed={asset.starred}
+                  aria-label={asset.starred ? 'Unstar' : 'Star'}
+                  title={asset.starred ? 'Unstar' : 'Star'}
+                >
+                  <StarIcon size={17} filled={asset.starred} />
+                </button>
+                <button
+                  type="button"
+                  className={styles.iconButton}
+                  onClick={() => onDelete(asset)}
+                  aria-label="Archive"
+                  title="Move to archive"
+                >
+                  <TrashIcon size={17} />
+                </button>
+              </>
+            ) : null}
             <button
               type="button"
               className={styles.iconButton}
@@ -357,9 +412,11 @@ export function DetailDrawer({
                 type="button"
                 className={`${styles.action} ${styles.actionAccent}`}
                 onClick={() => prefill('animate')}
-                disabled={!job || asset.kind === 'video'}
+                disabled={!job || asset.kind === 'video' || !mine}
                 title={
-                  asset.kind === 'video'
+                  !mine
+                    ? 'Only the owner can animate this image'
+                    : asset.kind === 'video'
                     ? 'Already a video'
                     : 'Use this frame to start a video'
                 }
@@ -382,6 +439,7 @@ export function DetailDrawer({
                 <RemixIcon size={14} />
                 Re-run
               </button>
+              {editable ? (
               <div className={styles.menuAnchor}>
                 <button
                   type="button"
@@ -445,6 +503,7 @@ export function DetailDrawer({
                   </div>
                 ) : null}
               </div>
+              ) : null}
             </div>
 
             <div className={styles.columns}>
@@ -465,6 +524,63 @@ export function DetailDrawer({
                     The job behind this image is gone, so there are no settings
                     to show. Download still works.
                   </p>
+                ) : null}
+
+                {/* Above the prompt: who can see this is the one fact about
+                    an image that matters before anything else on the panel. */}
+                {editable ? (
+                <>
+                <section className={styles.field}>
+                  <div className={styles.fieldHead}>
+                    <span className="label">Visibility</span>
+                    {asset.shareUrl ? (
+                      <CopyButton
+                        id="share"
+                        text={absoluteShareUrl(asset.shareUrl)}
+                        clipboard={clipboard}
+                        label="Copy link"
+                      />
+                    ) : null}
+                  </div>
+                  <div className={styles.visibility} role="radiogroup" aria-label="Visibility">
+                    {VISIBILITIES.map((value) => (
+                      <button
+                        key={value}
+                        type="button"
+                        role="radio"
+                        aria-checked={asset.visibility === value}
+                        className={`${styles.action} ${asset.visibility === value ? styles.actionOn : ''}`}
+                        onClick={async () => {
+                          if (value === asset.visibility) return;
+                          const before = { visibility: asset.visibility, shareUrl: asset.shareUrl };
+                          onAssetPatched(asset.id, { visibility: value });
+                          try {
+                            const { asset: saved } = await api.assets.setVisibility(asset.id, value);
+                            // The server mints the link, so take its answer.
+                            onAssetPatched(asset.id, {
+                              visibility: saved.visibility,
+                              shareUrl: saved.shareUrl,
+                            });
+                          } catch {
+                            onAssetPatched(asset.id, before);
+                          }
+                        }}
+                      >
+                        {value === 'private' ? (
+                          <LockIcon size={13} />
+                        ) : value === 'link' ? (
+                          <LinkIcon size={13} />
+                        ) : (
+                          <GlobeIcon size={13} />
+                        )}
+                        {VISIBILITY_LABEL[value]}
+                      </button>
+                    ))}
+                  </div>
+                  <p className={styles.visibilityHint}>{VISIBILITY_HINT[asset.visibility]}</p>
+                </section>
+                <SharePicker assetId={asset.id} api={api} />
+                </>
                 ) : null}
 
                 {params ? (
@@ -565,5 +681,89 @@ function CopyButton({
         {copied ? 'Copied' : failed ? 'Failed' : ''}
       </span>
     </button>
+  );
+}
+
+/** "Deletes in 12 days", for an archived asset's header. */
+function purgeWords(purgesAt: string): string {
+  const days = Math.ceil((Date.parse(purgesAt) - Date.now()) / 86_400_000);
+  if (days <= 0) return 'Deletes soon';
+  return days === 1 ? 'Deletes tomorrow' : `Deletes in ${days} days`;
+}
+
+/**
+ * Who else on this instance can see the asset. A row of people, each a
+ * toggle: shared ones are lit. Saved on every click, because it is a handful of
+ * names rather than a form, and a Save button for one checkbox is ceremony.
+ */
+function SharePicker({ assetId, api }: { assetId: string; api: LibraryApi }) {
+  const [users, setUsers] = useState<ShareUser[] | null>(null);
+  const [shared, setShared] = useState<Set<string>>(new Set());
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let live = true;
+    setFailed(false);
+    Promise.all([api.users(), api.assets.shares(assetId)])
+      .then(([all, current]) => {
+        if (!live) return;
+        setUsers(all.users);
+        setShared(new Set(current.users.map((user) => user.id)));
+      })
+      .catch(() => {
+        if (live) setFailed(true);
+      });
+    return () => {
+      live = false;
+    };
+  }, [api, assetId]);
+
+  // Nobody else on the instance: there is no one to share with, so say nothing.
+  if (!failed && users !== null && users.length === 0) return null;
+
+  const toggle = async (id: string) => {
+    const before = shared;
+    const next = new Set(shared);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setShared(next);
+    try {
+      const saved = await api.assets.setShares(assetId, [...next]);
+      setShared(new Set(saved.users.map((user) => user.id)));
+    } catch {
+      setShared(before);
+      setFailed(true);
+    }
+  };
+
+  return (
+    <section className={styles.field}>
+      <span className="label">Shared with</span>
+      {failed ? (
+        <p className={styles.visibilityHint}>Could not load or save who this is shared with.</p>
+      ) : users === null ? (
+        <p className={styles.visibilityHint}>Loading…</p>
+      ) : (
+        <div className={styles.visibility}>
+          {users.map((user) => (
+            <button
+              key={user.id}
+              type="button"
+              role="checkbox"
+              aria-checked={shared.has(user.id)}
+              className={`${styles.action} ${shared.has(user.id) ? styles.actionOn : ''}`}
+              title={user.email}
+              onClick={() => void toggle(user.id)}
+            >
+              {shared.has(user.id) ? <CheckIcon size={13} /> : null}
+              {user.name}
+            </button>
+          ))}
+        </div>
+      )}
+      <p className={styles.visibilityHint}>
+        They see it under Shared with me, whatever its visibility. They cannot change it.
+      </p>
+    </section>
   );
 }

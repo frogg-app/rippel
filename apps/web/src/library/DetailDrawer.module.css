@@ -521,3 +521,26 @@
   .meta { grid-template-columns: minmax(0, max-content) minmax(0, 1fr); }
   .metaValue { overflow-wrap: anywhere; }
 }
+
+.visibility {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.actionOn {
+  border-color: var(--accent-line);
+  background: var(--accent-tint);
+  color: var(--accent);
+}
+
+.visibilityHint {
+  margin: 6px 0 0;
+  font-size: var(--text-sm);
+  color: var(--text-4);
+}
+
+.actionDanger {
+  color: var(--danger-text);
+  border-color: var(--danger-line);
+}

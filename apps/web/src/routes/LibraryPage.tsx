@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useContext, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type {
   Collection,
@@ -6,6 +6,7 @@ import type {
   LibraryFilters,
 } from '../lib/api-library';
 import { usingMockLibrary } from '../lib/api-library';
+import { AuthContext } from '../auth/context';
 import { AssetGrid } from '../library/AssetGrid';
 import { CollectionsRail } from '../library/CollectionsRail';
 import { DetailDrawer } from '../library/DetailDrawer';
@@ -81,6 +82,18 @@ export function LibraryPage() {
     [feed, openIndex],
   );
 
+  const view = filters.view ?? 'everything';
+  // The server's retention rule, read off any archived row rather than asked
+  // for separately: every row carries both ends of its own window.
+  const sample = feed.items.find((item) => item.archivedAt && item.purgesAt);
+  const retentionDays = sample
+    ? Math.round(
+        (Date.parse(sample.purgesAt!) - Date.parse(sample.archivedAt!)) / 86_400_000,
+      )
+    : null;
+  // Read softly: outside an AuthProvider (the page tests) every asset is mine.
+  const me = useContext(AuthContext)?.user?.id ?? null;
+
   const filtered =
     Boolean(filters.kind) ||
     Boolean(filters.starred) ||
@@ -108,9 +121,12 @@ export function LibraryPage() {
         loading={collections.loading}
         activeCollectionId={filters.collectionId ?? null}
         starredOnly={Boolean(filters.starred)}
-        onSelectAll={() => setFilters((prev) => ({ q: prev.q }))}
+        view={view}
+        // Picking a view drops a collection or Starred: those are narrower
+        // slices of your own, not filters on top of another view.
+        onSelectView={(next) => setFilters((prev) => ({ q: prev.q, kind: prev.kind, view: next }))}
         onSelectStarred={() =>
-          setFilters((prev) => ({ q: prev.q, starred: true }))
+          setFilters((prev) => ({ q: prev.q, kind: prev.kind, starred: true, view: 'mine' }))
         }
         onSelectCollection={(collection: Collection) =>
           setFilters((prev) =>
@@ -118,7 +134,7 @@ export function LibraryPage() {
             // what every file browser does and saves a separate "clear".
             prev.collectionId === collection.id
               ? { q: prev.q }
-              : { q: prev.q, collectionId: collection.id },
+              : { q: prev.q, collectionId: collection.id, view: 'mine' },
           )
         }
         onCreate={collections.create}
@@ -130,6 +146,27 @@ export function LibraryPage() {
           onChange={setFilters}
           count={feed.items.length}
         />
+
+        {view === 'archived' && !activeCollection && !filters.starred ? (
+          <div className={styles.context}>
+            {retentionDays !== null
+              ? `Archived items are deleted for good after ${retentionDays} days.`
+              : 'Archived items are deleted for good after a while.'}
+            {feed.items.length > 0 ? (
+              <button
+                type="button"
+                className={styles.clear}
+                onClick={() => {
+                  if (window.confirm('Delete everything in the archive for good? This cannot be undone.')) {
+                    void actions.emptyArchive();
+                  }
+                }}
+              >
+                Empty archive
+              </button>
+            ) : null}
+          </div>
+        ) : null}
 
         {activeCollection ? (
           <div className={styles.context}>
@@ -177,6 +214,7 @@ export function LibraryPage() {
               selectedId={openAsset?.id ?? null}
               onOpen={setSelected}
               onToggleStar={actions.toggleStar}
+              me={me}
               onEndReached={feed.loadMore}
               hasMore={feed.hasMore}
               loadingMore={feed.loadingMore}
@@ -193,7 +231,7 @@ export function LibraryPage() {
           />
         ) : actions.pendingDelete ? (
           <UndoBar
-            message="Deleted."
+            message="Moved to archive."
             actionLabel="Undo"
             onAction={() => void actions.undo()}
             onDismiss={actions.dismissUndo}
@@ -217,6 +255,9 @@ export function LibraryPage() {
           onClose={() => setSelected(null)}
           onToggleStar={actions.toggleStar}
           onDelete={actions.remove}
+          me={me}
+          onRestore={actions.restore}
+          onPurge={actions.purge}
           onPrefill={handlePrefill}
           collections={collections.collections}
           onAddToCollection={collections.add}

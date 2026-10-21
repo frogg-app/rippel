@@ -88,6 +88,8 @@ export const env = {
     thumbMaxPx: int('STORAGE_THUMB_MAX_PX', 512),
     /** How long to wait for one image download from a ComfyUI backend. */
     fetchTimeoutMs: int('STORAGE_FETCH_TIMEOUT_MS', 120_000),
+    /** Days an archived asset is kept before its row and bytes are purged. */
+    archiveRetentionDays: int('ARCHIVE_RETENTION_DAYS', 30),
   },
 
   uploads: {

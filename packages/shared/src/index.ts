@@ -217,6 +217,13 @@ export interface Job {
 
 // ---------------------------------------------------------------- assets
 
+/**
+ * Who can see an asset: the owner only, anyone with its share link, or
+ * anyone at all. Private is the default; nothing non-public is ever listed to
+ * another user.
+ */
+export type Visibility = 'private' | 'link' | 'public';
+
 export interface Asset {
   id: Uuid;
   jobId: Uuid;
@@ -228,6 +235,9 @@ export interface Asset {
   /** Seconds, video only. */
   duration: number | null;
   starred: boolean;
+  visibility: Visibility;
+  /** The no-login URL for a link or public asset; null while private. */
+  shareUrl: string | null;
   createdAt: string;
 }
 
@@ -309,6 +319,8 @@ export interface GenerationParams {
   references?: ImageReference[];
   advanced?: AdvancedParams;
   video?: VideoParams;
+  /** What the outputs are saved as. Omitted means private. */
+  visibility?: Visibility;
 }
 
 export interface AdvancedParams {
@@ -383,7 +395,6 @@ export interface ModelCatalogInfo {
   /** Plain-text excerpt from the publisher’s model card. */
   description?: string | null;
   baseModels?: string[];
-  tags?: string[];
   /** `/api/model-previews/<id>` on this API, or null when we found no image. */
   previewUrl: string | null;
   /**
@@ -415,7 +426,32 @@ export interface ModelCatalogInfo {
   pipelineTag: string | null;
   /** The model page this came from, for a "read more" link. */
   referenceUrl: string | null;
+  /**
+   * The model page's tags, sorted into groups.
+   *
+   * HuggingFace hands back one flat `tags[]` that mixes a task, a library, a
+   * file format, an ISO language code, `license:x`, `base_model:…`, a region
+   * flag and a handful of inference-endpoint switches. The API strips the
+   * noise and sorts the rest here, so the Discover tab can offer a facet per
+   * group and never has to know HuggingFace's spelling of any of it.
+   *
+   * Every group is always present, possibly empty. A row cached before tags
+   * were fetched still carries `task` and `license`, from `pipelineTag` and
+   * `license` above.
+   */
+  tags: ModelTags;
 }
+
+/**
+ * The groups a model page's tags are sorted into. `tag` is everything that is
+ * not one of the others — the free words an author chose ("photorealistic",
+ * "anime", "fp8"). Types only: this package carries no runtime code, so the
+ * display order lives with each consumer.
+ */
+export type ModelTagGroup = 'task' | 'base' | 'library' | 'format' | 'language' | 'license' | 'tag';
+
+/** Lower-cased values per group, de-duplicated, in the source's order. */
+export type ModelTags = Record<ModelTagGroup, string[]>;
 
 /**
  * Whether a model will actually run here — answered *before* a 7 GB download.

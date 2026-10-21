@@ -135,6 +135,8 @@ function assetsFor(job: Job): Asset[] {
     height,
     duration: null,
     starred: false,
+    visibility: job.params.visibility ?? 'private',
+    shareUrl: null,
     createdAt: new Date().toISOString(),
   }));
 }
