@@ -133,7 +133,7 @@ export const LTXV_TEXT_ENCODER_REQUIREMENT: ModelRequirement = {
   id: 'text-encoder',
   path: '12.inputs.clip_name',
   modelType: 'clip',
-  label: 'T5 text encoder',
+  label: 'Prompt reader (T5 text encoder)',
   why:
     'An LTX-Video checkpoint holds the transformer and the VAE but no text encoder, ' +
     'so there is nothing to turn the prompt into conditioning without a separate T5.',

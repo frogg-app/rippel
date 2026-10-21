@@ -110,7 +110,7 @@ export const WAN22_TEXT_ENCODER_REQUIREMENT: ModelRequirement = {
   id: 'text-encoder',
   path: '38.inputs.clip_name',
   modelType: 'clip',
-  label: 'UMT5 text encoder',
+  label: 'Prompt reader (UMT5 text encoder)',
   why:
     'Wan 2.2 conditions on UMT5-XXL, and the transformer file holds no text encoder, ' +
     'so the prompt cannot be encoded without it. A T5-XXL will not substitute: it is a ' +
@@ -138,7 +138,7 @@ export const WAN22_VAE_REQUIREMENT: ModelRequirement = {
   id: 'vae',
   path: '39.inputs.vae_name',
   modelType: 'vae',
-  label: 'Wan 2.2 VAE',
+  label: 'Wan 2.2 image decoder (VAE)',
   why:
     'Loading the transformer from diffusion_models gives no VAE, so the one that decodes ' +
     'its latents into frames has to come from the vae folder as a separate file. It must be ' +

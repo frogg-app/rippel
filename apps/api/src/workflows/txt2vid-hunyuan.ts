@@ -83,7 +83,7 @@ export const HUNYUAN_CLIP_L_REQUIREMENT: ModelRequirement = {
   id: 'clip-l',
   path: '12.inputs.clip_name1',
   modelType: 'clip',
-  label: 'CLIP-L text encoder',
+  label: 'Prompt reader (CLIP-L text encoder)',
   why: 'Hunyuan Video conditions on two encoders; CLIP-L is the first of the pair.',
   match: {
     filename: /clip[_-]?l/i,
@@ -113,7 +113,7 @@ export const HUNYUAN_VAE_REQUIREMENT: ModelRequirement = {
   id: 'vae',
   path: '16.inputs.vae_name',
   modelType: 'vae',
-  label: 'Hunyuan Video VAE',
+  label: 'Hunyuan Video image decoder (VAE)',
   why: 'The diffusion model file holds no VAE; frames are decoded by this separate one.',
   match: {
     filename: /hunyuan/i,

@@ -63,7 +63,7 @@ export const LTXV_VAE_REQUIREMENT: ModelRequirement = {
   id: 'vae',
   path: '16.inputs.vae_name',
   modelType: 'vae',
-  label: 'LTX-Video VAE',
+  label: 'LTX-Video image decoder (VAE)',
   why:
     'Loading the model from diffusion_models gives only the transformer; the VAE that ' +
     'decodes its latents into frames has to come from the vae folder as a separate file.',
@@ -106,7 +106,7 @@ export function repointToUnet(inputs: readonly ManifestInput[]): ManifestInput[]
 export const txt2vidLtxvDmManifest: WorkflowManifest = {
   id: 'txt2vid-ltxv-dm',
   version: 1,
-  label: 'Text to video (LTX-Video, diffusion_models)',
+  label: 'Text to video (LTX-Video, separate parts)',
   capability: 'txt2vid',
   baseModels: LTXV_BASE_MODELS,
   requires: LTXV_DM_REQUIREMENTS,

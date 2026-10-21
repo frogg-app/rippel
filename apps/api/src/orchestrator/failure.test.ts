@@ -5,7 +5,7 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { classifyFailure, isOutOfMemory } from './failure.js';
+import { classifyFailure, isOutOfMemory, missingFileName } from './failure.js';
 
 describe('out of memory', () => {
   const REAL = [
@@ -95,5 +95,17 @@ describe('what it will not pretend to know', () => {
     expect(isOutOfMemory('KSampler failed: expected scalar type Half but found Float')).toBe(
       false,
     );
+  });
+});
+
+describe('naming the missing file', () => {
+  it('puts the file ComfyUI could not find into the summary', () => {
+    const failure = classifyFailure(
+      "Prompt outputs failed validation: UNETLoader: - Value not in list: unet_name: 'flux/flux1-dev.safetensors' not in ['a.safetensors']",
+    );
+    expect(failure.kind).toBe('missing-model');
+    expect(failure.summary).toContain('“flux1-dev.safetensors”');
+    expect(missingFileName("ckpt_name: 'x.ckpt' not in []")).toBe('x.ckpt');
+    expect(missingFileName('no such file or directory')).toBeNull();
   });
 });

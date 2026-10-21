@@ -182,7 +182,7 @@ describe('template summaries', () => {
     expect(dm.loaderFolder).toBe('diffusion_models');
     // Graph order, and JSON puts integer-like node ids in ascending order.
     expect(dm.loaderFolders).toEqual(['diffusion_models', 'text_encoders', 'vae']);
-    expect(dm.requires.map((r) => r.label)).toEqual(['T5 text encoder', 'LTX-Video VAE']);
+    expect(dm.requires.map((r) => r.label)).toEqual(['Prompt reader (T5 text encoder)', 'LTX-Video image decoder (VAE)']);
   });
 
   it('describe a generic graph as a guess and a specific one as authored', () => {

@@ -22,7 +22,7 @@ export const img2vidLtxvDmGraph = rawGraph as unknown as ComfyApiGraph;
 export const img2vidLtxvDmManifest: WorkflowManifest = {
   id: 'img2vid-ltxv-dm',
   version: 1,
-  label: 'Image to video (LTX-Video, diffusion_models)',
+  label: 'Image to video (LTX-Video, separate parts)',
   capability: 'img2vid',
   baseModels: LTXV_BASE_MODELS,
   requires: LTXV_DM_REQUIREMENTS,

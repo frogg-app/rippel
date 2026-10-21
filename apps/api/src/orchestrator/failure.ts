@@ -119,7 +119,7 @@ const RULES: readonly Rule[] = [
     ],
     summary: 'A file this workflow needs is not on that machine, or cannot be read.',
     steps: [
-      'Open the model on the Models screen — it names the exact file and folder.',
+      'Install it from the Models page, or pick a model that is already on that machine.',
     ],
   },
   {
@@ -130,9 +130,9 @@ const RULES: readonly Rule[] = [
       'node type not found',
       'is not a valid node',
     ],
-    summary: 'That machine does not have a custom node this workflow needs.',
+    summary: 'That machine’s ComfyUI is missing an add-on (a “custom node”) this workflow needs.',
     steps: [
-      'Custom nodes have to be installed on the machine itself. No model download fixes this.',
+      'Add-ons like this are installed into ComfyUI on the machine itself. Downloading a model will not fix it.',
     ],
   },
   {
@@ -184,9 +184,12 @@ export function classifyFailure(message: string | null | undefined): ClassifiedF
 
   for (const rule of RULES) {
     if (!rule.needles.some((needle) => haystack.includes(needle))) continue;
+    const file = rule.kind === 'missing-model' ? missingFileName(detail) : null;
     return {
       kind: rule.kind,
-      summary: rule.summary,
+      // Naming the file is most of the remedy: "a file is missing" sends people
+      // hunting, "flux1-dev.safetensors is missing" sends them to install it.
+      summary: file ? `The model file “${file}” isn’t on that machine, or can’t be read.` : rule.summary,
       steps: [...rule.steps],
       detail,
       outOfMemory: rule.kind === 'out-of-memory',
@@ -204,6 +207,17 @@ export function classifyFailure(message: string | null | undefined): ClassifiedF
     detail,
     outOfMemory: false,
   };
+}
+
+/**
+ * The file a ComfyUI validation error names, if it names one:
+ * `unet_name: 'flux1-dev.safetensors' not in ['a.safetensors']`. Only the
+ * basename, because the folder is ComfyUI's business, not the reader's.
+ */
+export function missingFileName(detail: string): string | null {
+  const match = /'([^'\n]+\.(?:safetensors|ckpt|pt|pth|bin|gguf|sft))'\s+not in\s*\[/i.exec(detail);
+  if (!match) return null;
+  return match[1]!.split(/[\\/]/).pop() ?? null;
 }
 
 /** Did this job die for want of memory? The one question `fit.ts` asks. */

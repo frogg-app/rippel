@@ -136,7 +136,7 @@ function checkpointRequirement(template: WorkflowTemplate): ModelRequirement | n
     id: 'checkpoint',
     path,
     modelType: 'checkpoint',
-    label: 'Model checkpoint',
+    label: 'Model',
     why: 'The weights this workflow generates with — the model you picked.',
     match: {},
   };

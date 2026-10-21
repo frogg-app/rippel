@@ -30,9 +30,9 @@ export const img2vidWan22Template: WorkflowTemplate = {
     initImageNodeId: '56', outputNodeId: '58', inputs,
     requiredNodeClasses: [...new Set(Object.values(rawGraph).map((node) => node.class_type))],
     requires: [
-      { id: 'text-encoder', path: '38.inputs.clip_name', modelType: 'clip', label: 'UMT5-XXL text encoder', why: 'Wan uses UMT5 conditioning, not the T5 encoder used by LTX.',
+      { id: 'text-encoder', path: '38.inputs.clip_name', modelType: 'clip', label: 'Prompt reader (UMT5-XXL text encoder)', why: 'Wan uses UMT5 conditioning, not the T5 encoder used by LTX.',
         match: { filename: /(?:^|[\\/])umt5_xxl_(?:fp16|fp8_e4m3fn(?:_scaled)?)\.safetensors$/i }, preferred: ['umt5_xxl_fp8_e4m3fn_scaled.safetensors', 'umt5_xxl_fp16.safetensors'] },
-      { id: 'vae', path: '39.inputs.vae_name', modelType: 'vae', label: 'Wan 2.2 VAE', why: 'TI2V 5B requires the Wan 2.2 VAE; the Wan 2.1 VAE is incompatible.',
+      { id: 'vae', path: '39.inputs.vae_name', modelType: 'vae', label: 'Wan 2.2 image decoder (VAE)', why: 'TI2V 5B requires the Wan 2.2 VAE; the Wan 2.1 VAE is incompatible.',
         match: { filename: /(?:^|[\\/])wan2\.2_vae\.safetensors$/i }, preferred: ['wan2.2_vae.safetensors'] },
     ],
     resolutions: {
