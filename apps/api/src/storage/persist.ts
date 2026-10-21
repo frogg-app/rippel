@@ -6,7 +6,8 @@
  * for the same files, which is why every step here is safe to repeat.
  */
 
-import type { Asset } from '@comfy/shared';
+import { randomBytes } from 'node:crypto';
+import type { Asset, Visibility } from '@comfy/shared';
 import { query as defaultQuery, queryOne as defaultQueryOne } from '../db.js';
 import { env } from '../env.js';
 import { ComfyClient, type ComfyOutputRef } from '../lib/comfy.js';
@@ -38,12 +39,24 @@ export interface AssetRow {
   duration: number | null;
   size_bytes: string | number | null;
   starred: boolean;
+  visibility: Visibility;
+  share_token: string | null;
   created_at: string | Date;
 }
 
 /** Public URLs are always our own route — object storage is never exposed. */
 export function assetUrls(id: string): { url: string; thumbUrl: string } {
   return { url: `/api/assets/${id}`, thumbUrl: `/api/assets/${id}/thumb` };
+}
+
+/** The no-login route for a shared asset. Keyed by token, never by id. */
+export function shareUrl(token: string): string {
+  return `/api/share/${token}`;
+}
+
+/** 128 random bits, URL-safe: unguessable, so the link is the permission. */
+export function newShareToken(): string {
+  return randomBytes(16).toString('base64url');
 }
 
 export function rowToAsset(row: AssetRow): Asset {
@@ -62,12 +75,16 @@ export function rowToAsset(row: AssetRow): Asset {
     height: row.height,
     duration: row.duration,
     starred: row.starred,
+    visibility: row.visibility,
+    // A token can outlive a switch back to private; it is not a URL then.
+    shareUrl: row.visibility !== 'private' && row.share_token ? shareUrl(row.share_token) : null,
     createdAt: new Date(row.created_at).toISOString(),
   };
 }
 
 const SELECT_COLUMNS = `id, job_id, user_id, kind, storage_key, thumb_key,
-                        width, height, duration, size_bytes, starred, created_at`;
+                        width, height, duration, size_bytes, starred,
+                        visibility, share_token, created_at`;
 
 export interface PersistOptions {
   userId: string;
@@ -76,6 +93,8 @@ export interface PersistOptions {
   source: ComfyOutputRef;
   bytes: Buffer;
   kind?: 'image' | 'video';
+  /** From the job's params; private when absent. */
+  visibility?: Visibility;
   /** Seconds; video only. */
   duration?: number | null;
   driver?: StorageDriver;
@@ -116,8 +135,9 @@ export async function persistOutput(opts: PersistOptions): Promise<Asset> {
   const inserted = await db.queryOne<AssetRow>(
     `INSERT INTO assets
        (job_id, user_id, kind, storage_key, thumb_key, width, height,
-        duration, size_bytes, source_filename, source_type, mime_type)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+        duration, size_bytes, source_filename, source_type, mime_type,
+        visibility, share_token)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
      ON CONFLICT (job_id, source_filename) WHERE job_id IS NOT NULL AND source_filename IS NOT NULL
        DO NOTHING
      RETURNING ${SELECT_COLUMNS}`,
@@ -134,6 +154,8 @@ export async function persistOutput(opts: PersistOptions): Promise<Asset> {
       opts.source.filename,
       opts.source.type ?? 'output',
       mimeType,
+      opts.visibility ?? 'private',
+      (opts.visibility ?? 'private') === 'private' ? null : newShareToken(),
     ],
   );
 
@@ -185,6 +207,7 @@ export async function fetchAndPersist(opts: {
   backendUrl: string;
   source: ComfyOutputRef;
   kind?: 'image' | 'video';
+  visibility?: Visibility;
   driver?: StorageDriver;
   db?: AssetDb;
 }): Promise<Asset> {
@@ -204,6 +227,7 @@ export async function fetchAndPersist(opts: {
     source: opts.source,
     bytes,
     kind: opts.kind,
+    visibility: opts.visibility,
     driver: opts.driver,
     db,
   });

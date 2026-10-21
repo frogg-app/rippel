@@ -1,6 +1,7 @@
 import type { LibraryAsset } from '../lib/api-library';
 import { clockDuration } from './grouping';
-import { PlayIcon, StarIcon } from './icons';
+import { GlobeIcon, LinkIcon, PlayIcon, StarIcon } from './icons';
+import { VISIBILITY_HINT, VISIBILITY_LABEL } from '../lib/sharing';
 import styles from './AssetGrid.module.css';
 
 /**
@@ -18,8 +19,11 @@ export function AssetTile({
   index = 0,
   onOpen,
   onToggleStar,
+  me = null,
 }: {
   asset: LibraryAsset;
+  /** The signed-in user; someone else's asset gets a byline and no star. */
+  me?: string | null;
   selected: boolean;
   /** Position within its group, for the staggered entrance. */
   index?: number;
@@ -67,6 +71,24 @@ export function AssetTile({
         </span>
       ) : null}
 
+      {me !== null && asset.ownerId !== me ? (
+        <span className={styles.byline}>{asset.ownerName}</span>
+      ) : null}
+      {asset.purgesAt ? (
+        <span className={styles.byline}>{daysLeft(asset.purgesAt)}</span>
+      ) : null}
+
+      {/* Private is the default and carries no badge: a badge on every tile is
+          noise, and the absence is the reassuring state. Anything that has
+          left private is marked, always, not only on hover. */}
+      {asset.visibility !== 'private' ? (
+        <span className={styles.shared} title={VISIBILITY_HINT[asset.visibility]}>
+          {asset.visibility === 'public' ? <GlobeIcon size={10} /> : <LinkIcon size={10} />}
+          {VISIBILITY_LABEL[asset.visibility]}
+        </span>
+      ) : null}
+
+      {(me === null || asset.ownerId === me) && !asset.archivedAt ? (
       <button
         type="button"
         className={`${styles.star} ${asset.starred ? styles.starOn : ''}`}
@@ -77,6 +99,12 @@ export function AssetTile({
       >
         <StarIcon size={14} filled={asset.starred} />
       </button>
+      ) : null}
     </div>
   );
+}
+
+function daysLeft(purgesAt: string): string {
+  const days = Math.ceil((Date.parse(purgesAt) - Date.now()) / 86_400_000);
+  return days <= 1 ? 'Deletes soon' : `${days} days left`;
 }

@@ -205,6 +205,13 @@ export interface Job {
 
 // ---------------------------------------------------------------- assets
 
+/**
+ * Who can see an asset: the owner only, anyone with its share link, or
+ * anyone at all. Private is the default; nothing non-public is ever listed to
+ * another user.
+ */
+export type Visibility = 'private' | 'link' | 'public';
+
 export interface Asset {
   id: Uuid;
   jobId: Uuid;
@@ -216,6 +223,9 @@ export interface Asset {
   /** Seconds, video only. */
   duration: number | null;
   starred: boolean;
+  visibility: Visibility;
+  /** The no-login URL for a link or public asset; null while private. */
+  shareUrl: string | null;
   createdAt: string;
 }
 
@@ -293,6 +303,8 @@ export interface GenerationParams {
   references?: ImageReference[];
   advanced?: AdvancedParams;
   video?: VideoParams;
+  /** What the outputs are saved as. Omitted means private. */
+  visibility?: Visibility;
 }
 
 export interface AdvancedParams {

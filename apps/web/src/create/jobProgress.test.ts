@@ -57,6 +57,8 @@ const asset: Asset = {
   height: 1024,
   duration: null,
   starred: false,
+  visibility: 'private',
+  shareUrl: null,
   createdAt: '2026-09-06T10:00:30.000Z',
 };
 

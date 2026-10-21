@@ -33,6 +33,12 @@ export interface LibraryActions {
   remove: (asset: LibraryAsset) => Promise<void>;
   undo: () => Promise<void>;
   dismissUndo: () => void;
+  /** Out of the archive and back into the library. */
+  restore: (asset: LibraryAsset) => Promise<void>;
+  /** Delete one archived asset for good. */
+  purge: (asset: LibraryAsset) => Promise<void>;
+  /** Delete the whole archive for good. */
+  emptyArchive: () => Promise<void>;
   /** Set while the undo bar should be showing. */
   pendingDelete: PendingDelete | null;
   /** A short sentence to show when an action failed. Cleared on the next one. */
@@ -41,7 +47,7 @@ export interface LibraryActions {
 }
 
 export interface LibraryActionsOptions {
-  feed: Pick<LibraryFeed, 'patch' | 'take' | 'put' | 'drop'>;
+  feed: Pick<LibraryFeed, 'patch' | 'take' | 'put' | 'drop' | 'reload'>;
   /** Called when a row disappears, so an open drawer can close itself. */
   onRemoved?: (assetId: string) => void;
   api?: LibraryApi;
@@ -127,6 +133,46 @@ export function useLibraryActions({
     }
   }, [api, clearTimer, feed, pendingDelete]);
 
+  // The archive's own actions. Neither gets an undo bar: restore is itself the
+  // undo, and "delete forever" was confirmed as exactly that.
+  const leaveArchive = useCallback(
+    async (asset: LibraryAsset, call: () => Promise<unknown>, failure: string) => {
+      setError(null);
+      const taken = feed.take(asset.id);
+      if (!taken) return;
+      onRemoved?.(asset.id);
+      try {
+        await call();
+      } catch {
+        feed.put(taken.item, taken.index);
+        setError(failure);
+      }
+    },
+    [feed, onRemoved],
+  );
+
+  const restore = useCallback(
+    (asset: LibraryAsset) =>
+      leaveArchive(asset, () => api.assets.restore(asset.id), 'Could not restore that.'),
+    [api, leaveArchive],
+  );
+
+  const purge = useCallback(
+    (asset: LibraryAsset) =>
+      leaveArchive(asset, () => api.archive.purge([asset.id]), 'Could not delete that.'),
+    [api, leaveArchive],
+  );
+
+  const emptyArchive = useCallback(async () => {
+    setError(null);
+    try {
+      await api.archive.empty();
+    } catch {
+      setError('Could not empty the archive.');
+    }
+    feed.reload();
+  }, [api, feed]);
+
   const dismissUndo = useCallback(() => {
     clearTimer();
     setPendingDelete(null);
@@ -134,5 +180,16 @@ export function useLibraryActions({
 
   const clearError = useCallback(() => setError(null), []);
 
-  return { toggleStar, remove, undo, dismissUndo, pendingDelete, error, clearError };
+  return {
+    toggleStar,
+    remove,
+    undo,
+    dismissUndo,
+    restore,
+    purge,
+    emptyArchive,
+    pendingDelete,
+    error,
+    clearError,
+  };
 }

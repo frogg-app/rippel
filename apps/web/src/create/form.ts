@@ -16,6 +16,7 @@ import type {
   LoraSelection,
   QualityPreset,
   VideoLimits,
+  Visibility,
 } from '@comfy/shared';
 import type { CreateMode } from './mode';
 
@@ -354,6 +355,8 @@ export interface CreateFormState {
    * is the whole point of the capability/manifest split.
    */
   initImage: InitImageState | null;
+  /** What the outputs are saved as. Private unless changed. */
+  visibility: Visibility;
 }
 
 /**
@@ -410,6 +413,7 @@ export function initialFormState(): CreateFormState {
     video: { lengthSeconds: 4, fps: 25 },
     loras: [],
     initImage: null,
+    visibility: 'private',
     advanced: {
       steps: null,
       guidance: null,
@@ -486,6 +490,7 @@ export function toGenerationParams(state: CreateFormState): GenerationParams {
     // A video job is one clip; the batch slider is not shown in video mode
     // and its value must not leak into the request.
     batchSize: modeOfKind(effectiveKind(state)) === 'video' ? 1 : state.batchSize,
+    visibility: state.visibility,
   };
 
   if (modeOfKind(params.kind) === 'video') {
@@ -586,6 +591,8 @@ export function fromGenerationParams(
     // rebuilt from the source rather than carried in the params, which only
     // ever hold ids.
     initImage: initImageFrom(params),
+    // A remix is a new picture: it does not inherit the original's audience.
+    visibility: previous.visibility,
     advanced: {
       steps: advanced.steps ?? null,
       guidance: advanced.guidance ?? null,

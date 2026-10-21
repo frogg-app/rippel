@@ -60,6 +60,7 @@ const generationParams = z.object({
     .optional(),
   advanced: z.record(z.unknown()).optional(),
   video: z.record(z.unknown()).optional(),
+  visibility: z.enum(['private', 'link', 'public']).optional(),
 }).passthrough();
 
 export default async function jobRoutes(app: FastifyInstance) {

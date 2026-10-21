@@ -165,3 +165,58 @@ export function UndoIcon(props: IconProps) {
     </Svg>
   );
 }
+
+export function LinkIcon(props: IconProps) {
+  return (
+    <Svg strokeWidth={1.7} {...props}>
+      <path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1" />
+      <path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1" />
+    </Svg>
+  );
+}
+
+export function GlobeIcon(props: IconProps) {
+  return (
+    <Svg strokeWidth={1.5} {...props}>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M3.5 12h17M12 3.5c2.4 2.6 3.5 5.4 3.5 8.5s-1.1 5.9-3.5 8.5c-2.4-2.6-3.5-5.4-3.5-8.5s1.1-5.9 3.5-8.5z" />
+    </Svg>
+  );
+}
+
+export function LockIcon(props: IconProps) {
+  return (
+    <Svg strokeWidth={1.6} {...props}>
+      <rect x="5.5" y="10.5" width="13" height="9" rx="2" />
+      <path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5" />
+    </Svg>
+  );
+}
+
+export function PersonIcon(props: IconProps) {
+  return (
+    <Svg strokeWidth={1.5} {...props}>
+      <circle cx="12" cy="8.5" r="3.5" />
+      <path d="M5 19.5c1.2-3.3 3.8-5 7-5s5.8 1.7 7 5" />
+    </Svg>
+  );
+}
+
+export function SharedIcon(props: IconProps) {
+  return (
+    <Svg strokeWidth={1.5} {...props}>
+      <circle cx="9" cy="9" r="3" />
+      <circle cx="16.5" cy="10" r="2.4" />
+      <path d="M3.5 19c.9-2.9 3-4.5 5.5-4.5s4.6 1.6 5.5 4.5M14.5 14.6c.6-.2 1.3-.3 2-.3 2 0 3.6 1.3 4.3 3.7" />
+    </Svg>
+  );
+}
+
+export function ArchiveIcon(props: IconProps) {
+  return (
+    <Svg strokeWidth={1.5} {...props}>
+      <rect x="3.5" y="4.5" width="17" height="4" rx="1" />
+      <path d="M5 8.5v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-10M10 12.5h4" />
+    </Svg>
+  );
+}

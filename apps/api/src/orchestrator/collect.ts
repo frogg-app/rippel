@@ -8,7 +8,7 @@
  * outcome should depend on having seen them.
  */
 
-import type { Asset } from '@comfy/shared';
+import type { Asset, Visibility } from '@comfy/shared';
 import type { ComfyOutputRef } from '../lib/comfy.js';
 import { fetchAndPersist } from '../storage/persist.js';
 
@@ -93,6 +93,8 @@ export async function collectOutputs(params: {
   jobId: string;
   backendUrl: string;
   outputs: ComfyOutputRef[];
+  /** What the job asked its outputs to be saved as. */
+  visibility?: Visibility;
   /**
    * Called before each download, 1-based, so the caller can say "Storing 2 of
    * 4". Reported before rather than after: the interesting part is what is
@@ -114,6 +116,7 @@ export async function collectOutputs(params: {
         jobId: params.jobId,
         backendUrl: params.backendUrl,
         source,
+        visibility: params.visibility,
       }),
     );
   }

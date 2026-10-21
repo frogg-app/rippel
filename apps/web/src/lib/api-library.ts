@@ -37,7 +37,7 @@
  *        then shows the asset without its parameters rather than failing.
  *     -> 404 for someone else's asset, exactly as for one that never existed.
  *
- *   PATCH /api/library/assets/:id   body { starred: boolean }
+ *   PATCH /api/library/assets/:id   body { starred?: boolean, visibility?: Visibility }
  *     -> 200 { asset: LibraryAsset }
  *
  *   DELETE /api/library/assets/:id
@@ -57,7 +57,7 @@
  * `/api/assets/:id` and `/api/assets/:id/thumb`, which serve the real image
  * with the session cookie, so thumbnails work the moment there are any assets.
  */
-import type { Asset, GenerationParams, JobKind, JobStatus, Uuid } from '@comfy/shared';
+import type { Asset, GenerationParams, JobKind, JobStatus, Uuid, Visibility } from '@comfy/shared';
 import { ApiRequestError } from './api';
 import { mockLibrary } from '../library/mock';
 
@@ -79,7 +79,27 @@ export interface LibraryAsset extends Asset {
   modelName: string | null;
   /** Which of the user's collections hold this asset. */
   collectionIds: Uuid[];
+  /** Who made it; compare with the signed-in user for "mine". */
+  ownerId: Uuid;
+  ownerName: string;
+  /** Set while it is in the archive. */
+  archivedAt: string | null;
+  /** When the archive deletes it for good. */
+  purgesAt: string | null;
 }
+
+/** A person on this instance, as the share picker lists them. */
+export interface ShareUser {
+  id: Uuid;
+  name: string;
+  email: string;
+}
+
+/**
+ * Which slice of the library to list. Everything is yours plus what was shared
+ * with you; Archived is only ever yours.
+ */
+export type LibraryView = 'everything' | 'mine' | 'shared' | 'archived';
 
 /** The originating job, reduced to what the detail drawer shows. */
 export interface LibraryJob {
@@ -116,6 +136,8 @@ export type LibraryKind = 'image' | 'video';
 
 /** The filter state the toolbar owns, in the shape the query takes. */
 export interface LibraryFilters {
+  /** Omitted means everything. */
+  view?: LibraryView;
   kind?: LibraryKind;
   starred?: boolean;
   collectionId?: Uuid | null;
@@ -186,6 +208,7 @@ function toQuery(request_: LibraryPageRequest): string {
   const params = new URLSearchParams();
   if (request_.cursor) params.set('cursor', request_.cursor);
   if (request_.limit) params.set('limit', String(request_.limit));
+  params.set('view', request_.view ?? 'everything');
   if (request_.kind) params.set('kind', request_.kind);
   if (request_.starred) params.set('starred', 'true');
   if (request_.collectionId) params.set('collectionId', request_.collectionId);
@@ -202,8 +225,17 @@ export interface LibraryApi {
     list(request: LibraryPageRequest): Promise<LibraryPage>;
     get(id: Uuid, signal?: AbortSignal): Promise<{ asset: LibraryAsset; job: LibraryJob | null }>;
     setStarred(id: Uuid, starred: boolean): Promise<{ asset: LibraryAsset }>;
+    setVisibility(id: Uuid, visibility: Visibility): Promise<{ asset: LibraryAsset }>;
     remove(id: Uuid): Promise<void>;
     restore(id: Uuid): Promise<{ asset: LibraryAsset }>;
+    shares(id: Uuid): Promise<{ users: ShareUser[] }>;
+    setShares(id: Uuid, userIds: Uuid[]): Promise<{ users: ShareUser[] }>;
+  };
+  users(): Promise<{ users: ShareUser[] }>;
+  archive: {
+    /** Delete forever; only archived assets. */
+    purge(ids: Uuid[]): Promise<{ purged: number }>;
+    empty(): Promise<{ purged: number }>;
   };
   collections: {
     list(signal?: AbortSignal): Promise<{ collections: Collection[] }>;
@@ -237,9 +269,26 @@ const liveLibrary: LibraryApi = {
         method: 'PATCH',
         body: { starred },
       }),
+    setVisibility: (id, visibility) =>
+      request<{ asset: LibraryAsset }>(`/library/assets/${id}`, {
+        method: 'PATCH',
+        body: { visibility },
+      }),
     remove: (id) => request<void>(`/library/assets/${id}`, { method: 'DELETE' }),
     restore: (id) =>
       request<{ asset: LibraryAsset }>(`/library/assets/${id}/restore`, { method: 'POST' }),
+    shares: (id) => request<{ users: ShareUser[] }>(`/library/assets/${id}/shares`),
+    setShares: (id, userIds) =>
+      request<{ users: ShareUser[] }>(`/library/assets/${id}/shares`, {
+        method: 'PUT',
+        body: { userIds },
+      }),
+  },
+  users: () => request<{ users: ShareUser[] }>('/library/users'),
+  archive: {
+    purge: (ids) =>
+      request<{ purged: number }>('/library/archive/purge', { method: 'POST', body: { ids } }),
+    empty: () => request<{ purged: number }>('/library/archive/empty', { method: 'POST' }),
   },
   collections: {
     list: (signal) => request<{ collections: Collection[] }>('/library/collections', { signal }),

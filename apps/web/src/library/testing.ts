@@ -24,10 +24,16 @@ export function asset(overrides: Partial<LibraryAsset> & { id: string }): Librar
     height: 1024,
     duration: null,
     starred: false,
+    visibility: 'private',
+    shareUrl: null,
     createdAt: '2026-09-06T12:00:00.000Z',
     prompt: `prompt ${overrides.id}`,
     modelName: 'SDXL 1.0 base',
     collectionIds: [],
+    ownerId: 'me',
+    ownerName: 'Me',
+    archivedAt: null,
+    purgesAt: null,
     ...overrides,
   };
 }
@@ -106,6 +112,14 @@ export function fakeLibrary(initial: LibraryAsset[], collections: Collection[] =
         return Promise.resolve({ asset: { ...row }, job });
       },
 
+      setVisibility(id, visibility) {
+        const row = api.rows.find((candidate) => candidate.id === id);
+        if (!row) return Promise.reject(new Error('not found'));
+        row.visibility = visibility;
+        row.shareUrl = visibility === 'private' ? null : `/api/share/token-${id}`;
+        return Promise.resolve({ asset: { ...row } });
+      },
+
       setStarred(id, starred) {
         if (api.failNext.setStarred) {
           api.failNext.setStarred = false;
@@ -134,6 +148,16 @@ export function fakeLibrary(initial: LibraryAsset[], collections: Collection[] =
         const row = api.rows.find((candidate) => candidate.id === id);
         return Promise.resolve({ asset: { ...(row ?? asset({ id })) } });
       },
+
+      shares: () => Promise.resolve({ users: [] }),
+      setShares: () => Promise.resolve({ users: [] }),
+    },
+
+    users: () => Promise.resolve({ users: [] }),
+
+    archive: {
+      purge: (ids) => Promise.resolve({ purged: ids.length }),
+      empty: () => Promise.resolve({ purged: 0 }),
     },
 
     collections: {

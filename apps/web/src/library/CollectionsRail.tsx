@@ -1,13 +1,22 @@
-import { useState } from 'react';
-import type { Collection } from '../lib/api-library';
+import { useState, type ReactNode } from 'react';
+import type { Collection, LibraryView } from '../lib/api-library';
 import type { CollectionsState } from './useCollections';
-import { FolderIcon, LayersIcon, PlusIcon, StarIcon } from './icons';
+import {
+  ArchiveIcon,
+  FolderIcon,
+  LayersIcon,
+  PersonIcon,
+  PlusIcon,
+  SharedIcon,
+  StarIcon,
+} from './icons';
 import styles from './CollectionsRail.module.css';
 
 /**
  * The collections sidebar.
  *
- * Two fixed views at the top — everything, and starred — then the user's own
+ * Fixed views at the top — everything (yours and what was shared with you),
+ * your own, starred, shared with you, and the archive — then the user's own
  * collections. Creating one is an inline field rather than a modal: it takes a
  * name and nothing else, and a dialog for a single text input is ceremony.
  * There is deliberately no rename, delete or reorder here; the brief asks for a
@@ -18,7 +27,8 @@ export function CollectionsRail({
   loading,
   activeCollectionId,
   starredOnly,
-  onSelectAll,
+  view,
+  onSelectView,
   onSelectStarred,
   onSelectCollection,
   onCreate,
@@ -27,7 +37,8 @@ export function CollectionsRail({
   loading: boolean;
   activeCollectionId: string | null;
   starredOnly: boolean;
-  onSelectAll: () => void;
+  view: LibraryView;
+  onSelectView: (view: LibraryView) => void;
   onSelectStarred: () => void;
   onSelectCollection: (collection: Collection) => void;
   onCreate: CollectionsState['create'];
@@ -35,7 +46,10 @@ export function CollectionsRail({
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState('');
 
-  const showingEverything = !activeCollectionId && !starredOnly;
+  // A view is "on" only when nothing narrower is: a collection or Starred
+  // replaces it as the thing the grid is showing.
+  const viewOn = (candidate: LibraryView) =>
+    view === candidate && !activeCollectionId && !starredOnly;
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -46,31 +60,28 @@ export function CollectionsRail({
     }
   }
 
+  const item = (key: string, on: boolean, onClick: () => void, icon: ReactNode, label: string) => (
+    <li key={key}>
+      <button
+        type="button"
+        className={`${styles.item} ${on ? styles.itemOn : ''}`}
+        aria-current={on}
+        onClick={onClick}
+      >
+        {icon}
+        {label}
+      </button>
+    </li>
+  );
+
   return (
-    <nav className={styles.rail} aria-label="Collections">
+    <nav className={styles.rail} aria-label="Library">
       <ul className={styles.list}>
-        <li>
-          <button
-            type="button"
-            className={`${styles.item} ${showingEverything ? styles.itemOn : ''}`}
-            aria-current={showingEverything}
-            onClick={onSelectAll}
-          >
-            <LayersIcon size={15} />
-            Everything
-          </button>
-        </li>
-        <li>
-          <button
-            type="button"
-            className={`${styles.item} ${starredOnly ? styles.itemOn : ''}`}
-            aria-current={starredOnly}
-            onClick={onSelectStarred}
-          >
-            <StarIcon size={15} filled={starredOnly} />
-            Starred
-          </button>
-        </li>
+        {item('everything', viewOn('everything'), () => onSelectView('everything'), <LayersIcon size={15} />, 'Everything')}
+        {item('mine', viewOn('mine'), () => onSelectView('mine'), <PersonIcon size={15} />, 'My stuff')}
+        {item('starred', starredOnly, onSelectStarred, <StarIcon size={15} filled={starredOnly} />, 'Starred')}
+        {item('shared', viewOn('shared'), () => onSelectView('shared'), <SharedIcon size={15} />, 'Shared with me')}
+        {item('archived', viewOn('archived'), () => onSelectView('archived'), <ArchiveIcon size={15} />, 'Archived')}
       </ul>
 
       <div className={styles.sectionHead}>

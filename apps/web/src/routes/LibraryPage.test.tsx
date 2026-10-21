@@ -39,7 +39,10 @@ describe('LibraryPage', () => {
 
     expect(screen.getByRole('heading', { name: 'Library' })).toBeInTheDocument();
     expect(screen.getByLabelText('Search your prompts')).toBeInTheDocument();
-    expect(screen.getByRole('navigation', { name: 'Collections' })).toBeInTheDocument();
+    const rail = screen.getByRole('navigation', { name: 'Library' });
+    for (const view of ['Everything', 'My stuff', 'Starred', 'Shared with me', 'Archived']) {
+      expect(within(rail).getByRole('button', { name: view })).toBeInTheDocument();
+    }
 
     // Tiles are named by their prompt — the thumbnail itself is decorative
     // next to that, so it carries an empty alt and is not queried for here.

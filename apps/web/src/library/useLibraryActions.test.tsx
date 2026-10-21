@@ -23,6 +23,29 @@ function renderLibrary(api: FakeLibrary) {
 }
 
 describe('star', () => {
+  it('takes a restored asset out of the archive view', async () => {
+    const api = fakeLibrary(assets(3));
+    const { result } = renderLibrary(api);
+    await waitFor(() => expect(result.current.feed.items).toHaveLength(3));
+
+    const target = result.current.feed.items[1]!;
+    await act(() => result.current.actions.restore(target));
+    expect(result.current.feed.items.map((a) => a.id)).not.toContain(target.id);
+    expect(result.current.actions.error).toBeNull();
+  });
+
+  it('puts a row back and says so when delete-forever fails', async () => {
+    const api = fakeLibrary(assets(3));
+    api.archive.purge = () => Promise.reject(new Error('nope'));
+    const { result } = renderLibrary(api);
+    await waitFor(() => expect(result.current.feed.items).toHaveLength(3));
+
+    const target = result.current.feed.items[1]!;
+    await act(() => result.current.actions.purge(target));
+    expect(result.current.feed.items[1]?.id).toBe(target.id);
+    expect(result.current.actions.error).toBe('Could not delete that.');
+  });
+
   it('fills in immediately and stays filled when the server agrees', async () => {
     const api = fakeLibrary(assets(5));
     const { result } = renderLibrary(api);

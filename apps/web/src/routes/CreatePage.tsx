@@ -14,7 +14,8 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import type { Job, Model, VideoLimits } from '@comfy/shared';
 import { SparkIcon } from '../components/icons';
-import { Chips, Group, Segmented, Slider } from '../create/Controls';
+import { Chips, Group, Hint, Segmented, Slider } from '../create/Controls';
+import { VISIBILITIES, VISIBILITY_HINT, VISIBILITY_LABEL } from '../lib/sharing';
 import { AdvancedDrawer } from '../create/AdvancedDrawer';
 import { LoraSection } from '../create/LoraSection';
 import { JobStage } from '../create/JobStage';
@@ -324,6 +325,18 @@ export function CreatePage() {
             checkpoint={checkpoints.find((model) => model.id === form.modelId) ?? null}
             onChange={(next) => patch({ loras: next })}
           />
+
+          {/* Who sees the result, chosen before it exists rather than after:
+              a picture is never briefly visible to anyone it was not meant for. */}
+          <Group label="Visibility">
+            <Chips
+              label="Visibility"
+              value={form.visibility}
+              options={VISIBILITIES.map((value) => ({ value, label: VISIBILITY_LABEL[value] }))}
+              onChange={(visibility) => patch({ visibility })}
+            />
+            <Hint text={VISIBILITY_HINT[form.visibility]} />
+          </Group>
 
           <AdvancedDrawer
             open={advancedOpen}

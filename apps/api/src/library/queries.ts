@@ -3,23 +3,26 @@
  *
  * Two rules run through all of it:
  *
- *  1. Ownership lives in the WHERE clause, never in the handler. Each statement
- *     is scoped by `user_id`, so another user's asset is indistinguishable from
- *     one that does not exist — the same rule storage/access.ts applies to the
- *     bytes, applied here to the metadata.
- *  2. `deleted_at IS NULL` is part of that scope. A soft-deleted asset has to
- *     vanish from the grid, from every collection, and from the single-asset
- *     read; the only way to be sure of that is for no statement here to be
- *     able to see one.
+ *  1. Access lives in the WHERE clause, never in the handler. Each statement
+ *     is scoped by `user_id` — or, for reads only, by a row in `asset_shares`
+ *     naming the viewer — so an asset you neither own nor were given is
+ *     indistinguishable from one that does not exist. The same rule
+ *     storage/access.ts applies to the bytes, applied here to the metadata.
+ *  2. `deleted_at IS NULL` is part of that scope everywhere except the
+ *     archive. An archived asset is visible to its owner under Archived and
+ *     nowhere else — not in the grid, not in a collection, and never to anyone
+ *     it was shared with.
  *
  * The db handle is an interface rather than an import so the unit tests can
  * exercise this without a live Postgres, exactly as storage/persist.ts does.
  */
 
+import { env } from '../env.js';
 import { classifyFailure, toJobFailure } from '../orchestrator/failure.js';
 import type { Asset, Job, JobKind, JobProgress, JobStatus, GenerationParams } from '@comfy/shared';
 import { query as defaultQuery, queryOne as defaultQueryOne } from '../db.js';
-import { rowToAsset, type AssetRow } from '../storage/persist.js';
+import type { Visibility } from '@comfy/shared';
+import { newShareToken, rowToAsset, type AssetRow } from '../storage/persist.js';
 import { encodeCursor, type Cursor } from './cursor.js';
 
 export interface LibraryDb {
@@ -31,7 +34,8 @@ export const realDb: LibraryDb = { query: defaultQuery, queryOne: defaultQueryOn
 
 /** The columns `rowToAsset` needs, aliased off the assets table. */
 const ASSET_COLUMNS = `a.id, a.job_id, a.user_id, a.kind, a.storage_key, a.thumb_key,
-                       a.width, a.height, a.duration, a.size_bytes, a.starred, a.created_at`;
+                       a.width, a.height, a.duration, a.size_bytes, a.starred,
+                       a.visibility, a.share_token, a.created_at, a.deleted_at`;
 
 /**
  * What the grid shows on a tile beyond the image itself.
@@ -42,6 +46,8 @@ const ASSET_COLUMNS = `a.id, a.job_id, a.user_id, a.kind, a.storage_key, a.thumb
  * whose job row was deleted still belongs in your library.
  */
 const TILE_COLUMNS = `j.params->>'prompt' AS prompt,
+                      ou.id AS owner_id,
+                      COALESCE(ou.display_name, ou.email) AS owner_name,
                       m.display_name AS model_name,
                       COALESCE(
                         (SELECT array_agg(ca2.collection_id)
@@ -49,18 +55,29 @@ const TILE_COLUMNS = `j.params->>'prompt' AS prompt,
                         '{}'
                       ) AS collection_ids`;
 
-const TILE_JOINS = `LEFT JOIN jobs j ON j.id = a.job_id AND j.user_id = a.user_id
+const TILE_JOINS = `JOIN users ou ON ou.id = a.user_id
+                    LEFT JOIN jobs j ON j.id = a.job_id AND j.user_id = a.user_id
                     LEFT JOIN models m ON m.id = (j.params->>'modelId')::uuid`;
 
 /** The extra tile fields, as they come back from Postgres. */
 export interface TileRow extends AssetRow {
   prompt: string | null;
+  owner_id: string;
+  owner_name: string;
+  deleted_at?: string | Date | null;
   model_name: string | null;
   collection_ids: string[] | null;
 }
 
 export interface LibraryAsset extends ReturnType<typeof rowToAsset> {
   prompt: string | null;
+  /** Who made it. The client compares with the signed-in user for "mine". */
+  ownerId: string;
+  ownerName: string;
+  /** When it went into the archive; null for a live asset. */
+  archivedAt: string | null;
+  /** When the retention sweep will remove it for good; null for a live asset. */
+  purgesAt: string | null;
   modelName: string | null;
   collectionIds: string[];
 }
@@ -69,6 +86,14 @@ export function toLibraryAsset(row: TileRow): LibraryAsset {
   return {
     ...rowToAsset(row),
     prompt: row.prompt,
+    ownerId: row.owner_id,
+    ownerName: row.owner_name,
+    archivedAt: row.deleted_at ? new Date(row.deleted_at).toISOString() : null,
+    purgesAt: row.deleted_at
+      ? new Date(
+          new Date(row.deleted_at).getTime() + env.storage.archiveRetentionDays * 86_400_000,
+        ).toISOString()
+      : null,
     modelName: row.model_name,
     collectionIds: row.collection_ids ?? [],
   };
@@ -76,8 +101,24 @@ export function toLibraryAsset(row: TileRow): LibraryAsset {
 
 // ---------------------------------------------------------------- listing
 
+/** "This asset was shared with the user in parameter $n." */
+export function sharedWith(n: number): string {
+  return `EXISTS (SELECT 1 FROM asset_shares s WHERE s.asset_id = a.id AND s.user_id = $${n})`;
+}
+
+/**
+ * Which slice of the library a list reads.
+ *
+ *   everything  your live assets and every live asset shared with you
+ *   mine        your live assets
+ *   shared      live assets other people shared with you
+ *   archived    your archived assets, and only yours
+ */
+export type LibraryView = 'everything' | 'mine' | 'shared' | 'archived';
+
 export interface ListAssetsFilter {
   userId: string;
+  view?: LibraryView;
   /** Already clamped by the route. */
   limit: number;
   cursor: Cursor | null;
@@ -95,7 +136,16 @@ export interface AssetPage {
 
 export async function listAssets(db: LibraryDb, filter: ListAssetsFilter): Promise<AssetPage> {
   const params: unknown[] = [filter.userId];
-  const where: string[] = ['a.user_id = $1', 'a.deleted_at IS NULL'];
+  const where: string[] = [];
+  const view = filter.view ?? 'mine';
+  if (view === 'archived') {
+    where.push('a.user_id = $1', 'a.deleted_at IS NOT NULL');
+  } else {
+    where.push('a.deleted_at IS NULL');
+    if (view === 'mine') where.push('a.user_id = $1');
+    else if (view === 'shared') where.push(`a.user_id <> $1 AND ${sharedWith(1)}`);
+    else where.push(`(a.user_id = $1 OR ${sharedWith(1)})`);
+  }
   const joins: string[] = [];
 
   if (filter.collectionId) {
@@ -127,8 +177,9 @@ export async function listAssets(db: LibraryDb, filter: ListAssetsFilter): Promi
   }
 
   if (filter.starred !== undefined) {
+    // A star is the owner's mark, so the starred view is only ever your own.
     params.push(filter.starred);
-    where.push(`a.starred = $${params.length}`);
+    where.push(`a.starred = $${params.length} AND a.user_id = $1`);
   }
 
   if (filter.cursor) {
@@ -192,7 +243,9 @@ export async function getAsset(
      SELECT ${ASSET_COLUMNS}, ${TILE_COLUMNS}
        FROM assets a
        ${TILE_JOINS}
-      WHERE a.id = $1 AND a.user_id = $2 AND a.deleted_at IS NULL`,
+      WHERE a.id = $1
+        -- Yours, archived or not; or live and shared with you.
+        AND (a.user_id = $2 OR (a.deleted_at IS NULL AND ${sharedWith(2)}))`,
     [assetId, userId],
   );
   return row ? toLibraryAsset(row) : null;
@@ -346,13 +399,38 @@ export async function getAssetJobId(
     `-- library:get-asset-job-id
      SELECT a.job_id
        FROM assets a
-      WHERE a.id = $1 AND a.user_id = $2 AND a.deleted_at IS NULL`,
+      WHERE a.id = $1 AND a.user_id = $2`,
     [assetId, userId],
   );
   return row ? { found: true, jobId: row.job_id } : { found: false, jobId: null };
 }
 
 // ---------------------------------------------------------------- mutations
+
+/**
+ * Change who can see an asset. Leaving private mints a share token if the
+ * asset has none; returning to private keeps it, so the same link works again
+ * if the owner re-shares, but `rowToAsset` and the share route both ignore a
+ * private asset's token.
+ */
+export async function setVisibility(
+  db: LibraryDb,
+  assetId: string,
+  userId: string,
+  visibility: Visibility,
+): Promise<LibraryAsset | null> {
+  const row = await db.queryOne<{ id: string }>(
+    `-- library:set-visibility
+     UPDATE assets a
+        SET visibility = $3,
+            share_token = CASE WHEN $3 = 'private' THEN a.share_token
+                               ELSE COALESCE(a.share_token, $4) END
+      WHERE a.id = $1 AND a.user_id = $2 AND a.deleted_at IS NULL
+      RETURNING a.id`,
+    [assetId, userId, visibility, newShareToken()],
+  );
+  return row ? getAsset(db, assetId, userId) : null;
+}
 
 export async function setStarred(
   db: LibraryDb,
@@ -557,4 +635,130 @@ export async function removeAssetFromCollection(
     [collectionId, assetId, userId],
   );
   return row !== null;
+}
+
+// ---------------------------------------------------------------- sharing
+
+export interface ShareUser {
+  id: string;
+  name: string;
+  email: string;
+}
+
+/**
+ * Everyone on this instance but the asker, for the share picker. Rippel is
+ * self-hosted for a household or a team, so the member list is not a secret
+ * between its members; it is still never served to a signed-out request.
+ */
+export async function listShareableUsers(db: LibraryDb, userId: string): Promise<ShareUser[]> {
+  return db.query<ShareUser>(
+    `-- library:shareable-users
+     SELECT id, COALESCE(display_name, email) AS name, email
+       FROM users
+      WHERE id <> $1
+      ORDER BY lower(COALESCE(display_name, email))`,
+    [userId],
+  );
+}
+
+/** Who an asset is shared with. Owner only: null when it is not theirs. */
+export async function getAssetShares(
+  db: LibraryDb,
+  assetId: string,
+  ownerId: string,
+): Promise<ShareUser[] | null> {
+  const owns = await db.queryOne<{ id: string }>(
+    `SELECT a.id FROM assets a WHERE a.id = $1 AND a.user_id = $2 AND a.deleted_at IS NULL`,
+    [assetId, ownerId],
+  );
+  if (!owns) return null;
+  return db.query<ShareUser>(
+    `-- library:asset-shares
+     SELECT u.id, COALESCE(u.display_name, u.email) AS name, u.email
+       FROM asset_shares s JOIN users u ON u.id = s.user_id
+      WHERE s.asset_id = $1
+      ORDER BY s.created_at`,
+    [assetId],
+  );
+}
+
+/**
+ * Replace the set of users an asset is shared with. One statement, so the set
+ * is never half-written; ownership is re-checked inside it, and ids that are
+ * not real users (or are the owner) are dropped rather than refused.
+ */
+export async function setAssetShares(
+  db: LibraryDb,
+  assetId: string,
+  ownerId: string,
+  userIds: readonly string[],
+): Promise<ShareUser[] | null> {
+  const owns = await db.queryOne<{ id: string }>(
+    `-- library:set-asset-shares
+     WITH owned AS (
+       SELECT a.id FROM assets a WHERE a.id = $1 AND a.user_id = $2 AND a.deleted_at IS NULL
+     ),
+     cleared AS (
+       DELETE FROM asset_shares s USING owned
+        WHERE s.asset_id = owned.id AND NOT (s.user_id = ANY($3::uuid[]))
+     ),
+     added AS (
+       INSERT INTO asset_shares (asset_id, user_id)
+       SELECT owned.id, u.id FROM owned JOIN users u ON u.id = ANY($3::uuid[]) AND u.id <> $2
+       ON CONFLICT DO NOTHING
+     )
+     SELECT id FROM owned`,
+    [assetId, ownerId, [...userIds]],
+  );
+  return owns ? getAssetShares(db, assetId, ownerId) : null;
+}
+
+// ---------------------------------------------------------------- archive
+
+/** The keys a hard delete has to remove from object storage. */
+export interface PurgedKeys {
+  storage_key: string;
+  thumb_key: string | null;
+}
+
+/**
+ * Remove archived rows for good and return their keys. Only ever archived
+ * rows: a live asset cannot be force-deleted without passing through the
+ * archive, which is the one undo there is.
+ *
+ *   ids       these assets, if archived and the user's
+ *   all       the user's whole archive ("Empty archive")
+ *   olderThan every user's rows archived before this — the retention sweep
+ */
+export async function purgeArchived(
+  db: LibraryDb,
+  target:
+    | { userId: string; ids: readonly string[] }
+    | { userId: string; all: true }
+    | { olderThanDays: number },
+): Promise<PurgedKeys[]> {
+  if ('olderThanDays' in target) {
+    return db.query<PurgedKeys>(
+      `-- library:purge-expired
+       DELETE FROM assets
+        WHERE deleted_at IS NOT NULL AND deleted_at < now() - make_interval(days => $1)
+       RETURNING storage_key, thumb_key`,
+      [target.olderThanDays],
+    );
+  }
+  if ('all' in target) {
+    return db.query<PurgedKeys>(
+      `-- library:empty-archive
+       DELETE FROM assets WHERE user_id = $1 AND deleted_at IS NOT NULL
+       RETURNING storage_key, thumb_key`,
+      [target.userId],
+    );
+  }
+  return db.query<PurgedKeys>(
+    `-- library:purge-assets
+     DELETE FROM assets
+      WHERE user_id = $1 AND deleted_at IS NOT NULL AND id = ANY($2::uuid[])
+     RETURNING storage_key, thumb_key`,
+    [target.userId, [...target.ids]],
+  );
 }

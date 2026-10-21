@@ -49,6 +49,7 @@ describe('toGenerationParams', () => {
       quality: 'balanced',
       aspect: '1:1',
       batchSize: 1,
+      visibility: 'private',
       advanced: { seed: 42, seedLocked: false },
     });
   });
