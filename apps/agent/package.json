@@ -6,6 +6,7 @@
   "description": "The rippel agent: one binary that installs and manages ComfyUI on one machine.",
   "scripts": {
     "build:release": "node scripts/build-release.mjs",
-    "test": "node scripts/go.mjs test ./..."
+    "test": "node scripts/go.mjs test ./...",
+    "tray:fetch": "node scripts/fetch-tray.mjs"
   }
 }

@@ -1,0 +1,49 @@
+# Builds the Windows tray (apps/tray) on a Windows runner, because Tauri does
+# not cross-compile cleanly from Linux. The agent's release build embeds the
+# result: download the `rippel-tray-windows` artifact into
+# apps/agent/go/traybin/ before running `npm run build:release` in apps/agent.
+name: tray
+
+on:
+  push:
+    paths:
+      - 'apps/tray/**'
+      - 'apps/web/src/styles/**'
+      - 'apps/web/src/components/Mark*'
+      - 'apps/web/src/components/mark-art.ts'
+      - 'apps/web/public/fonts/**'
+      - '.github/workflows/tray.yml'
+  workflow_dispatch:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/tray/src-tauri
+
+      - name: Install
+        run: npm ci --no-audit --no-fund
+
+      - name: Typecheck
+        run: npm run typecheck -w @rippel/tray
+
+      # No installer: the agent embeds the bare executable and runs it itself.
+      - name: Build
+        run: npm run tauri -w @rippel/tray -- build --no-bundle
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rippel-tray-windows
+          path: apps/tray/src-tauri/target/release/rippel-tray.exe
+          if-no-files-found: error

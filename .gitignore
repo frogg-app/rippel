@@ -7,3 +7,4 @@ data/
 
 # Agent worktrees, not project content
 .claude/worktrees/
+apps/agent/go/traybin/*.exe

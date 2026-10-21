@@ -1,0 +1,26 @@
+/* The web app's faces, read from its public folder so there is one copy. The
+ * metric overrides match apps/web/src/styles/fonts.css; see the note there. */
+@font-face {
+  font-family: 'Epilogue';
+  font-weight: 300;
+  src: url('../../web/public/fonts/epilogue-300.ttf') format('truetype');
+  ascent-override: 90%;
+  descent-override: 13%;
+  line-gap-override: 0%;
+}
+@font-face {
+  font-family: 'Epilogue';
+  font-weight: 400;
+  src: url('../../web/public/fonts/epilogue-400.ttf') format('truetype');
+  ascent-override: 90%;
+  descent-override: 13%;
+  line-gap-override: 0%;
+}
+@font-face {
+  font-family: 'Epilogue';
+  font-weight: 500;
+  src: url('../../web/public/fonts/epilogue-500.ttf') format('truetype');
+  ascent-override: 90%;
+  descent-override: 13%;
+  line-gap-override: 0%;
+}

@@ -6,7 +6,7 @@ import (
 	"bufio"
 	"bytes"
 	"crypto/rand"
-	_ "embed"
+	"embed"
 	"encoding/hex"
 	"encoding/json"
 	"net"
@@ -15,6 +15,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -22,6 +23,12 @@ import (
 
 //go:embed tray.ps1
 var trayScript []byte
+
+// The Tauri tray, when the release build put one here. A directory embed so a
+// checkout without it still compiles; see traybin/README.md.
+//
+//go:embed traybin
+var trayBin embed.FS
 
 type desktopAddress struct {
 	URL   string `json:"url"`
@@ -81,8 +88,8 @@ func startDesktop(a *Agent, quit func()) (func(), error) {
 	}
 	address := desktopAddress{"http://" + listener.Addr().String(), hex.EncodeToString(secret)}
 	home := a.config().Home
-	path := filepath.Join(home, "tray.ps1")
-	if err := os.WriteFile(path, trayScript, 0600); err != nil {
+	trayCommand, err := trayLauncher(home)
+	if err != nil {
 		listener.Close()
 		return nil, err
 	}
@@ -113,6 +120,12 @@ func startDesktop(a *Agent, quit func()) (func(), error) {
 				return
 			}
 			writeJSON(w, 200, map[string]bool{"ok": true})
+		case r.Method == "GET" && r.URL.Path == "/logs":
+			a.desktopLogs(w)
+		case r.Method == "POST" && (r.URL.Path == "/engine/start" || r.URL.Path == "/engine/stop" || r.URL.Path == "/engine/restart"):
+			// The owner at the keyboard, so pause does not apply: it stops remote
+			// management, not the person the machine belongs to.
+			a.power(w, strings.TrimPrefix(r.URL.Path, "/engine/"))
 		case r.Method == "POST" && r.URL.Path == "/quit":
 			a.control.Lock()
 			defer a.control.Unlock()
@@ -136,7 +149,7 @@ func startDesktop(a *Agent, quit func()) (func(), error) {
 	var process *os.Process
 	go func() {
 		for {
-			cmd := exec.Command("powershell.exe", "-NoLogo", "-NoProfile", "-NonInteractive", "-STA", "-WindowStyle", "Hidden", "-ExecutionPolicy", "Bypass", "-File", path)
+			cmd := trayCommand()
 			cmd.Env = append(os.Environ(), "RIPPEL_DESKTOP_URL="+address.URL, "RIPPEL_DESKTOP_TOKEN="+address.Token, "RIPPEL_DESKTOP_PARENT="+strconv.Itoa(os.Getpid()))
 			cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
 			hideConsole(cmd)
@@ -209,4 +222,27 @@ func prepareForeground(command string, argc int) {
 			stdin = bufio.NewReader(f)
 		}
 	}
+}
+
+// trayLauncher writes out whichever tray this build carries and returns how to
+// start it: the Tauri app when embedded, otherwise the PowerShell script.
+func trayLauncher(home string) (func() *exec.Cmd, error) {
+	if exe, err := trayBin.ReadFile("traybin/rippel-tray.exe"); err == nil {
+		path := filepath.Join(home, "rippel-tray.exe")
+		// Rewritten only when it differs: the old copy may still be running
+		// during an update, and Windows will not replace a running executable.
+		if current, err := os.ReadFile(path); err != nil || !bytes.Equal(current, exe) {
+			if err := os.WriteFile(path, exe, 0700); err != nil {
+				return nil, err
+			}
+		}
+		return func() *exec.Cmd { return exec.Command(path) }, nil
+	}
+	path := filepath.Join(home, "tray.ps1")
+	if err := os.WriteFile(path, trayScript, 0600); err != nil {
+		return nil, err
+	}
+	return func() *exec.Cmd {
+		return exec.Command("powershell.exe", "-NoLogo", "-NoProfile", "-NonInteractive", "-STA", "-WindowStyle", "Hidden", "-ExecutionPolicy", "Bypass", "-File", path)
+	}, nil
 }
