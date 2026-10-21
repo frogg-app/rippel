@@ -79,6 +79,21 @@ function cacheKey(backendId: string, modelId: string, capability: JobKind): stri
   return `${backendId}|${modelId}|${capability}`;
 }
 
+const READINESS_CHANGED = 'rippel:readiness-changed';
+
+/**
+ * Forget what we were told about one model and ask again. The cache is right to
+ * hold a verdict for the session — readiness changes when somebody installs
+ * something, not on its own — so the one place that installs something from
+ * this page says so here.
+ */
+export function invalidateReadiness(backendId: string, modelId: string): void {
+  for (const key of [...cache.keys()]) {
+    if (key.startsWith(`${backendId}|${modelId}|`)) cache.delete(key);
+  }
+  window.dispatchEvent(new Event(READINESS_CHANGED));
+}
+
 async function probe(
   model: Model,
   capability: JobKind,
@@ -103,6 +118,13 @@ async function probe(
 
 export function useReadiness(models: Model[], kind: JobKind): ReadinessMap {
   const [map, setMap] = useState<ReadinessMap>(EMPTY);
+  // Bumped by invalidateReadiness so the probe below runs again.
+  const [generation, setGeneration] = useState(0);
+  useEffect(() => {
+    const bump = () => setGeneration((n) => n + 1);
+    window.addEventListener(READINESS_CHANGED, bump);
+    return () => window.removeEventListener(READINESS_CHANGED, bump);
+  }, []);
   // Which (models, capability) the state in `map` is an answer *to*. Anything
   // else means we have not asked yet, whatever `map` happens to contain.
   const [answeredFor, setAnsweredFor] = useState<string | null>(null);
@@ -149,7 +171,7 @@ export function useReadiness(models: Model[], kind: JobKind): ReadinessMap {
 
     return () => controller.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [modelKey, kind]);
+  }, [modelKey, kind, generation]);
 
   // The flag the screen actually reads. Note this is true on the very first
   // render, before the effect above has run at all, which is the whole point.

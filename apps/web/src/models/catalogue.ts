@@ -458,10 +458,11 @@ export function catalogueBases(entries: ModelCatalogEntry[]): string[] {
 
 // ---------------------------------------------------------------- installs
 
-export const LIVE_STATUSES = ['queued', 'downloading'] as const;
+export const LIVE_STATUSES = ['waiting', 'queued', 'downloading'] as const;
 
+/** Still going somewhere — including a part waiting its turn behind its model. */
 export function isLive(install: ModelInstall): boolean {
-  return install.status === 'queued' || install.status === 'downloading';
+  return install.status === 'waiting' || install.status === 'queued' || install.status === 'downloading';
 }
 
 /**

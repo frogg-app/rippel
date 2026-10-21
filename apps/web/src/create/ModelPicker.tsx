@@ -29,14 +29,15 @@
  * tooltip, so the explanation for why you cannot pick it is unreachable by
  * exactly the person asking. These take the click and answer it.
  */
-import { useEffect, useState } from 'react';
+import { useContext, useEffect, useState } from 'react';
 import type { JobKind, Model } from '@comfy/shared';
 import { ApiRequestError } from '../lib/api';
 import { type CapabilityMap, isFallbackFamily, readinessApi } from '../lib/api-jobs';
 import { WarningIcon } from './icons';
 import type { CreateMode } from './mode';
 import { modeOfKind } from './form';
-import type { ReadinessMap } from './useReadiness';
+import { invalidateReadiness, type ReadinessMap } from './useReadiness';
+import { AuthContext } from '../auth/context';
 import { type Partition, partitionModels } from './visibility';
 import { modelWash } from './modelArt';
 import { familyHint, familyWords } from './families';
@@ -335,10 +336,44 @@ function Explained({
  */
 function GetIt({ model, kind }: { model: Model; kind: JobKind }) {
   const [state, setState] = useState<
-    { kind: 'idle' } | { kind: 'busy' } | { kind: 'done'; text: string } | { kind: 'error'; text: string }
+    | { kind: 'idle' }
+    | { kind: 'busy' }
+    | { kind: 'done'; text: string; started: boolean }
+    | { kind: 'error'; text: string }
   >({ kind: 'idle' });
+  // Read softly: the picker is also rendered outside the signed-in shell, and
+  // not knowing who is asking means offering the button and letting the server
+  // decide, which is what happened before.
+  const user = useContext(AuthContext)?.user ?? null;
   const backendId = model.backendIds[0];
+  const downloading = state.kind === 'done' && state.started;
+
+  // Once the parts are downloading, keep asking until the model is ready, then
+  // let the picker know — so the tile becomes choosable when the file lands
+  // rather than after somebody thinks to reload the page.
+  useEffect(() => {
+    if (!downloading || !backendId) return;
+    const timer = window.setInterval(() => {
+      readinessApi
+        .get(backendId, model.id, kind)
+        .then((readiness) => {
+          if (readiness.state !== 'ready') return;
+          window.clearInterval(timer);
+          invalidateReadiness(backendId, model.id);
+        })
+        .catch(() => {
+          // A missed poll is just a later one.
+        });
+    }, 15_000);
+    return () => window.clearInterval(timer);
+  }, [downloading, backendId, model.id, kind]);
+
   if (!backendId) return null;
+  // Downloading is an admin action on the server. Better to say who can do it
+  // than to offer a button that can only refuse.
+  if (user && user.role !== 'admin') {
+    return <span>An admin can download the missing file for you.</span>;
+  }
 
   if (state.kind === 'done' || state.kind === 'error') {
     return <span role={state.kind === 'error' ? 'alert' : undefined}>{state.text}</span>;
@@ -356,9 +391,10 @@ function GetIt({ model, kind }: { model: Model; kind: JobKind }) {
             const skipped = result.skipped.map((entry) => entry.reason);
             setState({
               kind: 'done',
+              started: result.installs.length > 0,
               text:
                 result.installs.length > 0
-                  ? 'Downloading now — this model becomes selectable once it finishes. Progress is on the Models page.'
+                  ? 'Downloading now — this model becomes selectable by itself once it finishes. Progress is on the Models page.'
                   : skipped[0] ?? 'Nothing left to download. Try reloading the page.',
             });
           })

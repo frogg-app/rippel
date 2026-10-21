@@ -37,6 +37,9 @@ import {
 import styles from './ModelsPanels.module.css';
 
 const STATUS_WORDS: Record<ModelInstall['status'], string> = {
+  // A part installed alongside its model, waiting for the machine's one
+  // download slot.
+  waiting: 'Up next',
   queued: 'Queued',
   downloading: 'Downloading',
   complete: 'Installed',
