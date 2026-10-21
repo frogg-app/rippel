@@ -8,6 +8,7 @@
  * before they are rendered.
  */
 import { familyDisplayName } from '../lib/family';
+import { VOCABULARY } from './vocabulary';
 import { entryKeys, matchesTags, splitKey, type TagKey } from './discover';
 import type {
   Model,
@@ -29,15 +30,18 @@ export const MODEL_TYPES: ModelType[] = [
   'video',
 ];
 
-export const TYPE_LABELS: Record<ModelType, string> = {
-  checkpoint: 'Checkpoint',
-  lora: 'LoRA',
-  vae: 'VAE',
-  controlnet: 'ControlNet',
-  upscaler: 'Upscaler',
-  clip: 'CLIP',
-  video: 'Video',
-};
+/**
+ * The friendly word for each type, read from `vocabulary.ts`. A filter chip
+ * says "Style add-ons", never "LoRA"; the ComfyUI term is `EXPERT_LABELS`,
+ * for a `title` or a small secondary label.
+ */
+export const TYPE_LABELS: Record<ModelType, string> = Object.fromEntries(
+  MODEL_TYPES.map((type) => [type, VOCABULARY[type].plural]),
+) as Record<ModelType, string>;
+
+export const EXPERT_LABELS: Record<ModelType, string> = Object.fromEntries(
+  MODEL_TYPES.map((type) => [type, VOCABULARY[type].expert]),
+) as Record<ModelType, string>;
 
 // ------------------------------------------------------- generators vs support
 
@@ -86,7 +90,7 @@ export const KIND_HEADINGS: Record<ModelKind, { title: string; blurb: string }> 
  * is never printed on its own next to one of these.
  */
 export interface SupportRole {
-  /** A plain-words name for the row, e.g. "Extra style". */
+  /** A plain-words name for the row, e.g. "Style add-on". */
   noun: string;
   /** What it does. */
   what: string;
@@ -94,45 +98,15 @@ export interface SupportRole {
   where: string;
 }
 
-export const SUPPORT_ROLES: Record<ModelType, SupportRole> = {
-  checkpoint: {
-    noun: 'Model',
-    what: 'Generates images or video on its own.',
-    where: 'Pick it on the Create screen.',
-  },
-  lora: {
-    noun: 'Extra style',
-    what: 'A style or subject you add on top of a model — it cannot generate by itself.',
-    where: 'Extra styles, on the Create screen.',
-  },
-  vae: {
-    noun: 'Image decoder',
-    what: 'Turns what a model produces into a picture, in place of the decoder built into it.',
-    where: 'Loaded automatically by the workflows that ask for one.',
-  },
-  controlnet: {
-    noun: 'Reference guide',
-    what: 'Steers a model using a reference image — a pose, an outline, a depth map.',
-    where: 'Used by the workflows built around a reference image.',
-  },
-  upscaler: {
-    noun: 'Enlarger',
-    what: 'Enlarges a finished picture. It does not make one.',
-    where: 'Used by the Upscale workflow.',
-  },
-  clip: {
-    noun: 'Prompt reader',
-    what: 'Reads your prompt, for the model families that keep that part in a separate file.',
-    where: 'Loaded automatically alongside those models.',
-  },
-  video: {
-    noun: 'Video part',
-    what: 'A piece a video workflow loads, rather than a model you pick yourself.',
-    where: 'Used by the video workflows.',
-  },
-};
+/** Derived from `VOCABULARY`, so there is still only one set of sentences. */
+export const SUPPORT_ROLES: Record<ModelType, SupportRole> = Object.fromEntries(
+  MODEL_TYPES.map((type) => {
+    const words = VOCABULARY[type];
+    return [type, { noun: words.name, what: words.explain, where: words.where }];
+  }),
+) as Record<ModelType, SupportRole>;
 
-/** One line for a chip or a card: "Extra style · a style you add on top…". */
+/** One line for a chip or a card: "Style add-on · a small file that nudges…". */
 export function supportLine(type: ModelType): string {
   const role = SUPPORT_ROLES[type];
   return `${role.noun} · ${role.what}`;
@@ -330,10 +304,10 @@ export function groupInstalled(models: Model[]): ModelGroup[] {
  */
 export const RUNNABILITY_LABEL: Record<RunnabilityStatus, string> = {
   ready: 'Will run',
-  generic: 'Generic workflow',
-  'needs-companion': 'Needs another model',
-  'wrong-folder': 'Wrong folder',
-  'no-workflow': 'No workflow',
+  generic: 'Should run',
+  'needs-companion': 'Needs one more file',
+  'wrong-folder': 'Installed in the wrong place',
+  'no-workflow': 'Not supported yet',
   support: 'Support file',
   unknown: 'Unchecked',
 };

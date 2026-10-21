@@ -54,6 +54,7 @@ import { loraWeightReading, WEIGHT_SCALE } from './loraWeight';
 import { familyLabel } from '../models/catalogue';
 import { familyInitials, familyWash } from './modelArt';
 import { type LoraEntry, matchesQuery, partitionLoras } from './loras';
+import { VOCABULARY } from '../models/vocabulary';
 import styles from './loraSection.module.css';
 
 const DEFAULT_LORA_WEIGHT = 0.7;
@@ -93,16 +94,16 @@ export function LoraSection({
       <div className={styles.head}>
         <span className={styles.labelRow}>
           <span className={styles.label} id="lora-section-label">
-            Extra styles
+            {VOCABULARY.lora.plural}
             {/* The acronym stays, quietly: it is the word on every download
                 page, and dropping it would leave someone unable to look one
                 up. It follows the plain words rather than standing in. */}
-            <span className={styles.qualifier}> (LoRA)</span>
+            <span className={styles.qualifier}> · {VOCABULARY.lora.expert}</span>
           </span>
           <Hint
             text={
               nothingInstalled
-                ? 'A LoRA is a small add-on file trained to steer a model towards one thing. Any you install will be listed here.'
+                ? 'A style add-on (LoRA) is a small file trained to steer a model towards one thing. Any you install will be listed here.'
                 : 'Small add-on files (LoRAs), each trained to steer the model towards one thing — a look, a subject, or sometimes a speed-up. They are not extra sampling steps: the step count lives in Advanced → Detail.'
             }
           />

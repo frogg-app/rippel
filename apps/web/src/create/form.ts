@@ -366,7 +366,7 @@ export function checkSubmittable(
   if (!state.prompt.trim()) return { ok: false, reason: 'Write a prompt first.' };
   if (!state.modelId) return { ok: false, reason: 'Pick a model.' };
   if (!context.modelSupported) {
-    return { ok: false, reason: 'This model has no workflow template yet.' };
+    return { ok: false, reason: 'This model isn’t supported yet.' };
   }
   if (context.busy) return { ok: false, reason: 'A generation is already running.' };
   return { ok: true, reason: null };

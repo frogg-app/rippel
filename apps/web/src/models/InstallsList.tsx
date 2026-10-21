@@ -8,7 +8,8 @@
  * moment it mattered.
  */
 import type { ModelInstall, Uuid } from '@comfy/shared';
-import { TYPE_LABELS } from './catalogue';
+import { EXPERT_LABELS } from './catalogue';
+import { VOCABULARY } from './vocabulary';
 import { InstallProgress } from './InstallProgress';
 import styles from './ModelsPanels.module.css';
 
@@ -26,7 +27,9 @@ export function InstallsList({ installs, backendName, showBackend, now }: Instal
       {installs.map((install) => (
         <li key={install.id} className={styles.install}>
           <div className={styles.installHead}>
-            <span className={styles.installType}>{TYPE_LABELS[install.type].toUpperCase()}</span>
+            <span className={styles.installType} title={EXPERT_LABELS[install.type]}>
+              {VOCABULARY[install.type].name.toUpperCase()}
+            </span>
             <span className={styles.installName}>{install.displayName}</span>
             <span className={styles.installBase}>{install.base}</span>
             {showBackend ? (

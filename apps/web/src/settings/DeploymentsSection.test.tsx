@@ -720,9 +720,9 @@ it('defaults system memory off and GPU VAE on, with independent saved choices', 
  const {api}=fakeApi([{...online,comfy:{...COMFY,memoryMode:'auto',vaeOnGpu:true}}],{status:vi.fn(async()=>({comfy:{...COMFY,memoryMode:'auto' as const,vaeOnGpu:false},accelerator:'cuda' as const,tasks:[]}))});
  render(<DeploymentsSection api={api}/>);
  expect(await screen.findByLabelText('Use system memory')).not.toBeChecked();
- const vae=screen.getByLabelText('Run VAE on GPU');expect(vae).toBeChecked();
+ const vae=screen.getByLabelText('Decode images on the GPU (VAE)');expect(vae).toBeChecked();
  await userEvent.click(vae);
- await userEvent.click(screen.getByRole('button',{name:'Apply VAE and restart'}));
+ await userEvent.click(screen.getByRole('button',{name:'Apply decoder setting and restart'}));
  await waitFor(()=>expect(api.setVaeOnGpu).toHaveBeenCalledWith('d1',false));
  expect(api.setMemoryMode).not.toHaveBeenCalled();
 });

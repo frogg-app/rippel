@@ -1,0 +1,99 @@
+/* The "What's what?" legend. Mirrors the groupRole / groupJargon styling in
+   ModelsPanels.module.css so the expert term looks the same everywhere. */
+.kinds {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.summary {
+  cursor: pointer;
+  width: max-content;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.summary:hover {
+  color: var(--text);
+}
+
+.summary:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+  border-radius: var(--radius-sm);
+}
+
+.list {
+  margin: var(--gap-xs) 0 0;
+  padding: var(--gap-sm) var(--gap-md);
+  display: grid;
+  gap: var(--gap-sm);
+  border: 1px solid var(--line-faint);
+  border-radius: var(--radius-md);
+  background: var(--surface-1);
+  max-width: 72ch;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 8rem 1fr;
+  gap: var(--gap-sm);
+}
+
+.title {
+  color: var(--text);
+  font-weight: var(--weight-strong);
+}
+
+.blurb {
+  margin: 0;
+  line-height: 1.45;
+}
+
+.types {
+  margin: 2px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.name {
+  color: var(--text-2);
+}
+
+.expert {
+  padding: 0 6px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--line-faint);
+  font-size: 10px;
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--text-4);
+  white-space: nowrap;
+}
+
+.explain {
+  color: var(--text-4);
+}
+
+/* On Create it lives in a group heading, so the list floats under the
+   summary instead of shoving the model picker down the form. */
+.compact {
+  position: relative;
+}
+
+.compact .list {
+  position: absolute;
+  right: 0;
+  top: 100%;
+  z-index: var(--dropdown-z);
+  width: min(30rem, calc(100vw - 32px));
+  font-size: 12px;
+  background: var(--dropdown-bg);
+  box-shadow: var(--shadow-pop);
+}
+
+@media (max-width: 560px) {
+  .row {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+}

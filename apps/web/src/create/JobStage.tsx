@@ -31,6 +31,7 @@ import { SparkIcon } from '../components/icons';
 import { Mark } from '../components/Mark';
 import { DownloadIcon, PlayIcon, RemixIcon } from './icons';
 import { isTerminal } from './jobProgress';
+import { translateComfyError } from './failureText';
 import styles from './stage.module.css';
 
 export function JobStage({
@@ -408,9 +409,9 @@ function Waiting({ job, place }: { job: Job; place: QueuePlace | null }) {
 
   const body =
     phase === 'preparing'
-      ? 'The backend is loading weights. A cold checkpoint takes a minute or two, and the first preview follows a few steps after that.'
+      ? 'Loading the model — the first run takes a minute or two, and the first preview follows a few steps after that.'
       : phase === 'decoding'
-        ? 'Sampling has finished. The VAE decode runs on the CPU here, so this part is slow — the image appears the moment it lands.'
+        ? 'The picture is finished and is being turned into an image. This machine does that step on its processor rather than its graphics card, so it is slow — the image appears the moment it lands.'
         : phase === 'saving'
           ? 'Generated. The image is being stored in your library.'
           : job.status === 'queued'
@@ -494,7 +495,14 @@ function Message({
  * the old rendering stays as the fallback rather than being deleted.
  */
 function Failure({ job }: { job: Job }) {
-  const failure = job.failure;
+  const raw = job.failure?.detail || job.error;
+  // A missing file reported as raw ComfyUI validation text — by a job stored
+  // before the server classified failures, or one it filed as a bad value —
+  // reads as the missing file it is. The raw words stay in the disclosure.
+  const plain = job.failure?.kind === 'missing-model' ? null : translateComfyError(raw);
+  const failure: JobFailure | null = plain
+    ? { kind: 'missing-model', summary: plain, steps: [], detail: raw ?? '' }
+    : job.failure;
   if (!failure) {
     return (
       <Message title="Generation failed" body={job.error ?? 'The backend gave no reason.'} tone="danger" />

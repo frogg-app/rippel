@@ -29,11 +29,11 @@ import {
   RUNNABILITY_LABEL,
   RUNNABILITY_TONE,
   SUPPORT_ROLES,
-  TYPE_LABELS,
   familyLabel,
   foldFamily,
   generates,
 } from './catalogue';
+import { expertFor } from './vocabulary';
 import { CloseIcon, WorkflowIcon } from './icons';
 import { OfficialWorkflows } from './OfficialWorkflows';
 import { ManualDownloads } from './ManualDownloads';
@@ -170,7 +170,7 @@ function SupportFile({ model }: { model: Model }) {
       <section className={styles.sheetSection} aria-label={`What ${model.displayName} is for`}>
         <header className={styles.sheetSectionHead}>
           <h3 className={styles.sheetSectionTitle}>{role.noun}</h3>
-          <span className={styles.sheetSectionNote}>{TYPE_LABELS[model.type]}</span>
+          <span className={styles.sheetSectionNote}>{expertFor(model.type, model.filename)}</span>
         </header>
         <p className={styles.sheetOptionDesc}>{role.what}</p>
         <p className={styles.sheetOptionDesc}>{role.where}</p>
@@ -178,8 +178,8 @@ function SupportFile({ model }: { model: Model }) {
 
       <p className={styles.sheetFoot}>
         There is no workflow to choose here. A workflow is picked for the model you generate
-        with — a checkpoint — and this file is loaded by that workflow when it needs it. To pin a
-        template, open the Workflows sheet on a checkpoint instead.
+        with — a Model — and this file is loaded by that workflow when it needs it. To pin a
+        template, open the Workflows sheet on a Model instead.
       </p>
     </>
   );

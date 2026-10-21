@@ -39,6 +39,7 @@ const UNKNOWN = {
   state: 'unknown' as const,
   templateLabel: null,
   isFallback: false,
+  videoLimits: null,
   summary: null,
   steps: [] as string[],
 };
@@ -128,6 +129,7 @@ function queuedJob(params: GenerationParams): Job {
       previewUrl: null,
     },
     error: null,
+    failure: null,
     createdAt: '2026-09-06T10:00:00.000Z',
     startedAt: null,
     finishedAt: null,
@@ -289,7 +291,7 @@ describe('CreatePage', () => {
     expect(blocked).toHaveAttribute('aria-disabled', 'true');
     await user.click(blocked);
     expect(blocked).toHaveAttribute('aria-checked', 'false');
-    expect(await screen.findByText(/no workflow template/i)).toBeInTheDocument();
+    expect(await screen.findByText(/isn't supported yet/i)).toBeInTheDocument();
 
     // ...and the runnable one is preselected, so the screen opens usable.
     await waitFor(() =>
@@ -811,6 +813,7 @@ describe('what the picker hides', () => {
           state: 'blocked' as const,
           templateLabel: 'Text to video (LTX-Video)',
           isFallback: false,
+          videoLimits: null,
           summary:
             'the checkpoint is in a folder ComfyUI cannot load it from and the T5 text encoder is not installed.',
           steps: ['Move it into models/checkpoints.'],
