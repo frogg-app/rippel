@@ -7,16 +7,16 @@
  * links mean exactly what the filter chips there mean and cannot drift from
  * its grammar.
  *
- * Discover has no "intent" parameter, so the intent is spelled as a task tag
- * (HuggingFace's own `text-to-video`) or a type. Both are visible, removable
- * chips once Discover opens, which matters: a catalogue entry whose metadata
- * has not been swept carries no task tag, and someone who lands on an empty
- * list must be able to see why and clear it.
+ * They open on Discover's intent chips (Make images, Make video, Style
+ * add-ons), which judge an entry by what it can actually do on this machine
+ * rather than by a task tag its model page may not carry yet. The family, when
+ * known, is a visible, removable tag chip.
  */
 import { DEFAULT_DISCOVER, tagKey, writeDiscover } from '../models/discover';
+import type { Intent } from '../models/intents';
 import type { CreateMode } from './mode';
 
-const TASK: Record<CreateMode, string> = { image: 'text-to-image', video: 'text-to-video' };
+const INTENT: Record<CreateMode, Intent> = { image: 'images', video: 'video' };
 
 function discoverHref(state: Partial<typeof DEFAULT_DISCOVER>): string {
   const params = writeDiscover(new URLSearchParams({ tab: 'discover' }), {
@@ -28,13 +28,13 @@ function discoverHref(state: Partial<typeof DEFAULT_DISCOVER>): string {
 
 /** Models that make pictures, or videos. */
 export function findModelsHref(mode: CreateMode): string {
-  return discoverHref({ include: [tagKey('task', TASK[mode])], type: null });
+  return discoverHref({ intent: INTENT[mode], type: null });
 }
 
 /** Style add-ons, for this family when we know it. */
 export function findStylesHref(family: string | null): string {
   return discoverHref({
-    type: 'lora',
+    intent: 'styles',
     include: family ? [tagKey('base', family)] : [],
   });
 }

@@ -894,7 +894,7 @@ describe('what the picker hides', () => {
     // The way out for *this* mode, pre-filtered to video models on Discover.
     expect(screen.getByRole('link', { name: /find a video model/i })).toHaveAttribute(
       'href',
-      '/models?tab=discover&tag=task%3Atext-to-video&type=all',
+      '/models?tab=discover&intent=video',
     );
   });
 
@@ -1186,12 +1186,12 @@ describe('for somebody new', () => {
     ).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /find an image model/i })).toHaveAttribute(
       'href',
-      '/models?tab=discover&tag=task%3Atext-to-image&type=all',
+      '/models?tab=discover',
     );
     // And the style add-ons section says what one is, with somewhere to get one.
     expect(screen.getByRole('link', { name: /find style add-ons/i })).toHaveAttribute(
       'href',
-      expect.stringContaining('type=lora'),
+      expect.stringContaining('intent=styles'),
     );
   });
 });
