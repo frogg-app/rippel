@@ -1070,6 +1070,14 @@ describe('generic SD fallback: what it covers', () => {
     expect(findTemplate('txt2img', null)?.manifest.isFallback).toBe(true);
   });
 
+  it('does not offer the generic image graph to an unknown file outside checkpoints', () => {
+    // A bare diffusion model of a family we do not know (MiniMax H3, a video
+    // model) is not an SD merge, and must not be called an image model.
+    expect(findTemplate('txt2img', null, 'diffusion_models')).toBeUndefined();
+    expect(findTemplate('img2img', null, 'diffusion_models')).toBeUndefined();
+    expect(findTemplate('txt2img', null, 'checkpoints')?.manifest.id).toBe('txt2img-sd-generic-unknown');
+  });
+
   it('does not invent video or upscale capabilities out of an image node set', () => {
     for (const kind of ['txt2vid', 'img2vid', 'upscale'] as const) {
       expect(findTemplate(kind, null), kind).toBeUndefined();
