@@ -60,6 +60,8 @@ import {
   isLive,
 } from './catalogue';
 import { cardTags, ownerOf, tagKey, type TagKey } from './discover';
+import { needsLine } from './intents';
+import { isRecommendedHere, recommendationFor } from './recommended';
 import { CheckIcon, DownloadCountIcon, HeartIcon, InstallIcon, WorkflowIcon } from './icons';
 import { InstallProgress } from './InstallProgress';
 import { TagChip } from './TagChip';
@@ -137,52 +139,74 @@ export function CardVerdict({
   children?: ReactNode;
 }) {
   const verdict = entry.runnability;
+  // Recommended only where it will work: see recommended.ts. It is on the
+  // verdict rather than the art so the card and the drawer both carry it.
+  const recommended = isRecommendedHere(entry) ? (
+    <span
+      className={styles.recommendedBadge}
+      title={`On rippel's short list: ${recommendationFor(entry)!.label}`}
+    >
+      Recommended
+    </span>
+  ) : null;
   // Derived from the type, not from the verdict: the verdict is per backend and
   // is absent when one is offline, and "what this file is for" is not a fact
   // about a backend.
   if (!generates(entry.type)) {
     const role = SUPPORT_ROLES[entry.type];
     return (
-      <p className={`${styles.verdict} ${styles.verdict_muted}`} title={`${role.what} ${role.where}`}>
-        <span className={styles.verdictChip}>{role.noun}</span>
-        <span className={styles.verdictText}>
-          {role.what}
-          {children}
-        </span>
-      </p>
+      <>
+        {recommended}
+        <p className={`${styles.verdict} ${styles.verdict_muted}`} title={`${role.what} ${role.where}`}>
+          <span className={styles.verdictChip}>{role.noun}</span>
+          <span className={styles.verdictText}>
+            {role.what}
+            {children}
+          </span>
+        </p>
+      </>
     );
   }
   if (!verdict) return null;
+  // The parts it is missing, by their plain names. The API's sentence names
+  // the exact file; this is the line a person reads first.
+  const needs = needsLine(entry);
   return (
-    <p
-      className={`${styles.verdict} ${styles[`verdict_${RUNNABILITY_TONE[verdict.status]}`]}`}
-      // The detail is the API's sentence, and it names the missing file or
-      // the folder. It is on the element rather than always visible
-      // because it is a paragraph, not a label.
-      title={verdict.detail ?? verdict.summary}
-    >
-      {/* A model found in a ComfyUI workflow has a graph waiting for it, so
+    <>
+      {recommended}
+      <p
+        className={`${styles.verdict} ${styles[`verdict_${RUNNABILITY_TONE[verdict.status]}`]}`}
+        // The detail is the API's sentence, and it names the missing file or
+        // the folder. It is on the element rather than always visible
+        // because it is a paragraph, not a label.
+        title={verdict.detail ?? verdict.summary}
+      >
+        {/* A model found in a ComfyUI workflow has a graph waiting for it, so
           "no workflow" would be wrong: it needs that workflow set up. */}
-      <span className={styles.verdictChip}>
-        {entry.sourceWorkflow && verdict.status === 'no-workflow' ? 'Workflow setup needed' : RUNNABILITY_LABEL[verdict.status]}
-      </span>
-      <span className={styles.verdictText}>
-        {entry.sourceWorkflow && verdict.status === 'no-workflow'
-          ? `${entry.sourceWorkflow.title} is available in the workflow library.`
-          : verdict.detail ?? verdict.summary}
-      </span>
-      {onWorkflows && verdict.status !== 'support' ? (
-        <button
-          type="button"
-          className={styles.cardWorkflows}
-          onClick={() => onWorkflows(entry)}
-          aria-label={`Workflows for ${entry.base} models`}
-        >
-          <WorkflowIcon size={12} />
-          Workflows
-        </button>
-      ) : null}
-    </p>
+        <span className={styles.verdictChip}>
+          {entry.sourceWorkflow && verdict.status === 'no-workflow'
+            ? 'Workflow setup needed'
+            : RUNNABILITY_LABEL[verdict.status]}
+        </span>
+        <span className={styles.verdictText}>
+          {entry.sourceWorkflow && verdict.status === 'no-workflow'
+            ? `${entry.sourceWorkflow.title} is available in the workflow library.`
+            : (verdict.detail ?? verdict.summary)}
+        </span>
+        {onWorkflows && verdict.status !== 'support' ? (
+          <button
+            type="button"
+            className={styles.cardWorkflows}
+            onClick={() => onWorkflows(entry)}
+            aria-label={`Workflows for ${entry.base} models`}
+          >
+            <WorkflowIcon size={12} />
+            Workflows
+          </button>
+        ) : null}
+      </p>
+      {needs ? <p className={styles.cardNeeds}>{needs}</p> : null}
+    </>
   );
 }
 

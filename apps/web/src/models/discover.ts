@@ -25,6 +25,8 @@
  * it would leave.
  */
 import type { ModelCatalogEntry, ModelTagGroup, ModelTags, ModelType } from '@comfy/shared';
+import { DEFAULT_INTENT, INTENTS, isPart, matchesIntent, statusRank, worksHere, type Intent } from './intents';
+import { isRecommendedHere } from './recommended';
 
 /**
  * The types a `type=` parameter may name. catalogue.ts has the same list as
@@ -58,9 +60,19 @@ export const RAIL_TAG_ORDER: readonly ModelTagGroup[] = [
   'library',
 ];
 
+/**
+ * The groups the rail shows open. The rest — and the type facet — sit under
+ * "More filters": "safetensors" and "diffusers" are answers to questions only
+ * somebody who already knows ComfyUI asks.
+ */
+export const RAIL_OPEN_GROUPS: readonly ModelTagGroup[] = ['task', 'base', 'tag'];
+export const RAIL_MORE_GROUPS: readonly ModelTagGroup[] = RAIL_TAG_ORDER.filter(
+  (group) => !RAIL_OPEN_GROUPS.includes(group),
+);
+
 export const TAG_GROUP_LABEL: Record<ModelTagGroup, string> = {
   task: 'Task',
-  base: 'Base model',
+  base: 'Model family',
   library: 'Library',
   format: 'Format',
   language: 'Language',
@@ -247,9 +259,10 @@ export function resolverFor(known: Iterable<TagKey>): (value: string) => ModelTa
 
 // ---------------------------------------------------------------- filtering
 
-export type CatalogueSort = 'downloads' | 'likes' | 'name';
+export type CatalogueSort = 'best' | 'downloads' | 'likes' | 'name';
 
 export const SORT_LABELS: Record<CatalogueSort, string> = {
+  best: 'Best first',
   downloads: 'Downloads',
   likes: 'Likes',
   name: 'Name',
@@ -380,6 +393,7 @@ export function sortCatalogue(
   sort: CatalogueSort,
 ): ModelCatalogEntry[] {
   const copy = [...entries];
+  if (sort === 'best') return copy.sort(compareBest);
   if (sort === 'name') {
     return copy.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
   }
@@ -388,42 +402,84 @@ export function sortCatalogue(
   return copy.sort((a, b) => metric(b) - metric(a));
 }
 
+const popularity = (entry: ModelCatalogEntry) => entry.info?.downloads ?? -1;
+
+/**
+ * The default order: what you can install and run, first.
+ *
+ *   1. recommended and working here (see recommended.ts)
+ *   2. installable before install-blocked — a card whose only action is "you
+ *      can't" belongs below every card that has a button
+ *   3. will run > should run > needs one more file > the rest
+ *   4. downloads, as the tiebreak the other sorts already use
+ */
+export function compareBest(a: ModelCatalogEntry, b: ModelCatalogEntry): number {
+  return (
+    Number(isRecommendedHere(b)) - Number(isRecommendedHere(a)) ||
+    Number(Boolean(a.installBlockedReason)) - Number(Boolean(b.installBlockedReason)) ||
+    statusRank(a) - statusRank(b) ||
+    popularity(b) - popularity(a)
+  );
+}
+
+/**
+ * The scope the intent chips, Works on this machine and the expert type
+ * filter put on the catalogue, before tags and search.
+ *
+ * Parts (decoders, prompt readers, video parts) are left out unless the type
+ * filter names one: nobody browses for a VAE, they find out a model needs one,
+ * and the model's card says so ("Needs: …").
+ */
+export function inScope(
+  entry: ModelCatalogEntry,
+  scope: { intent: Intent; type: ModelType | null; runs: boolean },
+): boolean {
+  if (scope.type ? entry.type !== scope.type : isPart(entry.type)) return false;
+  if (!matchesIntent(entry, scope.intent)) return false;
+  if (scope.runs && !worksHere(entry)) return false;
+  return true;
+}
+
 // ---------------------------------------------------------------- the URL
 
 /**
  * Discover's filter state, as the query string carries it alongside `tab`:
  *
- *   ?tab=discover&tag=task:text-to-image&tag=-license:other&q=flux
- *     &type=all&sort=likes&runs=1
+ *   ?tab=discover&intent=video&tag=task:text-to-image&tag=-license:other
+ *     &q=flux&type=vae&sort=likes&runs=0
  *
  * Every default is expressed by absence, so a plain `?tab=discover` is the
- * screen exactly as it opens. `type` defaults to checkpoint, and "all types"
- * is spelled `type=all` because absence is already taken.
+ * screen exactly as it opens: Make images, Works on this machine, best first,
+ * no type. Works on this machine is on by default, so it is the *off* state
+ * that is written (`runs=0`). The older `type=all` and `runs=1` still read,
+ * as the defaults they now are, so a link from before the intents still opens.
  */
 export interface DiscoverState {
   include: TagKey[];
   exclude: TagKey[];
   /** The live text of the search box, tags not yet committed included. */
   q: string;
+  /** The chip row: what the person wants to make. */
+  intent: Intent;
+  /** The expert type filter, under More filters. Null is every type but parts. */
   type: ModelType | null;
   sort: CatalogueSort;
-  /** "Runs on this backend". */
+  /** "Works on this machine". */
   runs: boolean;
 }
-
-export const DEFAULT_DISCOVER_TYPE: ModelType = 'checkpoint';
 
 export const DEFAULT_DISCOVER: DiscoverState = {
   include: [],
   exclude: [],
   q: '',
-  type: DEFAULT_DISCOVER_TYPE,
-  sort: 'downloads',
-  runs: false,
+  intent: DEFAULT_INTENT,
+  type: null,
+  sort: 'best',
+  runs: true,
 };
 
 /** The parameters this owns, so a reset clears exactly these and leaves `tab`. */
-const DISCOVER_PARAMS = ['tag', 'q', 'type', 'sort', 'runs'] as const;
+const DISCOVER_PARAMS = ['tag', 'q', 'intent', 'type', 'sort', 'runs'] as const;
 
 export function readDiscover(params: URLSearchParams): DiscoverState {
   const include: TagKey[] = [];
@@ -437,15 +493,13 @@ export function readDiscover(params: URLSearchParams): DiscoverState {
     if (!list.includes(token.key)) list.push(token.key);
   }
   const askedType = params.get('type');
-  const type =
-    askedType === 'all'
-      ? null
-      : TYPES.includes(askedType as ModelType)
-        ? (askedType as ModelType)
-        : DEFAULT_DISCOVER_TYPE;
+  const type = TYPES.includes(askedType as ModelType) ? (askedType as ModelType) : null;
   const askedSort = params.get('sort');
-  const sort: CatalogueSort = askedSort === 'likes' || askedSort === 'name' ? askedSort : 'downloads';
-  return { include, exclude, q: params.get('q') ?? '', type, sort, runs: params.get('runs') === '1' };
+  const sort: CatalogueSort =
+    askedSort === 'downloads' || askedSort === 'likes' || askedSort === 'name' ? askedSort : 'best';
+  const askedIntent = params.get('intent');
+  const intent = INTENTS.includes(askedIntent as Intent) ? (askedIntent as Intent) : DEFAULT_INTENT;
+  return { include, exclude, q: params.get('q') ?? '', intent, type, sort, runs: params.get('runs') !== '0' };
 }
 
 export function writeDiscover(current: URLSearchParams, state: DiscoverState): URLSearchParams {
@@ -454,9 +508,10 @@ export function writeDiscover(current: URLSearchParams, state: DiscoverState): U
   for (const key of state.include) next.append('tag', key);
   for (const key of state.exclude) next.append('tag', `-${key}`);
   if (state.q) next.set('q', state.q);
-  if (state.type !== DEFAULT_DISCOVER_TYPE) next.set('type', state.type ?? 'all');
-  if (state.sort !== 'downloads') next.set('sort', state.sort);
-  if (state.runs) next.set('runs', '1');
+  if (state.intent !== DEFAULT_INTENT) next.set('intent', state.intent);
+  if (state.type) next.set('type', state.type);
+  if (state.sort !== 'best') next.set('sort', state.sort);
+  if (!state.runs) next.set('runs', '0');
   return next;
 }
 

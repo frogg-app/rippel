@@ -453,18 +453,35 @@ describe('the Discover query string', () => {
       include: ['task:text-to-image', 'base:sdxl'],
       exclude: ['tag:anime'],
       q: 'pixel',
-      type: null,
+      intent: 'video' as const,
+      type: 'vae' as const,
       sort: 'likes' as const,
-      runs: true,
+      runs: false,
     };
     const params = writeDiscover(new URLSearchParams('tab=discover'), state);
     expect(params.getAll('tag')).toEqual(['task:text-to-image', 'base:sdxl', '-tag:anime']);
-    expect(params.get('type')).toBe('all');
+    expect(params.get('intent')).toBe('video');
+    expect(params.get('type')).toBe('vae');
+    // On is the default, so off is what gets written.
+    expect(params.get('runs')).toBe('0');
     expect(readDiscover(params)).toEqual(state);
   });
 
+  it('opens on Make images, working models, best first', () => {
+    expect(readDiscover(new URLSearchParams())).toMatchObject({
+      intent: 'images',
+      type: null,
+      sort: 'best',
+      runs: true,
+    });
+  });
+
+  it('reads links from before the intents as the defaults they now are', () => {
+    expect(readDiscover(new URLSearchParams('type=all&runs=1'))).toEqual(DEFAULT_DISCOVER);
+  });
+
   it('ignores what it cannot parse rather than trusting it', () => {
-    const state = readDiscover(new URLSearchParams('tag=nonsense&tag=colour:blue&type=sofa&sort=random'));
+    const state = readDiscover(new URLSearchParams('tag=nonsense&tag=colour:blue&type=sofa&sort=random&intent=dance'));
     expect(state).toEqual(DEFAULT_DISCOVER);
   });
 });
