@@ -37,6 +37,8 @@ import {
   QUALITY_LABELS,
   QUALITY_PRESETS,
   checkSubmittable,
+  clipLimitHint,
+  clipSeconds,
   estimateSeconds,
   fromGenerationParams,
   initialFormState,
@@ -242,6 +244,7 @@ export function CreatePage() {
               options={ASPECT_RATIOS.map((value) => ({ value, label: value }))}
               onChange={(aspect) => patch({ aspect })}
             />
+            <Hint text="The shape of the picture — square, wide or tall. Its size in pixels follows from this and the quality you chose, at what the model was made for." />
           </Group>
 
           {/* What the mode decides: a batch of stills, or one clip with a
@@ -260,7 +263,8 @@ export function CreatePage() {
                     value={Math.round(fittedVideo.lengthSeconds * fittedVideo.fps)}
                     display={`${Number(fittedVideo.lengthSeconds.toFixed(2))}s`}
                     valueText={`${Number(fittedVideo.lengthSeconds.toFixed(2))} seconds`}
-                    hint="Longer clips cost more memory and time. The maximum depends on your model and frame rate."
+                    ends={[clipSeconds(videoBounds.min, fittedVideo.fps), `up to ${clipSeconds(videoBounds.max, fittedVideo.fps)}`]}
+                    hint={clipLimitHint(videoBounds.max, fittedVideo.fps, videoLimits.fps.min)}
                     onChange={(frames) => patch({ video: { ...fittedVideo, lengthSeconds: frames / fittedVideo.fps } })}
                   />
                   <Chips

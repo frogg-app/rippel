@@ -18,6 +18,8 @@ import type {
   JobKind,
   JobStatus,
   Model,
+  ModelType,
+  ReadinessInstallResult,
   Upload,
   JobFit,
   VideoLimits,
@@ -322,6 +324,24 @@ export interface ModelReadiness {
   summary: string | null;
   /** What a person would have to do about it, in the server's own words. */
   steps: string[];
+  /**
+   * The companion files this model is waiting on, one per unmet requirement.
+   * Optional so a readiness answer built before this field existed (and every
+   * test fixture) still type-checks as "nothing specific is known".
+   */
+  missing?: MissingPart[];
+  /** The server offered a download for at least one gap: "Get it" can work. */
+  installable?: boolean;
+}
+
+/** One file a model needs and the backend does not have where it looks. */
+export interface MissingPart {
+  /** The server's label, e.g. "T5 text encoder" — the expert name. */
+  label: string;
+  /** What kind of file it is, when the server said. Picks the plain name. */
+  type: ModelType | null;
+  /** On disk, but somewhere ComfyUI does not read from. Not downloadable. */
+  misfiled: boolean;
 }
 
 const UNKNOWN_READINESS: ModelReadiness = {
@@ -343,6 +363,7 @@ interface ReadinessPayload {
     id: string;
     label: string;
     status?: string;
+    type?: ModelType | null;
     misfiled?: { instruction?: string } | null;
   }[];
   manualSteps?: string[];
@@ -375,6 +396,22 @@ export const readinessApi = {
       return UNKNOWN_READINESS;
     }
   },
+
+  /**
+   * `POST /backends/:id/readiness/install` — queue every download the
+   * readiness check offered for this model's gaps. The same route the Models
+   * page's installs use, so progress shows up in its installs list. Admin-only
+   * on the server; a 403 reaches the caller as an `ApiRequestError`.
+   */
+  installMissing: (
+    backendId: string,
+    modelId: string,
+    capability: JobKind,
+  ): Promise<ReadinessInstallResult> =>
+    request<ReadinessInstallResult>(`/backends/${backendId}/readiness/install`, {
+      method: 'POST',
+      body: { modelId, capability },
+    }),
 };
 
 function toReadiness(payload: ReadinessPayload): ModelReadiness {
@@ -408,6 +445,12 @@ function toReadiness(payload: ReadinessPayload): ModelReadiness {
     videoLimits,
     summary: unmet.length > 0 ? summarise(unmet) : 'the backend is not set up for it yet.',
     steps,
+    missing: unmet.map((requirement) => ({
+      label: requirement.label,
+      type: requirement.type ?? null,
+      misfiled: requirement.status === 'misfiled',
+    })),
+    installable: (payload.installable ?? []).length > 0,
   };
 }
 

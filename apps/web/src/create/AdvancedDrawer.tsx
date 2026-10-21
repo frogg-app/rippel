@@ -195,6 +195,7 @@ export function AdvancedDrawer({
                 </>
               )}
             </p>
+            <Hint text={<AdvancedGlossary />} />
             <button
               type="button"
               className={
@@ -258,6 +259,34 @@ export function AdvancedDrawer({
         </div>
       ) : null}
     </section>
+  );
+}
+
+// ---------------------------------------------------------------- glossary
+
+/**
+ * Every control in this drawer, one plain sentence each, behind one "?".
+ *
+ * The individual hints answer "what does *this value* do"; this answers the
+ * question a first-time visitor has on opening the drawer at all — "what are
+ * these things, and do I need any of them?" — in one place, so they can decide
+ * to close it again without reading five tooltips.
+ */
+export function AdvancedGlossary() {
+  return (
+    <>
+      Every setting here is optional — the quality preset already chose them.
+      <br />
+      <strong>Follow the prompt</strong> (guidance): how strictly the picture sticks to your words.
+      <br />
+      <strong>Detail</strong> (steps): how many passes the model makes — more is slower and finer.
+      <br />
+      <strong>Starting number</strong> (seed): reuse it to get the same picture again.
+      <br />
+      <strong>Sampling method</strong> (sampler): the maths of each pass; it changes texture, not subject.
+      <br />
+      <strong>Size</strong> comes from the aspect ratio and quality above, not from here.
+    </>
   );
 }
 

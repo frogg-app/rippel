@@ -1,5 +1,5 @@
 /**
- * Extra styles (LoRA) — its own section of the creation panel.
+ * Style add-ons (LoRA) — its own section of the creation panel.
  *
  * It used to live inside the Advanced drawer, which was a drift from the
  * agreed design. Advanced means "the quality preset already chose this;
@@ -55,6 +55,8 @@ import { familyLabel } from '../models/catalogue';
 import { familyInitials, familyWash } from './modelArt';
 import { type LoraEntry, matchesQuery, partitionLoras } from './loras';
 import { VOCABULARY } from '../models/vocabulary';
+import { findStylesHref } from './discoverLinks';
+import { familyWords } from './families';
 import styles from './loraSection.module.css';
 
 const DEFAULT_LORA_WEIGHT = 0.7;
@@ -103,8 +105,8 @@ export function LoraSection({
           <Hint
             text={
               nothingInstalled
-                ? 'A style add-on (LoRA) is a small file trained to steer a model towards one thing. Any you install will be listed here.'
-                : 'Small add-on files (LoRAs), each trained to steer the model towards one thing — a look, a subject, or sometimes a speed-up. They are not extra sampling steps: the step count lives in Advanced → Detail.'
+                ? 'A style add-on (LoRA) is a small file trained to steer a model towards one look or subject. Some need a trigger word in your prompt; when we know it, it is shown on the add-on. Any you install will be listed here.'
+                : 'Small add-on files (LoRAs), each trained to steer the model towards one thing — a look, a subject, or sometimes a speed-up. They are not extra sampling steps: the step count lives in Advanced → Detail. Some need a trigger word in your prompt; when we know it, it is shown on the add-on.'
             }
           />
         </span>
@@ -142,21 +144,28 @@ export function LoraSection({
 
       {loras.length === 0 ? (
         <p className={styles.empty}>
+          {/* What one is, said once, before anything else: someone who has
+              never heard of a LoRA should not have to open a hint to learn
+              that this section is optional and what it would do. */}
+          {VOCABULARY.lora.explain}{' '}
           {nothingInstalled ? (
             <>
-              No extra styles are installed.{' '}
-              <a className={styles.link} href="/models">
-                Browse models
+              You don’t have any yet.{' '}
+              <a className={styles.link} href={findStylesHref(checkpoint?.baseModel ?? null)}>
+                Find style add-ons
               </a>
             </>
           ) : partition.fitting === 0 && partition.offered.length === 0 ? (
             <>
-              None of your {models.length === 1 ? 'installed style' : `${models.length} installed styles`}{' '}
-              {models.length === 1 ? 'was' : 'were'} trained for{' '}
-              {checkpoint?.baseModel ? familyLabel(checkpoint.baseModel) : 'this model'}.
+              None of yours work with{' '}
+              {checkpoint?.baseModel ? familyWords(checkpoint.baseModel).label : 'this model'} —
+              each add-on only fits the kind of model it was made for.{' '}
+              <a className={styles.link} href={findStylesHref(checkpoint?.baseModel ?? null)}>
+                Find ones that fit
+              </a>
             </>
           ) : (
-            <>Optional. Nothing is added unless you add it here.</>
+            <>Optional — nothing is added unless you add it here.</>
           )}
         </p>
       ) : null}
@@ -438,7 +447,7 @@ function LoraPickerPopup({
         onChange={(event) => setQuery(event.target.value)}
       />
 
-      <ul ref={listRef} id={listId} role="listbox" aria-label="Extra styles" className={styles.list}>
+      <ul ref={listRef} id={listId} role="listbox" aria-label={VOCABULARY.lora.plural} className={styles.list}>
         {rows.map((entry, index) => (
           <li
             key={entry.model.id}

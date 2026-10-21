@@ -16,6 +16,8 @@
 import type { JobKind, Model } from '@comfy/shared';
 import { modeOfKind } from './form';
 import type { CreateMode } from './mode';
+import type { MissingPart } from '../lib/api-jobs';
+import { VOCABULARY } from '../models/vocabulary';
 import type { ReadinessMap } from './useReadiness';
 import type { ModelEntry } from './visibility';
 
@@ -30,6 +32,43 @@ export interface BlockedReason {
   steps: string[];
   /** The mode that *would* run this model, when there is one. */
   switchTo: CreateMode | null;
+  /** The companion files it is waiting on, when the server named them. */
+  missing: MissingPart[];
+  /** The server offered downloads for them: a "Get it" button can work. */
+  installable: boolean;
+}
+
+/**
+ * "a prompt reader (T5 text encoder)" — the plain name first, the server's
+ * expert label after it for anyone who wants to look it up.
+ */
+export function partName(part: MissingPart): string {
+  if (!part.type) return part.label;
+  const plain = VOCABULARY[part.type].name.toLowerCase();
+  const article = /^[aeiou]/.test(plain) ? 'an' : 'a';
+  return part.label.toLowerCase() === plain ? `${article} ${plain}` : `${article} ${plain} (${part.label})`;
+}
+
+/**
+ * The one sentence for a model that is waiting on files. Never "wrong folder"
+ * or "needs another model": both are true and both send a newcomer looking for
+ * a second checkpoint. What they need to hear is that one file is missing and
+ * there is a button for it.
+ */
+export function missingSentence(missing: MissingPart[]): string | null {
+  const absent = missing.filter((part) => !part.misfiled);
+  const moved = missing.filter((part) => part.misfiled);
+  const sentences: string[] = [];
+  if (absent.length === 1) sentences.push(`This model needs one more file — ${partName(absent[0]!)}.`);
+  else if (absent.length > 1) {
+    sentences.push(`This model needs ${absent.length} more files — ${absent.map(partName).join(', ')}.`);
+  }
+  if (moved.length > 0) {
+    sentences.push(
+      `${moved.length === 1 ? 'One file it uses is' : `${moved.length} files it uses are`} saved where it can’t be found — ${moved.map(partName).join(', ')}.`,
+    );
+  }
+  return sentences.length > 0 ? sentences.join(' ') : null;
 }
 
 /**
@@ -58,11 +97,16 @@ export function blockedReason(
   const answer = readiness.here[model.id];
 
   if (entry.blocked === 'needs-setup') {
+    const missing = answer?.missing ?? [];
+    const absent = missing.filter((part) => !part.misfiled).length;
     return {
-      badge: 'Needs setup',
+      badge:
+        absent === 1 ? 'Needs one more file' : absent > 1 ? `Needs ${absent} more files` : 'Needs setup',
       detail: `cannot run here yet: ${answer?.summary ?? 'the backend is not set up for it.'}`,
       steps: answer?.steps ?? [],
       switchTo: null,
+      missing,
+      installable: answer?.installable === true,
     };
   }
 
@@ -72,6 +116,8 @@ export function blockedReason(
       detail: 'only runs from a starting image. Add one above and it becomes selectable.',
       steps: [],
       switchTo: null,
+      missing: [],
+      installable: false,
     };
   }
 
@@ -82,6 +128,8 @@ export function blockedReason(
       detail: `is a ${KIND_NOUN[only]} model — it runs ${KIND_NOUN[only]} jobs, not ${KIND_NOUN[mode]} ones.`,
       steps: [],
       switchTo: only,
+      missing: [],
+      installable: false,
     };
   }
 
@@ -92,6 +140,8 @@ export function blockedReason(
       `isn't supported yet — rippel has no recipe (workflow) for ${family} models.`,
     steps: [],
     switchTo: null,
+    missing: [],
+    installable: false,
   };
 }
 

@@ -215,7 +215,10 @@ vi.mock('../lib/api-jobs', async () => {
     // The GPU box is usually unreachable, and an unreachable backend must not
     // make anybody's models disappear: `unknown` is the default here for the
     // same reason it is the default in production.
-    readinessApi: { get: vi.fn(async () => UNKNOWN) },
+    readinessApi: {
+      get: vi.fn(async () => UNKNOWN),
+      installMissing: vi.fn(async () => ({ installs: [{ id: 'install-1' }], skipped: [], manualSteps: [] })),
+    },
     jobsApi: {
       create: vi.fn(async (params: GenerationParams) => {
         created.push(params);
@@ -884,8 +887,15 @@ describe('what the picker hides', () => {
     await screen.findByRole('radio', { name: /SDXL Base/i });
     await user.click(screen.getByRole('radio', { name: 'Video' }));
 
-    expect(await screen.findByText(/No video models are installed/i)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/You don’t have a model for making videos yet/i),
+    ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /switch to image mode/i })).toBeInTheDocument();
+    // The way out for *this* mode, pre-filtered to video models on Discover.
+    expect(screen.getByRole('link', { name: /find a video model/i })).toHaveAttribute(
+      'href',
+      '/models?tab=discover&tag=task%3Atext-to-video&type=all',
+    );
   });
 
   it('never leaves a hidden model selected when the mode changes', async () => {
@@ -1030,7 +1040,7 @@ describe('extra styles', () => {
 
     await user.click(screen.getByRole('button', { name: /add a style/i }));
 
-    const list = screen.getByRole('listbox', { name: /extra styles/i });
+    const list = screen.getByRole('listbox', { name: /style add-ons/i });
     expect(within(list).getByText('Film Grain XL')).toBeInTheDocument();
     // Unknown family is offered, marked, never hidden: it is the normal state
     // of a locally discovered file.
@@ -1104,7 +1114,7 @@ describe('extra styles', () => {
     await user.click(screen.getByRole('button', { name: /add a style/i }));
     await user.type(screen.getByRole('combobox', { name: /search extra styles/i }), 'pytorch');
 
-    const list = screen.getByRole('listbox', { name: /extra styles/i });
+    const list = screen.getByRole('listbox', { name: /style add-ons/i });
     expect(within(list).queryByText('Film Grain XL')).toBeNull();
 
     await user.keyboard('{Enter}');
@@ -1115,3 +1125,73 @@ describe('extra styles', () => {
 function formatted(seed: number): string {
   return String(seed).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
 }
+
+describe('for somebody new', () => {
+  it('leads each tile with what the model is good for, and keeps its name quiet', async () => {
+    render(<CreatePage />);
+    const tile = await screen.findByRole('radio', { name: /SDXL Base/i });
+    expect(within(tile).getByText('Stable Diffusion XL')).toBeInTheDocument();
+    expect(within(tile).getByText(/all-round pictures/i)).toBeInTheDocument();
+  });
+
+  it('says which file a model is missing in plain words, and Get it fetches it', async () => {
+    const user = userEvent.setup();
+    const { readinessApi } = await import('../lib/api-jobs');
+    vi.mocked(readinessApi.get).mockImplementation(async (_backend, modelId, capability) => {
+      if (modelId === 'model-ltx' && capability === 'txt2vid') {
+        return {
+          state: 'blocked' as const,
+          templateLabel: 'Text to video (LTX-Video)',
+          isFallback: false,
+          videoLimits: null,
+          summary: 'the T5 text encoder is not installed.',
+          steps: ['Install t5xxl_fp16.safetensors.'],
+          missing: [{ label: 'T5 text encoder', type: 'clip' as const, misfiled: false }],
+          installable: true,
+        };
+      }
+      return UNKNOWN;
+    });
+
+    render(
+      <>
+        <ModeToggle />
+        <CreatePage />
+      </>,
+    );
+    await screen.findByRole('radio', { name: /SDXL Base/i });
+    await user.click(screen.getByRole('radio', { name: 'Video' }));
+
+    const ltx = await screen.findByRole('radio', { name: /LTX Video/i });
+    expect(within(ltx).getByText('Needs one more file')).toBeInTheDocument();
+    await user.click(ltx);
+    expect(
+      await screen.findByText(/This model needs one more file — a prompt reader \(T5 text encoder\)/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/wrong folder|needs another model/i)).toBeNull();
+
+    await user.click(screen.getByRole('button', { name: 'Get it' }));
+    await waitFor(() =>
+      expect(readinessApi.installMissing).toHaveBeenCalledWith(expect.any(String), 'model-ltx', 'txt2vid'),
+    );
+    expect(await screen.findByText(/Downloading now/i)).toBeInTheDocument();
+  });
+
+  it('opens on an invitation, not an error, when nothing is installed', async () => {
+    const { modelsApi } = await import('../lib/api-jobs');
+    vi.mocked(modelsApi.list).mockResolvedValue({ models: [], families: [] });
+    render(<CreatePage />);
+    expect(
+      await screen.findByText(/You don’t have a model for making images yet/i),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /find an image model/i })).toHaveAttribute(
+      'href',
+      '/models?tab=discover&tag=task%3Atext-to-image&type=all',
+    );
+    // And the style add-ons section says what one is, with somewhere to get one.
+    expect(screen.getByRole('link', { name: /find style add-ons/i })).toHaveAttribute(
+      'href',
+      expect.stringContaining('type=lora'),
+    );
+  });
+});

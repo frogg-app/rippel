@@ -281,3 +281,15 @@ describe('deriveKind', () => {
     expect(toGenerationParams(state).kind).toBe('txt2vid');
   });
 });
+
+describe('clip length in words', () => {
+  it('says the longest clip as seconds, never rounding up', async () => {
+    const { clipSeconds, clipLimitHint } = await import('./form');
+    expect(clipSeconds(97, 16)).toBe('6 seconds');
+    expect(clipSeconds(121, 24)).toBe('5 seconds');
+    expect(clipLimitHint(97, 16, 8)).toBe(
+      'This model can make clips up to 6 seconds at 16 fps. A lower frame rate stretches that to 12.1 seconds, with choppier motion. Longer clips take more time and memory.',
+    );
+    expect(clipLimitHint(97, 8, 8)).not.toMatch(/lower frame rate/);
+  });
+});
