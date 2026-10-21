@@ -184,3 +184,29 @@ func TestModelRoutesRequireTokenAndReturnTasks(t *testing.T) {
 		}
 	}
 }
+
+func TestModelHostsFollowHuggingFaceCDNMoves(t *testing.T) {
+	for _, ok := range []string{
+		"https://us.aws.cdn.hf.co/xet-bridge-us/abc/def",
+		"https://cas-bridge.xethub.hf.co/xet-bridge-us/abc",
+		"https://cdn-lfs-us-1.huggingface.co/repos/abc",
+	} {
+		if err := allowedModelURL(ok, true); err != nil {
+			t.Errorf("redirect to %s refused: %v", ok, err)
+		}
+	}
+	// The first hop is still only the model sites themselves.
+	if err := allowedModelURL("https://us.aws.cdn.hf.co/x", false); err == nil {
+		t.Error("a CDN host was accepted as the starting URL")
+	}
+	for _, bad := range []string{
+		"https://hf.co.evil.example/x",
+		"https://evilhf.co/x",
+		"https://huggingface.co.example/x",
+		"http://us.aws.cdn.hf.co/x",
+	} {
+		if err := allowedModelURL(bad, true); err == nil {
+			t.Errorf("%s was accepted", bad)
+		}
+	}
+}

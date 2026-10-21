@@ -53,6 +53,7 @@ import type { CatalogueBaseClaim } from './family.js';
 import type {
   JobKind,
   MissingCompanion,
+  ModelCatalogEntry,
   ModelRunnability,
   ModelType,
   RunnabilityStatus,
@@ -62,9 +63,8 @@ import type { ObjectInfo } from '../lib/comfy.js';
 import { checkGraph } from '../orchestrator/preflight.js';
 import type { ComfyApiGraph, WorkflowTemplate } from '../workflows/types.js';
 import { knownCapabilities, templatesFor } from '../workflows/registry.js';
-import { checkpointSlotOf, type CheckpointSlot } from '../workflows/folders.js';
+import { canonicalFolder, checkpointSlotOf, type CheckpointSlot } from '../workflows/folders.js';
 import { claimFromCatalogueBase, inferFamily } from './family.js';
-import { folderForType } from './installs.js';
 import { knownDownloadFor } from './known-downloads.js';
 
 /**
@@ -77,12 +77,7 @@ import { knownDownloadFor } from './known-downloads.js';
  * `LTXV\ltx-video-2b-v0.9.1.safetensors`.
  */
 export function folderForSavePath(savePath: string | null, type: ModelType): string | null {
-  if (!savePath || savePath === 'default') return folderForType(type);
-  const first = savePath.split(/[\\/]/)[0]?.trim();
-  if (!first) return folderForType(type);
-  // Manager's older rows use "unet" for what ComfyUI now calls diffusion_models.
-  if (first === 'unet') return 'diffusion_models';
-  return first;
+  return canonicalFolder(savePath, type);
 }
 
 const CAPABILITY_WORDS: Record<JobKind, string> = {
@@ -115,6 +110,11 @@ export interface RunnabilityInput {
   catalogueBase?: string | null;
   /** The ComfyUI folder the file is in, or will be installed into. */
   folder: string | null;
+  /**
+   * For an installed file, every folder that lists it. A copy in the folder a
+   * workflow reads is enough, whichever copy `folder` happened to name.
+   */
+  alsoIn?: readonly string[];
   /** `/object_info` for the backend in question, or null if we could not read it. */
   info: ObjectInfo | null;
   backendId: Uuid | null;
@@ -277,7 +277,7 @@ export function runnabilityFor(input: RunnabilityInput): ModelRunnability {
     const slot = checkpointSlotOf(template);
 
     const folderMismatch =
-      slot && slot.folder && input.folder && slot.folder !== input.folder
+      slot && slot.folder && input.folder && slot.folder !== input.folder && !input.alsoIn?.includes(slot.folder)
         ? { loader: slot.nodeClass, wants: slot.folder }
         : null;
 
@@ -379,6 +379,7 @@ export function runnabilityFor(input: RunnabilityInput): ModelRunnability {
       templateId: attempts[0]!.templateId,
       status: 'wrong-folder',
       capabilities,
+      ...(mismatch && !input.installed ? { installInto: mismatch.wants } : {}),
       summary: input.installed ? 'On disk, but the workflow cannot see it' : 'Lands in the wrong folder',
       detail: mismatch
         ? input.installed
@@ -535,3 +536,28 @@ function sourceForMissing(
   return null;
 }
 
+
+/**
+ * A catalogue entry placed where its workflow will find it, when the install
+ * can choose.
+ *
+ * ComfyUI-Manager installs only into the save path its own list names, so for
+ * it a `wrong-folder` verdict is the honest answer. The rippel agent writes
+ * wherever it is told, so for an agent backend that verdict was rippel
+ * describing its own mistake before making it: the entry is re-pointed at the
+ * folder the workflow reads and judged again, and the install that follows
+ * lands there. Everything else is returned unchanged.
+ */
+export function placedForWorkflow(
+  entry: ModelCatalogEntry,
+  verdict: ModelRunnability,
+  input: Omit<RunnabilityInput, 'folder'>,
+  canChooseFolder: boolean,
+): { entry: ModelCatalogEntry; verdict: ModelRunnability } {
+  if (!canChooseFolder || verdict.status !== 'wrong-folder' || !verdict.installInto || entry.installed) {
+    return { entry, verdict };
+  }
+  const folder = verdict.installInto;
+  const placed = { ...entry, savePath: folder, ref: `${folder}/${entry.filename}` };
+  return { entry: placed, verdict: runnabilityFor({ ...input, folder }) };
+}

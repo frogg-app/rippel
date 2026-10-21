@@ -107,10 +107,13 @@ func allowedModelURL(raw string, redirect bool) error {
 	}
 	host := strings.ToLower(u.Hostname())
 	allowed := host == "huggingface.co" || host == "civitai.com"
-	// Hugging Face serves its signed blobs from its own Xet/CDN hosts.
+	// Hugging Face serves its signed blobs from its own CDN hosts, and it moves
+	// them: cdn-lfs*.huggingface.co, then cas-bridge.xethub.hf.co, then
+	// us.aws.cdn.hf.co. A list of exact names failed every download each time
+	// it changed, so any subdomain of its two domains is accepted on redirect.
+	// Both are Hugging Face's own; the first hop must still be huggingface.co.
 	if redirect {
-		allowed = allowed || host == "cdn-lfs.huggingface.co" || host == "cdn-lfs-us-1.huggingface.co" ||
-			host == "cdn-lfs-eu-1.huggingface.co" || host == "cas-bridge.xethub.hf.co"
+		allowed = allowed || strings.HasSuffix(host, ".huggingface.co") || host == "hf.co" || strings.HasSuffix(host, ".hf.co")
 	}
 	if !allowed {
 		return fmt.Errorf("download host %q is not an approved model host", host)

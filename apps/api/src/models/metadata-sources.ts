@@ -140,7 +140,6 @@ async function getText(url: string, timeoutMs = 20_000): Promise<string> {
 }
 
 interface HfModel {
-  tags?: string[];
   downloads?: number;
   likes?: number;
   pipeline_tag?: string;

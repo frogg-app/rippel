@@ -518,6 +518,12 @@ export interface ModelRunnability {
    * and for families with no template at all.
    */
   templateId?: string;
+  /**
+   * For a `wrong-folder` verdict on a file not yet installed: the folder the
+   * workflow reads it from, which is where an install that can choose its
+   * folder should put it.
+   */
+  installInto?: string;
 }
 
 // ---------------------------------------------------------------- model installs

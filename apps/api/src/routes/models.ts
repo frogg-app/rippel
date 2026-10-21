@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { query } from '../db.js';
-import { folderOfInstalled } from '../workflows/folders.js';
+import { folderOfInstalled, foldersOfInstalled } from '../workflows/folders.js';
 import { runnabilityFor } from '../models/runnability.js';
 import { objectInfoFor } from '../orchestrator/preflight.js';
 import { normalizeBaseModel } from '../workflows/registry.js';
@@ -292,6 +292,7 @@ async function verdicts(models: Model[]): Promise<Record<Uuid, ModelRunnability>
         // checkpoint. /object_info says which loader actually lists the file,
         // and that is the folder — or null when the backend was not readable.
         folder: folderOfInstalled(info.get(backend.id) ?? null, model.filename),
+        alsoIn: foldersOfInstalled(info.get(backend.id) ?? null, model.filename),
         info: info.get(backend.id) ?? null,
         backendId: backend.id,
         backendName: backend.name,

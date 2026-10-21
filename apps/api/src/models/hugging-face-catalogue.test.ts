@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 vi.mock('../db.js', () => ({ query: vi.fn(), queryOne: vi.fn() }));
 import { query, queryOne } from '../db.js';
-import { huggingFaceEntry, refreshHuggingFaceCatalogue, cachedHuggingFaceModels } from './hugging-face-catalogue.js';
+import { huggingFaceEntry, huggingFaceSavePath, refreshHuggingFaceCatalogue, cachedHuggingFaceModels } from './hugging-face-catalogue.js';
 const model = { id: 'krea/Krea-2-Turbo', pipeline_tag: 'text-to-image', gated: 'auto', downloads: 70000 };
 beforeEach(() => vi.resetAllMocks());
 afterEach(() => vi.unstubAllGlobals());
@@ -36,4 +36,15 @@ it('discovers visual adapters and VAEs without inventing checkpoint compatibilit
  expect(huggingFaceEntry({id:'author/style',tags:['lora','diffusers'],cardData:{base_model:'black-forest-labs/FLUX.1-dev'}})).toMatchObject({type:'lora',info:{baseModels:['black-forest-labs/FLUX.1-dev']},runnability:{status:'support'}});
  expect(huggingFaceEntry({id:'author/decoder',tags:['vae']})).toMatchObject({type:'vae'});
  expect(huggingFaceEntry({id:'author/chat',tags:['lora','text-generation']})).toBeNull();
+});
+
+it('puts diffusion-model-only families and GGUF builds in diffusion_models, not checkpoints', () => {
+  expect(huggingFaceSavePath('checkpoint', 'black-forest-labs/FLUX.1-dev', [], [])).toBe('diffusion_models');
+  expect(huggingFaceSavePath('checkpoint', 'Qwen/Qwen-Image', [], [])).toBe('diffusion_models');
+  expect(huggingFaceSavePath('checkpoint', 'someone/anything', ['gguf'], [])).toBe('diffusion_models');
+  expect(huggingFaceSavePath('checkpoint', 'someone/finetune', [], ['Wan-AI/Wan2.1-T2V-14B'])).toBe('diffusion_models');
+  // The SD 1.5 / SDXL fine-tunes that are most of the list stay checkpoints.
+  expect(huggingFaceSavePath('checkpoint', 'someone/juggernaut-xl', [], ['stabilityai/stable-diffusion-xl-base-1.0'])).toBe('');
+  expect(huggingFaceSavePath('lora', 'someone/flux-style-lora', [], [])).toBe('');
+  expect(huggingFaceEntry({ ...model, id: 'black-forest-labs/FLUX.1-schnell' })?.savePath).toBe('diffusion_models');
 });

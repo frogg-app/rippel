@@ -14,7 +14,7 @@ import { describe, expect, it } from 'vitest';
 import type { ObjectInfo } from '../lib/comfy.js';
 const nodeSnapshot = JSON.parse(readFileSync(new URL('../library/workflows/fixtures/object-info.json', import.meta.url), 'utf8')) as ObjectInfo;
 import { findTemplateById } from '../workflows/registry.js';
-import { folderForSavePath, isUsable, runnabilityFor } from './runnability.js';
+import { folderForSavePath, isUsable, placedForWorkflow, runnabilityFor } from './runnability.js';
 
 /**
  * Start from a captured ComfyUI 0.34.0 node snapshot, then vary installed
@@ -133,6 +133,36 @@ describe('runnabilityFor', () => {
     expect(verdict.detail).toContain('T5 text encoder');
     // The capabilities it *would* have, so the card can say what is being lost.
     expect(verdict.capabilities).toContain('txt2vid');
+  });
+
+  it('does not ask for a move when a copy is already where the workflow reads', () => {
+    const verdict = runnabilityFor({
+      ...base,
+      filename: 'flux1-dev.safetensors',
+      type: 'checkpoint',
+      catalogueBase: 'SD1.x',
+      folder: 'diffusion_models',
+      // The same file is also in checkpoints/, which is the folder this graph reads.
+      alsoIn: ['diffusion_models', 'checkpoints'],
+    });
+    expect(verdict.status).not.toBe('wrong-folder');
+  });
+
+  it('installs straight into the folder the workflow reads when the agent can choose', () => {
+    const input = { ...base, filename: 'flux1-dev.safetensors', type: 'checkpoint' as const, catalogueBase: 'SD1.x' };
+    const verdict = runnabilityFor({ ...input, folder: 'diffusion_models' });
+    expect(verdict.status).toBe('wrong-folder');
+    expect(verdict.installInto).toBe('checkpoints');
+    const entry = { ref: 'diffusion_models/flux1-dev.safetensors', filename: 'flux1-dev.safetensors', savePath: 'diffusion_models', installed: false } as never;
+
+    const agent = placedForWorkflow(entry, verdict, input, true);
+    expect(agent.entry).toMatchObject({ savePath: 'checkpoints', ref: 'checkpoints/flux1-dev.safetensors' });
+    expect(agent.verdict.status).not.toBe('wrong-folder');
+
+    // ComfyUI-Manager installs only where its list says, so the verdict stands.
+    const manager = placedForWorkflow(entry, verdict, input, false);
+    expect(manager.entry).toBe(entry);
+    expect(manager.verdict.status).toBe('wrong-folder');
   });
 
   it('catches a file that would install where the workflow cannot read it', () => {

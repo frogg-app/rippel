@@ -104,18 +104,35 @@ function basename(path: string): string {
  * Returns null when no known loader lists the file (or without object_info).
  */
 export function folderOfInstalled(info: ObjectInfo | null, filename: string): string | null {
-  if (!info) return null;
+  return foldersOfInstalled(info, filename)[0] ?? null;
+}
+
+/**
+ * Every folder whose loader lists this file, in FOLDER_READ_BY order.
+ *
+ * The same weights are often in two places — a checkpoint copied into
+ * diffusion_models for a UNET graph, say — and judging the file by whichever
+ * loader happens to be listed first told people to move a file that was
+ * already exactly where the workflow reads it.
+ */
+export function foldersOfInstalled(info: ObjectInfo | null, filename: string): string[] {
+  if (!info) return [];
   const target = basename(filename).toLowerCase();
+  const found: string[] = [];
   for (const [nodeClass, folder] of Object.entries(FOLDER_READ_BY)) {
+    if (found.includes(folder)) continue;
     const spec = info[nodeClass];
     if (!spec?.input) continue;
     const inputs = { ...(spec.input.required ?? {}), ...(spec.input.optional ?? {}) };
     for (const declared of Object.values(inputs)) {
       const options = comboOptions(declared);
-      if (options?.some((option) => basename(option).toLowerCase() === target)) return folder;
+      if (options?.some((option) => basename(option).toLowerCase() === target)) {
+        found.push(folder);
+        break;
+      }
     }
   }
-  return null;
+  return found;
 }
 
 /** Installer defaults use the same loader table as preflight and verdicts.
@@ -126,4 +143,43 @@ const DEFAULT_LOADER: Readonly<Record<string, string>> = {
 };
 export function folderForType(type: string): string | null {
   return FOLDER_READ_BY[DEFAULT_LOADER[type] ?? ''] ?? null;
+}
+
+/**
+ * Folder names older ComfyUI-Manager rows still use, and what ComfyUI calls
+ * them now. ComfyUI reads both, but every loader in FOLDER_READ_BY lists the
+ * new name, and `/api/models/unet` is a 404 on a stock install.
+ */
+const LEGACY_FOLDER: Readonly<Record<string, string>> = {
+  unet: 'diffusion_models',
+  clip: 'text_encoders',
+};
+
+/**
+ * The one answer to "which model folder does this file belong in?".
+ *
+ * There used to be three — the catalogue verdict, the install request and the
+ * agent's download path each normalised a save path their own way, and they
+ * disagreed on `clip`, on `unet` and on an empty save path. A text encoder
+ * listed as `clip/` was then judged "wrong folder" against the loader's
+ * `text_encoders`, and a `unet/` install landed somewhere `/api/models` could
+ * not confirm. Everything that names a folder now asks here.
+ *
+ * Returns the first segment of `savePath` with legacy names mapped, or the
+ * type's own folder when the save path is empty or `default`.
+ */
+export function canonicalFolder(savePath: string | null | undefined, type: string): string | null {
+  return canonicalModelDir(savePath, type)?.split('/')[0] ?? null;
+}
+
+/**
+ * The whole directory, subfolders kept — `loras/ltxv/ltx2` stays as it is,
+ * `unet/flux` becomes `diffusion_models/flux` — for the paths the agent writes.
+ */
+export function canonicalModelDir(savePath: string | null | undefined, type: string): string | null {
+  const segments = (savePath ?? '').split(/[\\/]/).map((seg) => seg.trim()).filter((seg) => seg && seg !== '.');
+  if (segments.length === 0 || segments[0] === 'default') return folderForType(type);
+  const first = segments[0]!.toLowerCase();
+  segments[0] = LEGACY_FOLDER[first] ?? segments[0]!;
+  return segments.join('/');
 }

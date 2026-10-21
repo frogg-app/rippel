@@ -26,7 +26,7 @@ import type { WorkflowTemplate } from '../workflows/types.js';
 import { ComfyError, type ObjectInfo } from '../lib/comfy.js';
 import { objectInfoFor } from '../orchestrator/preflight.js';
 import { previewBytes, withCatalogueInfo } from './metadata.js';
-import { folderForSavePath, runnabilityFor } from './runnability.js';
+import { folderForSavePath, placedForWorkflow, runnabilityFor } from './runnability.js';
 import {
   activeInstalls,
   InstallConflict,
@@ -96,19 +96,11 @@ export default async function modelInstallRoutes(app: FastifyInstance) {
         }
 
         return {
-          entries: entries.map((entry) => ({
-            ...entry,
-            runnability: entry.installBlockedReason ? { ...entry.runnability!, backendId: backend.id } : runnabilityFor({
-              filename: entry.filename,
-              type: entry.type,
-              catalogueBase: entry.base,
-              folder: folderForSavePath(entry.savePath, entry.type),
-              info,
-              backendId: backend.id,
-              backendName: backend.name,
-              installed: entry.installed,
-            }),
-          })),
+          entries: entries.map((entry) => {
+            if (entry.installBlockedReason) return { ...entry, runnability: { ...entry.runnability!, backendId: backend.id } };
+            const judged = judgeEntry(entry, info, backend, transport.kind);
+            return { ...judged.entry, runnability: judged.verdict };
+          }),
           pending: pending + workflowCataloguePending(backend.id, backend.base_url) + huggingFaceCataloguePending(),
         };
       } catch (err) {
@@ -177,7 +169,27 @@ export default async function modelInstallRoutes(app: FastifyInstance) {
         // the transport's whitelist will match, and a client working from a
         // stale catalogue would otherwise produce a confusing 400 from the
         // backend instead of a clear one from us.
-        const entry = (await transport.catalogue()).find((e) => e.ref === ref);
+        // The same placement the catalogue showed: on an agent backend, a file
+        // whose workflow reads another folder is downloaded straight into it,
+        // and the card's ref is the re-placed one. Judged only for entries of
+        // the same filename, so an install never re-reads the whole catalogue's
+        // verdicts.
+        const offeredAll = await transport.catalogue();
+        const direct = offeredAll.find((e) => e.ref === ref);
+        let entry = direct;
+        try {
+          // Fail open, as the catalogue does: a backend that will not describe
+          // itself still installs exactly what it offered.
+          const info = await objectInfoFor(backend.base_url).catch(() => null);
+          const filename = ref.slice(ref.lastIndexOf('/') + 1);
+          entry =
+            offeredAll
+              .filter((e) => e.ref === ref || e.filename === filename)
+              .map((e) => judgeEntry(e, info, backend, transport.kind).entry)
+              .find((e) => e.ref === ref) ?? direct;
+        } catch {
+          entry = direct;
+        }
         if (!entry) {
           return reply
             .code(400)
@@ -548,4 +560,30 @@ function transportFailure(reply: import('fastify').FastifyReply, err: unknown) {
     return reply.code(502).send({ error: 'backend_error', message: err.message });
   }
   throw err;
+}
+
+/**
+ * An entry's verdict on one backend, with the entry re-placed where the
+ * workflow reads it when the transport can choose its folder (the agent can;
+ * ComfyUI-Manager installs only where its own list says). Shared by the
+ * catalogue and the install route so the folder a card promised is the folder
+ * the download uses.
+ */
+function judgeEntry(
+  entry: ModelCatalogEntry,
+  info: ObjectInfo | null,
+  backend: { id: string; name: string },
+  transportKind: string,
+) {
+  const input = {
+    filename: entry.filename,
+    type: entry.type,
+    catalogueBase: entry.base,
+    info,
+    backendId: backend.id,
+    backendName: backend.name,
+    installed: entry.installed,
+  };
+  const verdict = runnabilityFor({ ...input, folder: folderForSavePath(entry.savePath, entry.type) });
+  return placedForWorkflow(entry, verdict, input, transportKind === 'rippel-agent');
 }

@@ -1,4 +1,4 @@
-import { folderForType } from '../workflows/folders.js';
+import { canonicalFolder } from '../workflows/folders.js';
 export { folderForType } from '../workflows/folders.js';
 /**
  * The model install service.
@@ -141,9 +141,7 @@ export function requestFromRow(row: InstallRow): InstallRequest {
  * and nothing else.
  */
 export function folderForRow(row: InstallRow): string | null {
-  const first = row.save_path.split(/[\\/]/).find((seg) => seg && seg !== '.');
-  if (first && first !== 'default') return first;
-  return folderForType(row.model_type);
+  return canonicalFolder(row.save_path, row.model_type);
 }
 
 /**
@@ -160,12 +158,20 @@ export async function backendHasFile(
   folder: string,
   filename: string,
 ): Promise<boolean> {
-  const files = await listBackendFolder(baseUrl, folder);
-  if (!files) return false;
-
   const target = basename(filename);
-  return files.some((f) => basename(f) === target);
+  const files = await listBackendFolder(baseUrl, folder);
+  if (files?.some((f) => basename(f) === target)) return true;
+  // A file an older agent or ComfyUI-Manager put in `unet/` or `clip/` is still
+  // read by ComfyUI, which merges those into diffusion_models / text_encoders —
+  // but only `/api/models/<new name>` reports the merged list on some versions
+  // and only the old name on others. Ask both before calling it missing.
+  const legacy = LEGACY_ALIAS[folder];
+  if (!legacy) return false;
+  const old = await listBackendFolder(baseUrl, legacy);
+  return old?.some((f) => basename(f) === target) ?? false;
 }
+
+const LEGACY_ALIAS: Readonly<Record<string, string>> = { diffusion_models: 'unet', text_encoders: 'clip' };
 
 /**
  * The files in one of ComfyUI's model folders, or `null` when the folder does

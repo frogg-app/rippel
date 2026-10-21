@@ -4,7 +4,7 @@ import { z } from 'zod';
 import type { ModelType } from '@comfy/shared';
 import { queryOne } from '../db.js';
 import { objectInfoFor, clearObjectInfoCache } from '../orchestrator/preflight.js';
-import { folderOfInstalled } from '../workflows/folders.js';
+import { folderOfInstalled, foldersOfInstalled } from '../workflows/folders.js';
 import { findTemplateById } from '../workflows/registry.js';
 import { buildFixPlan } from './fix-plan.js';
 import { runnabilityFor } from './runnability.js';
@@ -37,7 +37,7 @@ export default async function fixRoutes(app: FastifyInstance) {
     clearObjectInfoCache(backend.base_url);
     const info = await objectInfoFor(backend.base_url);
     const verdict = runnabilityFor({ filename: model.filename, type: model.type, catalogueBase: model.base_model,
-      folder: folderOfInstalled(info,model.filename), info, backendId: backend.id, backendName: backend.name, installed: true });
+      folder: folderOfInstalled(info,model.filename), alsoIn: foldersOfInstalled(info,model.filename), info, backendId: backend.id, backendName: backend.name, installed: true });
     const template = verdict.templateId ? findTemplateById(verdict.templateId) : undefined;
     if (!template) return reply.code(422).send({ message: 'No workflow can fix this model. Choose one from the workflow library.' });
     const plan = await buildFixPlan({ template, filename: model.filename, info });

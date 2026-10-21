@@ -1,5 +1,6 @@
 import type { JobKind, ModelCatalogEntry } from '@comfy/shared';
 import { declaredBaseModels } from './metadata-sources.js';
+import { normaliseTags } from './tags.js';
 import { z } from 'zod';
 import { query, queryOne } from '../db.js';
 const tasks: Record<string, JobKind> = { 'text-to-image': 'txt2img', 'image-to-image': 'img2img', 'text-to-video': 'txt2vid', 'image-to-video': 'img2vid' };
@@ -22,13 +23,32 @@ export function huggingFaceEntry(value: unknown): ModelCatalogEntry | null {
     : 'A compatible workflow and its exact model files are needed before this can be installed.';
   return { ref: `hugging-face:${model.id}`, name: model.id, filename: model.id.split('/')[1]!,
     type, base: baseModels.length === 1 ? baseModels[0]! : 'Hugging Face', description: model.cardData?.description?.slice(0,600) ?? null,
-    size: null, url: `https://huggingface.co/${model.id}`, reference: `https://huggingface.co/${model.id}`, savePath: '',
+    size: null, url: `https://huggingface.co/${model.id}`, reference: `https://huggingface.co/${model.id}`, savePath: huggingFaceSavePath(type, model.id, tags, baseModels),
     installed: false, installBlockedReason: blocked,
-    info: { baseModels, tags: tags.slice(0,50), previewUrl: null, previewFullUrl: null, previewFrom: null, previewBorrowedFrom: null,
+    info: { baseModels, tags: normaliseTags(tags, { pipelineTag: model.pipeline_tag ?? null, license: model.tags?.find(tag => tag.startsWith('license:'))?.slice(8) ?? null, baseModels }), previewUrl: null, previewFullUrl: null, previewFrom: null, previewBorrowedFrom: null,
       license: model.tags?.find(tag => tag.startsWith('license:'))?.slice(8) ?? null, downloads: model.downloads ?? null, likes: null, pipelineTag: model.pipeline_tag ?? null, referenceUrl: `https://huggingface.co/${model.id}` },
     runnability: { status: type === 'checkpoint' ? 'unknown' : 'support', family: null, capabilities: task ? [task] : [],
       summary: 'Compatibility not checked', detail: 'Listed on Hugging Face; a supported local workflow has not been verified.', missing: [], backendId: null } };
 }
+/**
+ * Where a Hugging Face model's main file goes. Hugging Face says nothing about
+ * ComfyUI folders, and treating every repo as a classic all-in-one checkpoint
+ * judged FLUX, Qwen-Image, Wan and every GGUF build against `checkpoints/` —
+ * where their loaders never look. Those families ship the diffusion model on
+ * its own (the text encoder and decoder are separate files), so they belong
+ * in `diffusion_models/`. Anything unrecognised stays a checkpoint, which is
+ * still the right answer for the SD 1.5 / SDXL fine-tunes that are most of
+ * the list.
+ */
+export function huggingFaceSavePath(type: string, id: string, tags: readonly string[], baseModels: readonly string[]): string {
+  if (type !== 'checkpoint') return '';
+  if (tags.includes('gguf')) return 'diffusion_models';
+  const names = [id, ...baseModels].join(' ').toLowerCase();
+  return DIFFUSION_MODEL_FAMILIES.test(names) ? 'diffusion_models' : '';
+}
+
+const DIFFUSION_MODEL_FAMILIES = /flux|qwen[-_]?image|\bwan[-_]?2|hunyuan|z[-_]?image|hidream|cosmos|ltx[-_]?2|chroma|lumina|omnigen/;
+
 export async function cachedHuggingFaceModels(): Promise<ModelCatalogEntry[]> {
   const row = await queryOne<{ entries: ModelCatalogEntry[] }>("SELECT entries FROM external_model_catalogues WHERE source='hugging-face'");
   return row?.entries ?? [];

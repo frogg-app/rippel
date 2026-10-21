@@ -3,7 +3,7 @@
 import type { ModelCatalogEntry, AgentTask } from '@comfy/shared';
 import { query, queryOne } from '../../db.js';
 import { agentClient, type AgentTarget } from '../../deploy/agent-client.js';
-import { folderForType } from '../../workflows/folders.js';
+import { canonicalModelDir } from '../../workflows/folders.js';
 import { workflowCatalogue } from '../workflow-catalogue.js';
 import { verifiedFile } from '../download-metadata.js';
 import { getOperation, planOperation, startOperation } from '../operations.js';
@@ -18,9 +18,12 @@ const folders = new Set(['checkpoints', 'loras', 'vae', 'controlnet', 'upscale_m
 /** Normalize legacy folder aliases, while refusing paths outside model roots. */
 export function agentModelPath(entry: Pick<ModelCatalogEntry, 'savePath' | 'filename' | 'type'>): string | null {
   if (/[\\/]/.test(entry.filename)) return null;
-  let folder = entry.savePath === 'default' ? folderForType(entry.type) : entry.savePath;
+  // Checked on the raw save path, before canonicalModelDir tidies it: a
+  // leading separator or a `.` segment means somebody is reaching outside the
+  // models root, and a tidied `/checkpoints` would look like an innocent one.
+  if (/^[\\/]/.test(entry.savePath) || entry.savePath.split(/[\\/]/).some((seg) => seg === '.' || seg === '..')) return null;
+  const folder = canonicalModelDir(entry.savePath, entry.type);
   if (!folder) return null;
-  folder = folder.replace(/\\/g, '/').replace(/^unet(?=\/|$)/, 'diffusion_models').replace(/^clip(?=\/|$)/, 'text_encoders');
   const path = `${folder}/${entry.filename}`;
   const parts = path.split('/');
   if (!folders.has(parts[0]!) || parts.some(p => !p || p === '.' || p === '..' || /[:\\\x00-\x1f]/.test(p))) return null;
