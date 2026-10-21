@@ -27,7 +27,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { ModelCatalogEntry } from '@comfy/shared';
-import { SUPPORT_ROLES, TYPE_LABELS, formatCount, generates } from './catalogue';
+import { SUPPORT_ROLES, formatCount, generates } from './catalogue';
+import { expertFor } from './vocabulary';
 import { DRAWER_TAG_ORDER, entryTags, tagKey, type TagKey } from './discover';
 import {
   CardVerdict,
@@ -106,7 +107,9 @@ export function CatalogueDrawer({
           onError={() => setImageBroken(true)}
         />
       ) : null}
-      <span className={styles.drawerType}>{TYPE_LABELS[entry.type]}</span>
+      <span className={styles.drawerType} title={expertFor(entry.type, entry.filename)}>
+        {SUPPORT_ROLES[entry.type].noun}
+      </span>
       {full ? (
         <span className={styles.drawerExpand} aria-hidden>
           <ExpandIcon size={13} />
@@ -202,7 +205,7 @@ export function CatalogueDrawer({
 
           <dl className={styles.drawerFacts}>
             <dt>Type</dt>
-            <dd>{isSupport ? `${role.noun} (${TYPE_LABELS[entry.type]})` : TYPE_LABELS[entry.type]}</dd>
+            <dd>{`${role.noun} (${expertFor(entry.type, entry.filename)})`}</dd>
             <dt>Family</dt>
             <dd>{entry.base}</dd>
             <dt>File</dt>

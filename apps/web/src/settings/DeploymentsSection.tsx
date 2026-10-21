@@ -501,15 +501,15 @@ function DeploymentCard({
             </button>
           </div>
           <div className={styles.computeSetting}>
-            <label className={styles.memoryLabel} htmlFor={`vae-${deployment.id}`} title="Run VAE encoding and decoding on the backend GPU. Turn off to use that backend’s CPU.">
+            <label className={styles.memoryLabel} htmlFor={`vae-${deployment.id}`} title="Run the image decoder (VAE) on the backend’s graphics card. Turn off to use its processor (CPU) instead.">
               <input id={`vae-${deployment.id}`} type="checkbox" checked={vaeOnGpu}
                 disabled={typeof comfy.vaeOnGpu !== 'boolean' || !online || busy !== null}
-                onChange={event => setVaeOnGpu(event.target.checked)} /> Run VAE on GPU
+                onChange={event => setVaeOnGpu(event.target.checked)} /> Decode images on the GPU (VAE)
             </label>
-            <p className={styles.memoryNote}>{typeof comfy.vaeOnGpu === 'boolean' ? 'On by default · CPU when off' : 'Update the agent to choose where the VAE runs.'}</p>
+            <p className={styles.memoryNote}>{typeof comfy.vaeOnGpu === 'boolean' ? 'On by default · CPU when off' : 'Update the agent to choose where images are decoded.'}</p>
             <button className={shared.action} type="button" onClick={() => void applyVAE()}
               disabled={typeof comfy.vaeOnGpu !== 'boolean' || !online || busy !== null || vaeOnGpu === comfy.vaeOnGpu}>
-              {busy === 'apply VAE settings' ? 'Applying…' : comfy.running ? 'Apply VAE and restart' : 'Apply VAE'}
+              {busy === 'apply VAE settings' ? 'Applying…' : comfy.running ? 'Apply decoder setting and restart' : 'Apply decoder setting'}
             </button>
           </div>
           {busy === 'apply memory settings' || busy === 'apply VAE settings' ? <div className={shared.loading} role="status"><Mark size={16} ripple="loop" />Applying backend settings…</div> : null}
@@ -1226,7 +1226,7 @@ function InstallInstructionsPanel({ api, deployment, method }: { api: Deployment
           ))}
         </div>
 
-        <PairingPanel api={api} deployment={deployment} platform={platform} />
+        <PairingPanel api={api} deployment={deployment} platform={platform === 'unknown' ? 'linux' : platform} />
 
         {plaintextToPublicHost(data.serverUrl) ? (
           <p className={styles.warn}>

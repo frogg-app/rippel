@@ -282,7 +282,7 @@ describe('ModelsPage', () => {
       expect(screen.queryByRole('article', { name: 'RealESRGAN x2' })).not.toBeInTheDocument();
 
       await user.clear(search);
-      await user.click(screen.getByRole('button', { name: /^VAE/ }));
+      await user.click(screen.getByRole('button', { name: /^Image decoders/ }));
       await waitFor(() =>
         expect(screen.getByRole('article', { name: 'FLUX VAE' })).toBeInTheDocument(),
       );
@@ -290,7 +290,7 @@ describe('ModelsPage', () => {
 
       // An installed entry is marked and has no install button: the API
       // answers 409 to a re-install, so offering the click would be a lie.
-      await user.click(screen.getByRole('button', { name: /^Checkpoint/ }));
+      await user.click(screen.getByRole('button', { name: /^Models\b/ }));
       const installed = await screen.findByRole('article', { name: 'SDXL Base 1.0' });
       expect(within(installed).getByText('Installed')).toBeInTheDocument();
       expect(within(installed).queryByRole('button', { name: /Install/ })).not.toBeInTheDocument();
@@ -468,7 +468,7 @@ describe('ModelsPage', () => {
       await ready();
 
       expect(await screen.findByText('LTX-Video 2B')).toBeInTheDocument();
-      expect(screen.getByText('Needs another model')).toBeInTheDocument();
+      expect(screen.getByText('Needs one more file')).toBeInTheDocument();
       // The API's own sentence, naming the file to go and get.
       expect(screen.getByText(/t5xxl_fp16\.safetensors/)).toBeInTheDocument();
     });
@@ -506,7 +506,7 @@ describe('ModelsPage', () => {
       await ready();
       await openTab(/Discover/);
 
-      const checkpoint = await screen.findByRole('button', { name: /^Checkpoint/ });
+      const checkpoint = await screen.findByRole('button', { name: /^Models\b/ });
       expect(checkpoint).toHaveAttribute('aria-pressed', 'true');
       const all = screen.getByRole('button', { name: /All types/ });
       expect(all).toHaveAttribute('aria-pressed', 'false');
@@ -538,14 +538,14 @@ describe('ModelsPage', () => {
 
       // Checkpoint is selected, and the other chips still report real numbers
       // rather than collapsing to zero.
-      const loras = countOf(/^LoRA/);
+      const loras = countOf(/^Style add-ons/);
       expect(loras).toBeGreaterThan(0);
       expect(countOf(/All types/)).toBe(100);
 
       // Selecting a different type changes no chip's count: they are all
       // measured against the same population.
-      await user.click(within(row).getByRole('button', { name: /^LoRA/ }));
-      expect(countOf(/^LoRA/)).toBe(loras);
+      await user.click(within(row).getByRole('button', { name: /^Style add-ons/ }));
+      expect(countOf(/^Style add-ons/)).toBe(loras);
       expect(countOf(/All types/)).toBe(100);
 
       // A search narrows every chip together, so they stay in agreement.
@@ -564,13 +564,13 @@ describe('ModelsPage', () => {
 
       const card = await screen.findByRole('article', { name: 'Cinematic Film Look' });
       // Plain words on the badge, and the jargon nowhere near it.
-      const badge = within(card).getByRole('button', { name: 'EXTRA STYLE' });
+      const badge = within(card).getByRole('button', { name: 'STYLE ADD-ON' });
       // The sentence is a real element the badge points at, so a screen reader
       // reads it with the badge rather than it being a mouse-only `title`.
       const description = document.getElementById(badge.getAttribute('aria-describedby')!);
       expect(description).toHaveTextContent(/You cannot generate with this on its own/);
-      expect(description).toHaveTextContent(/Extra styles, on the Create screen/);
-      expect(description).toHaveTextContent(/Technically a LoRA/);
+      expect(description).toHaveTextContent(/Style add-ons, on the Create screen/);
+      expect(description).toHaveTextContent(/Style add-on · LoRA/);
     });
   });
 
@@ -822,8 +822,8 @@ describe('ModelsPage', () => {
       const sheet = await screen.findByRole('dialog', { name: 'Workflows for LTX-Video 2B' });
       expect(within(sheet).getByText('Text to video (LTX-Video, diffusion_models)')).toBeInTheDocument();
       // The two graphs disagree about the same file, and both verdicts show.
-      expect(within(sheet).getByText('Wrong folder')).toBeInTheDocument();
-      expect(within(sheet).getByText('Needs another model')).toBeInTheDocument();
+      expect(within(sheet).getByText('Installed in the wrong place')).toBeInTheDocument();
+      expect(within(sheet).getByText('Needs one more file')).toBeInTheDocument();
       expect(within(sheet).getByText('automatic')).toBeInTheDocument();
       expect(
         within(sheet).getByText(
@@ -966,8 +966,8 @@ describe('ModelsPage', () => {
 
       const sheet = await screen.findByRole('dialog', { name: 'About Hyper SD15 1step LoRA' });
       // Plain words about what it is and where it is used — not "LoRA" alone.
-      expect(within(sheet).getByText('Extra style')).toBeInTheDocument();
-      expect(within(sheet).getByText(/Extra styles, on the Create screen/)).toBeInTheDocument();
+      expect(within(sheet).getByText('Style add-on')).toBeInTheDocument();
+      expect(within(sheet).getByText(/Style add-ons, on the Create screen/)).toBeInTheDocument();
       expect(within(sheet).getByText(/There is no workflow to choose here/)).toBeInTheDocument();
       // No selectable list, and nothing was ever assigned.
       expect(within(sheet).queryByRole('radio')).not.toBeInTheDocument();

@@ -112,6 +112,24 @@ describe('a failed job leads with what it means', () => {
   });
 });
 
+describe('raw ComfyUI validation text', () => {
+  const RAW = "Prompt outputs failed validation: UNETLoader: value_not_in_list: unet_name: 'wan2.1_t2v.safetensors' not in []";
+
+  it('reads as a missing file for an unclassified job, with the raw words kept', () => {
+    paint(failedJob(null, RAW));
+    expect(screen.getByText('A file is missing')).toBeInTheDocument();
+    expect(screen.getByText(/The model file isn't on this machine \(wan2\.1_t2v\.safetensors\)/)).toBeInTheDocument();
+    expect(screen.getByText('What the machine said')).toBeInTheDocument();
+    expect(screen.getByText(RAW)).toBeInTheDocument();
+  });
+
+  it('overrides a bad-value verdict that is really a missing file', () => {
+    paint(failedJob({ kind: 'bad-value', summary: 'The backend refused a value.', steps: [], detail: RAW }, RAW));
+    expect(screen.getByText('A file is missing')).toBeInTheDocument();
+    expect(screen.queryByText('The backend refused a value.')).not.toBeInTheDocument();
+  });
+});
+
 describe('the fit warning', () => {
   const running: Job = { ...failedJob(null, ''), status: 'running', error: null, failure: null };
 

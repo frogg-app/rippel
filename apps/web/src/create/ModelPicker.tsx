@@ -32,6 +32,7 @@ import { modeOfKind } from './form';
 import type { ReadinessMap } from './useReadiness';
 import { type ModelEntry, type Partition, partitionModels } from './visibility';
 import { modelWash } from './modelArt';
+import { NOT_SUPPORTED } from './modelReasons';
 import styles from './modelPicker.module.css';
 
 export function ModelPicker({
@@ -196,7 +197,7 @@ export function ModelPicker({
           <span>
             <strong className={styles.noteStrong}>{explainedEntry?.model.displayName}</strong>{' '}
             {explainedReason.detail}
-            {explainedReason.badge === 'No template' && <><span> Text to video starts from a prompt; image to video requires a starting image. </span><a className={styles.link} href="/models?workflows=1">Find compatible workflows</a></>}
+            {explainedReason.badge === NOT_SUPPORTED && <><span> Text to video starts from a prompt; image to video requires a starting image. </span><a className={styles.link} href="/models?workflows=1">Find compatible workflows</a></>}
             {explainedReason.steps.length > 0 ? (
               <> {explainedReason.steps.join(' ')}</>
             ) : null}
@@ -305,10 +306,10 @@ function EmptyState({
         ) : hidden > 0 ? (
           <>
             No {KIND_NOUN[mode]} models are installed. {hidden}{' '}
-            {hidden === 1 ? 'checkpoint is' : 'checkpoints are'} hidden because nothing here knows
-            how to build a graph for {hidden === 1 ? 'it' : 'them'}.{' '}
+            {hidden === 1 ? 'model is' : 'models are'} hidden because rippel doesn’t know how to
+            run {hidden === 1 ? 'it' : 'them'} yet. The Models page shows what each one needs.{' '}
             <a className={styles.link} href="/models">
-              Manage models
+              Open Models
             </a>
           </>
         ) : (
@@ -389,10 +390,10 @@ export function blockedReason(
 
   void capabilities;
   return {
-    badge: 'No template',
+    badge: NOT_SUPPORTED,
     detail:
       answer?.summary ??
-      `has no workflow template yet — nothing here knows how to build a graph for ${family}.`,
+      `isn't supported yet — rippel has no recipe (workflow) for ${family} models.`,
     steps: [],
     switchTo: null,
   };

@@ -37,7 +37,7 @@
  */
 import { useId } from 'react';
 import type { ModelType } from '@comfy/shared';
-import { RUN_FILTER_LABELS, TYPE_LABELS, type RunFilter } from './catalogue';
+import { EXPERT_LABELS, RUN_FILTER_LABELS, TYPE_LABELS, type RunFilter } from './catalogue';
 import { ChevronIcon, SearchIcon } from './icons';
 import { Dropdown } from '../components/Dropdown';
 import styles from './ModelsPanels.module.css';
@@ -154,6 +154,7 @@ export function FilterBar({
             type="button"
             className={`${styles.chip} ${activeType === type ? styles.chipOn : ''}`}
             aria-pressed={activeType === type}
+            title={EXPERT_LABELS[type]}
             onClick={() => onType(activeType === type ? null : type)}
           >
             {TYPE_LABELS[type]}

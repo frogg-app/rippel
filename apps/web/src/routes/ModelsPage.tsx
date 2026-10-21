@@ -77,6 +77,7 @@ import {
   type TagKey,
 } from '../models/discover';
 import { FacetRail } from '../models/FacetRail';
+import { ModelKinds } from '../models/ModelKinds';
 import { TagSearch } from '../models/TagSearch';
 import { useCatalogue } from '../models/useCatalogue';
 import { HostApproval } from '../models/HostApproval';
@@ -464,6 +465,7 @@ export function ModelsPage({ api = modelsApi, storageApi: storage = storageApi }
           </div>
         ) : tab === 'installed' ? (
           <>
+            <ModelKinds />
             <FilterBar
               q={installedQ}
               onQ={setInstalledQ}
@@ -556,6 +558,7 @@ export function ModelsPage({ api = modelsApi, storageApi: storage = storageApi }
             ) : null}
 
             <div className={styles.scroller}>
+              <ModelKinds />
               {entries.length > 0 ? (
                 <div className={panels.discoverHead}>
                   <TagSearch

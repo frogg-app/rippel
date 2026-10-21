@@ -1,8 +1,8 @@
 /**
  * The badge on a card's artwork, and the sentence behind it.
  *
- * The badge says what kind of file this is in plain words — "MODEL", "EXTRA
- * STYLE" — and the two-band split above it says which half of the screen that
+ * The badge says what kind of file this is in plain words — "MODEL", "STYLE
+ * ADD-ON" — and the two-band split above it says which half of the screen that
  * puts it in. Neither answers the question somebody actually has when the
  * bands are not both on screen, which is *why* a LoRA is in the other band. So
  * the badge explains itself.
@@ -21,7 +21,8 @@
  */
 import { useId, useState } from 'react';
 import type { ModelType } from '@comfy/shared';
-import { SUPPORT_ROLES, TYPE_LABELS, generates } from './catalogue';
+import { SUPPORT_ROLES, generates } from './catalogue';
+import { nameWithExpert } from './vocabulary';
 import styles from './ModelsPanels.module.css';
 
 export interface TypeBadgeProps {
@@ -34,8 +35,8 @@ export interface TypeBadgeProps {
 export function typeExplanation(type: ModelType): string {
   const role = SUPPORT_ROLES[type];
   return generates(type)
-    ? `${role.what} ${role.where} Technically a ${TYPE_LABELS[type]}.`
-    : `You cannot generate with this on its own. ${role.what} ${role.where} Technically a ${TYPE_LABELS[type]}.`;
+    ? `${role.what} ${role.where} (${nameWithExpert(type)})`
+    : `You cannot generate with this on its own. ${role.what} ${role.where} (${nameWithExpert(type)})`;
 }
 
 export function TypeBadge({ type, className = '' }: TypeBadgeProps) {

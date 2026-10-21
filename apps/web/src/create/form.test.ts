@@ -161,7 +161,7 @@ describe('checkSubmittable', () => {
 
   it('refuses a model whose family has no template, rather than letting it 501', () => {
     expect(checkSubmittable(form(), { ...ok, modelSupported: false }).reason).toMatch(
-      /no workflow template/i,
+      /isn’t supported yet/i,
     );
   });
 

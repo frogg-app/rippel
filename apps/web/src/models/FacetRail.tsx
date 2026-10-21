@@ -18,7 +18,7 @@
  */
 import { useState } from 'react';
 import type { ModelTagGroup, ModelType } from '@comfy/shared';
-import { TYPE_LABELS } from './catalogue';
+import { EXPERT_LABELS, TYPE_LABELS } from './catalogue';
 import { RAIL_TAG_ORDER, TAG_GROUP_ICON, TAG_GROUP_LABEL, facetRows, type TagKey } from './discover';
 import styles from './ModelsPanels.module.css';
 
@@ -58,6 +58,7 @@ export function FacetRail({
             type="button"
             className={`${styles.facetRow} ${activeType === type ? styles.facetRowOn : ''}`}
             aria-pressed={activeType === type}
+            title={EXPERT_LABELS[type]}
             onClick={() => onType(activeType === type ? null : type)}
           >
             <span className={styles.facetValue}>{TYPE_LABELS[type]}</span>

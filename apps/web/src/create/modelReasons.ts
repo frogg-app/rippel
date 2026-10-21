@@ -33,6 +33,12 @@ export interface BlockedReason {
 }
 
 /**
+ * The badge for a model nothing here can run yet. It used to say "No template",
+ * which is ComfyUI's word for the thing that is missing, not the person's.
+ */
+export const NOT_SUPPORTED = 'Not supported yet';
+
+/**
  * Why this model cannot run this job — the specific answer, not the count.
  *
  * The states that reach a *visible* tile are the fixable ones: the backend is
@@ -80,10 +86,10 @@ export function blockedReason(
   }
 
   return {
-    badge: 'No template',
+    badge: NOT_SUPPORTED,
     detail:
       answer?.summary ??
-      `has no workflow template yet — nothing here knows how to build a graph for ${family}.`,
+      `isn't supported yet — rippel has no recipe (workflow) for ${family} models.`,
     steps: [],
     switchTo: null,
   };

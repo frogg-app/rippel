@@ -28,6 +28,7 @@ import {
   KIND_HEADINGS,
   SUPPORT_ROLES,
   TYPE_LABELS,
+  EXPERT_LABELS,
   generates,
   groupInstalledByType,
   splitByKind,
@@ -103,16 +104,14 @@ export function InstalledList({
                   >
                     <header className={styles.groupHead}>
                       <h3 className={styles.groupType}>
-                        {generates(group.type) ? TYPE_LABELS[group.type] : role.noun}
+                        {TYPE_LABELS[group.type]}
                       </h3>
-                      {!generates(group.type) ? (
-                        <span
-                          className={styles.groupJargon}
-                          title={`Known technically as a ${TYPE_LABELS[group.type]}`}
-                        >
-                          {TYPE_LABELS[group.type]}
-                        </span>
-                      ) : null}
+                      <span
+                        className={styles.groupJargon}
+                        title={`The ComfyUI term: ${EXPERT_LABELS[group.type]}`}
+                      >
+                        {EXPERT_LABELS[group.type]}
+                      </span>
                       <span className={`mono ${styles.groupCount}`}>{group.models.length}</span>
                     </header>
 
