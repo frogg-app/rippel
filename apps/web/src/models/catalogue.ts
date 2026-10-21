@@ -8,6 +8,7 @@
  * before they are rendered.
  */
 import { familyDisplayName } from '../lib/family';
+import { entryKeys, matchesTags, splitKey, type TagKey } from './discover';
 import type {
   Model,
   ModelCatalogEntry,
@@ -404,6 +405,10 @@ export interface CatalogueFilters {
   run: RunFilter;
   /** Generators, support files, or both. Absent means both. */
   kind?: KindFilter;
+  /** Tag keys every result must carry (`task:text-to-image`). See discover.ts. */
+  include?: readonly TagKey[];
+  /** Tag keys no result may carry. */
+  exclude?: readonly TagKey[];
 }
 
 export const EMPTY_CATALOGUE_FILTERS: CatalogueFilters = {
@@ -420,7 +425,9 @@ export function hasCatalogueFilter(filters: CatalogueFilters): boolean {
       filters.base ||
       filters.q.trim() ||
       filters.run !== 'all' ||
-      (filters.kind ?? 'all') !== 'all',
+      (filters.kind ?? 'all') !== 'all' ||
+      (filters.include?.length ?? 0) > 0 ||
+      (filters.exclude?.length ?? 0) > 0,
   );
 }
 
@@ -429,7 +436,9 @@ export function hasCatalogueFilter(filters: CatalogueFilters): boolean {
  *
  * Text matches name, filename and description — the description is where a
  * catalogue hides the words an operator actually searches for ("inpainting",
- * "fp8"), and leaving it out makes the search feel broken.
+ * "fp8"), and leaving it out makes the search feel broken — and, since tags,
+ * any tag value too: "anime" typed as a word finds the cards tagged anime,
+ * without anyone having to know that a `tag:` prefix exists.
  */
 export function filterCatalogue(
   entries: ModelCatalogEntry[],
@@ -441,11 +450,15 @@ export function filterCatalogue(
     if (filters.type && entry.type !== filters.type) return false;
     if (filters.base && entry.base !== filters.base) return false;
     if (!matchesRunFilter(entry.runnability, filters.run)) return false;
+    const tagged = filters.include?.length || filters.exclude?.length || q;
+    const keys = tagged ? entryKeys(entry) : null;
+    if (keys && !matchesTags(keys, filters.include ?? [], filters.exclude ?? [])) return false;
     if (!q) return true;
     return (
       entry.name.toLowerCase().includes(q) ||
       entry.filename.toLowerCase().includes(q) ||
-      (entry.description?.toLowerCase().includes(q) ?? false)
+      (entry.description?.toLowerCase().includes(q) ?? false) ||
+      [...keys!].some((key) => splitKey(key).value.includes(q))
     );
   });
 }
