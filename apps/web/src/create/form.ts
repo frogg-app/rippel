@@ -164,6 +164,27 @@ export function videoFrameBounds(limits: WorkflowVideoLimits) {
   };
 }
 
+/** "6 seconds", "2.5 seconds" — a frame count as a length, rounded down so it never overpromises. */
+export function clipSeconds(frames: number, fps: number): string {
+  const value = Math.floor((frames / fps) * 10) / 10;
+  return `${value} ${value === 1 ? 'second' : 'seconds'}`;
+}
+
+/**
+ * The duration slider's hint, as a promise about this model rather than a
+ * rule about frames: "This model can make clips up to 6 seconds". The limit
+ * is really a frame count, so the longest clip depends on the frame rate; the
+ * trade is mentioned only when a lower rate is actually on offer.
+ */
+export function clipLimitHint(maxFrames: number, fps: number, minFps: number): string {
+  const longest = `This model can make clips up to ${clipSeconds(maxFrames, fps)} at ${fps} fps.`;
+  const slower =
+    fps > minFps
+      ? ` A lower frame rate stretches that to ${clipSeconds(maxFrames, minFps)}, with choppier motion.`
+      : '';
+  return `${longest}${slower} Longer clips take more time and memory.`;
+}
+
 /** Reconcile the controls when the user changes model or frame rate.
  * Request validation still rejects out-of-range values on the server. */
 export function fitVideoState(video: VideoState, limits: WorkflowVideoLimits): VideoState {

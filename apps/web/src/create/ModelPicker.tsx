@@ -18,6 +18,12 @@
  * is merely not-yet-possible stays on screen, blocked, carrying the remedy the
  * readiness endpoint gave us. An empty grid always says why it is empty.
  *
+ * Each tile leads with what the model is *for* — the family's everyday name
+ * and a one-line "good for" from `families.ts` — and keeps the model's own
+ * name underneath, quietly. Somebody choosing for the first time chooses by
+ * the first line; somebody with three SDXL merges tells them apart by the
+ * last.
+ *
  * Blocked tiles use `aria-disabled` rather than `disabled`, deliberately. A
  * `disabled` button takes no focus, fires no events and shows no `title`
  * tooltip, so the explanation for why you cannot pick it is unreachable by
@@ -25,14 +31,24 @@
  */
 import { useEffect, useState } from 'react';
 import type { JobKind, Model } from '@comfy/shared';
-import { type CapabilityMap, isFallbackFamily } from '../lib/api-jobs';
+import { ApiRequestError } from '../lib/api';
+import { type CapabilityMap, isFallbackFamily, readinessApi } from '../lib/api-jobs';
 import { WarningIcon } from './icons';
 import type { CreateMode } from './mode';
 import { modeOfKind } from './form';
 import type { ReadinessMap } from './useReadiness';
-import { type ModelEntry, type Partition, partitionModels } from './visibility';
+import { type Partition, partitionModels } from './visibility';
 import { modelWash } from './modelArt';
-import { NOT_SUPPORTED } from './modelReasons';
+import { familyHint, familyWords } from './families';
+import { findModelsHref } from './discoverLinks';
+import {
+  type BlockedReason,
+  KIND_NOUN,
+  NOT_SUPPORTED,
+  blockedReason,
+  listNames,
+  missingSentence,
+} from './modelReasons';
 import styles from './modelPicker.module.css';
 
 export function ModelPicker({
@@ -93,14 +109,7 @@ export function ModelPicker({
   }
 
   if (models.length === 0) {
-    return (
-      <p className={styles.note}>
-        <span>
-          No models are available on an online backend. Start a backend with models
-          installed, or <a className={styles.link} href="/models">manage models</a> to install one.
-        </span>
-      </p>
-    );
+    return <FirstRun mode={mode} />;
   }
 
   const otherMode: CreateMode = mode === 'image' ? 'video' : 'image';
@@ -112,7 +121,7 @@ export function ModelPicker({
     [...listed, ...partition.hidden].find((entry) => entry.model.id === explainedId) ?? null;
   const explainedReason =
     explainedEntry && !explainedEntry.runnable
-      ? blockedReason(explainedEntry, kind, capabilities, readiness)
+      ? blockedReason(explainedEntry, kind, readiness)
       : null;
 
   return (
@@ -120,16 +129,15 @@ export function ModelPicker({
       {/* Keyed by mode: the grid re-enters, tiles staggering in, when the
           toggle flips. */}
       {shown.length > 0 ? (
-        <div className={styles.gridHold}>
         <div key={mode} className={styles.grid} role="radiogroup" aria-label="Model">
           {shown.map((entry, index) => {
             const model = entry.model;
             const supported = entry.runnable;
             const selected = model.id === value;
-            const reason = supported
-              ? null
-              : blockedReason(entry, kind, capabilities, readiness);
+            const reason = supported ? null : blockedReason(entry, kind, readiness);
             const generic = entry.runnable && isFallbackFamily(model, capabilities);
+            const family = familyWords(model.baseModel);
+            const hint = familyHint(model.baseModel);
 
             return (
               <button
@@ -141,9 +149,7 @@ export function ModelPicker({
                 title={
                   reason
                     ? `${model.displayName}: ${reason.detail}`
-                    : generic
-                      ? `${model.displayName} · ${model.baseModel ?? 'unknown family'} · generic workflow`
-                      : `${model.displayName} · ${model.baseModel ?? 'unknown family'}`
+                    : `${family.label} · ${model.filename}${generic ? ' · generic workflow' : ''}`
                 }
                 className={[
                   styles.tile,
@@ -153,7 +159,7 @@ export function ModelPicker({
                 ]
                   .filter(Boolean)
                   .join(' ')}
-                style={{ ...modelWash(model), '--i': index } as React.CSSProperties}
+                style={{ '--i': index } as React.CSSProperties}
                 onClick={() => {
                   if (supported) {
                     setExplainedId(null);
@@ -164,11 +170,17 @@ export function ModelPicker({
                   }
                 }}
               >
-                {model.previewUrl ? (
-                  <img className={styles.art} src={model.previewUrl} alt="" loading="lazy" />
-                ) : null}
-                <span className={styles.name}>{model.displayName}</span>
-                {reason ? <span className={styles.badge}>{reason.badge}</span> : null}
+                <span className={styles.tileArt} style={modelWash(model)}>
+                  {model.previewUrl ? (
+                    <img className={styles.art} src={model.previewUrl} alt="" loading="lazy" />
+                  ) : null}
+                </span>
+                <span className={styles.tileMeta}>
+                  <span className={styles.tileFamily}>{family.label}</span>
+                  {hint ? <span className={styles.tileHint}>{hint}</span> : null}
+                  <span className={styles.tileName}>{model.displayName}</span>
+                  {reason ? <span className={styles.badge}>{reason.badge}</span> : null}
+                </span>
                 {/* A generic template will probably work and may look wrong; say
                     so quietly rather than either hiding it or blocking it. */}
                 {generic ? <span className={styles.badgeSoft}>generic</span> : null}
@@ -176,87 +188,216 @@ export function ModelPicker({
             );
           })}
         </div>
-        </div>
       ) : null}
 
       <div className={styles.notes}>
-      {/* Nothing to draw. An empty grid with no words is worse than the greyed
-          tiles it replaced, so this always says what happened and what would
-          change it. */}
-      {listed.length === 0 && !partition.pending ? <EmptyState
-        mode={mode}
-        otherMode={otherMode}
-        partition={partition}
-        onModeChange={onModeChange}
-      /> : null}
+        {/* Nothing to draw. An empty grid with no words is worse than the greyed
+            tiles it replaced, so this always says what happened and what would
+            change it. */}
+        {listed.length === 0 && !partition.pending ? (
+          <EmptyState
+            mode={mode}
+            otherMode={otherMode}
+            partition={partition}
+            onModeChange={onModeChange}
+          />
+        ) : null}
 
-      {/* The tile the user just pressed, answered in full. */}
-      {explainedReason ? (
-        <p className={styles.note} role="status">
-          <WarningIcon size={12} className={styles.noteIcon} />
-          <span>
-            <strong className={styles.noteStrong}>{explainedEntry?.model.displayName}</strong>{' '}
-            {explainedReason.detail}
-            {explainedReason.badge === NOT_SUPPORTED && <><span> Text to video starts from a prompt; image to video requires a starting image. </span><a className={styles.link} href="/models?workflows=1">Find compatible workflows</a></>}
-            {explainedReason.steps.length > 0 ? (
-              <> {explainedReason.steps.join(' ')}</>
-            ) : null}
-            {explainedReason.switchTo && onModeChange ? (
-              <>
-                {' '}
-                <button
-                  type="button"
-                  className={styles.link}
-                  onClick={() => {
+        {/* The tile the user just pressed, answered in full. */}
+        {explainedReason && explainedEntry ? (
+          <Explained
+            model={explainedEntry.model}
+            kind={kind}
+            reason={explainedReason}
+            onModeChange={
+              explainedReason.switchTo && onModeChange
+                ? () => {
                     onModeChange(explainedReason.switchTo!);
                     setExplainedId(null);
-                  }}
-                >
-                  Switch to {explainedReason.switchTo === 'video' ? 'Video' : 'Image'} mode
-                </button>
-              </>
-            ) : null}
-          </span>
-        </p>
-      ) : listed.length > 0 && runnable.length === 0 && !partition.pending ? (
-        <p className={styles.note}>
-          <WarningIcon size={12} className={styles.noteIcon} />
-          <span>
-            {listed.every((entry) => entry.blocked === 'needs-setup') ? (
-              <>
-                The {KIND_NOUN[mode]} models on this machine need setting up before they can run.
-                Press one to see what it needs.
-              </>
-            ) : (
-              <>
-                Nothing here can run a {KIND_NOUN[mode]} job as the form stands. Press a tile to
-                see what it needs.
-              </>
-            )}
-          </span>
-        </p>
-      ) : null}
+                  }
+                : undefined
+            }
+          />
+        ) : listed.length > 0 && runnable.length === 0 && !partition.pending ? (
+          <p className={styles.note}>
+            <WarningIcon size={12} className={styles.noteIcon} />
+            <span>
+              {listed.every((entry) => entry.blocked === 'needs-setup') ? (
+                <>
+                  Your {KIND_NOUN[mode]} models need a file or two before they can run.
+                  Press one to see what, and to get it.
+                </>
+              ) : (
+                <>
+                  Nothing here can make a {KIND_NOUN[mode]} as the form stands. Press a model to
+                  see what it needs.
+                </>
+              )}
+            </span>
+          </p>
+        ) : null}
 
-      {/* The honest count. Hiding a checkpoint the user installed is fine;
-          not saying so is not. */}
-      {hiddenNoTemplate.length > 0 && !partition.pending ? (
-        <p className={styles.note}>
-          <span>
-            {hiddenNoTemplate.length} {hiddenNoTemplate.length === 1 ? 'model' : 'models'} hidden —
-            no workflow for {hiddenNoTemplate.length === 1 ? 'it' : 'them'} yet.{' '}
-            <button
-              type="button"
-              className={styles.link}
-              aria-expanded={revealed}
-              onClick={() => setRevealed((open) => !open)}
-            >
-              {revealed ? 'Hide again' : 'Show anyway'}
-            </button>
-          </span>
-        </p>
-      ) : null}
+        {/* The honest count. Hiding a checkpoint the user installed is fine;
+            not saying so is not. */}
+        {hiddenNoTemplate.length > 0 && !partition.pending ? (
+          <p className={styles.note}>
+            <span>
+              {hiddenNoTemplate.length} {hiddenNoTemplate.length === 1 ? 'model' : 'models'} hidden —
+              rippel doesn’t know how to use {hiddenNoTemplate.length === 1 ? 'it' : 'them'} yet.{' '}
+              <button
+                type="button"
+                className={styles.link}
+                aria-expanded={revealed}
+                onClick={() => setRevealed((open) => !open)}
+              >
+                {revealed ? 'Hide again' : 'Show anyway'}
+              </button>{' '}
+              <a className={styles.link} href="/models">
+                Open Models
+              </a>
+            </span>
+          </p>
+        ) : null}
       </div>
     </>
+  );
+}
+
+/**
+ * The answer to pressing a blocked tile.
+ *
+ * A model waiting on a file says so in one plain sentence and carries the
+ * button that fetches it. The server's own summary ("the T5 text encoder is
+ * not installed") is kept, but second and smaller: it is the line to read out
+ * to whoever does know ComfyUI.
+ */
+function Explained({
+  model,
+  kind,
+  reason,
+  onModeChange,
+}: {
+  model: Model;
+  kind: JobKind;
+  reason: BlockedReason;
+  onModeChange?: () => void;
+}) {
+  const plain = missingSentence(reason.missing);
+  return (
+    <div className={styles.note} role="status">
+      <WarningIcon size={12} className={styles.noteIcon} />
+      <span>
+        {plain ? (
+          <>
+            <strong className={styles.noteStrong}>{plain}</strong>{' '}
+            {reason.installable ? <GetIt model={model} kind={kind} /> : null}
+            <span className={styles.noteExpert}>
+              {' '}
+              {model.displayName} {reason.detail}
+              {reason.steps.length > 0 ? <> {reason.steps.join(' ')}</> : null}
+            </span>
+          </>
+        ) : (
+          <>
+            <strong className={styles.noteStrong}>{model.displayName}</strong> {reason.detail}
+            {reason.badge === NOT_SUPPORTED && (
+              <>
+                <span> Text to video starts from a prompt; image to video needs a starting image. </span>
+                <a className={styles.link} href="/models?workflows=1">
+                  Find compatible workflows
+                </a>
+              </>
+            )}
+            {reason.steps.length > 0 ? <> {reason.steps.join(' ')}</> : null}
+            {reason.installable ? <> <GetIt model={model} kind={kind} /></> : null}
+          </>
+        )}
+        {reason.switchTo && onModeChange ? (
+          <>
+            {' '}
+            <button type="button" className={styles.link} onClick={onModeChange}>
+              Switch to {reason.switchTo === 'video' ? 'Video' : 'Image'} mode
+            </button>
+          </>
+        ) : null}
+      </span>
+    </div>
+  );
+}
+
+/**
+ * "Get it": queue the downloads readiness offered for this model's gaps.
+ *
+ * The same `POST /backends/:id/readiness/install` the Models page uses, so the
+ * download appears in its installs list and nothing here tracks progress of
+ * its own. Downloading is an admin action on the server; a 403 is turned into
+ * the sentence a non-admin needs rather than shown as an error code.
+ */
+function GetIt({ model, kind }: { model: Model; kind: JobKind }) {
+  const [state, setState] = useState<
+    { kind: 'idle' } | { kind: 'busy' } | { kind: 'done'; text: string } | { kind: 'error'; text: string }
+  >({ kind: 'idle' });
+  const backendId = model.backendIds[0];
+  if (!backendId) return null;
+
+  if (state.kind === 'done' || state.kind === 'error') {
+    return <span role={state.kind === 'error' ? 'alert' : undefined}>{state.text}</span>;
+  }
+  return (
+    <button
+      type="button"
+      className={styles.getIt}
+      disabled={state.kind === 'busy'}
+      onClick={() => {
+        setState({ kind: 'busy' });
+        readinessApi
+          .installMissing(backendId, model.id, kind)
+          .then((result) => {
+            const skipped = result.skipped.map((entry) => entry.reason);
+            setState({
+              kind: 'done',
+              text:
+                result.installs.length > 0
+                  ? 'Downloading now — this model becomes selectable once it finishes. Progress is on the Models page.'
+                  : skipped[0] ?? 'Nothing left to download. Try reloading the page.',
+            });
+          })
+          .catch((cause: unknown) => {
+            setState({
+              kind: 'error',
+              text:
+                cause instanceof ApiRequestError && cause.status === 403
+                  ? 'Only an admin can download files. Ask one to open this model and press Get it.'
+                  : cause instanceof Error
+                    ? cause.message
+                    : 'Could not start the download. Try again.',
+            });
+          });
+      }}
+    >
+      {state.kind === 'busy' ? 'Starting…' : 'Get it'}
+    </button>
+  );
+}
+
+/**
+ * Nothing installed at all: the very first visit. Not a warning — there is
+ * nothing wrong — but an invitation with one obvious next step.
+ */
+function FirstRun({ mode }: { mode: CreateMode }) {
+  return (
+    <div className={styles.firstRun} role="status">
+      <p className={styles.firstRunTitle}>
+        You don’t have a model for making {KIND_NOUN[mode]}s yet
+      </p>
+      <p className={styles.firstRunText}>
+        A model is the engine that makes the {KIND_NOUN[mode]}. Pick one from the catalogue and
+        rippel downloads it for you.
+      </p>
+      <a className={styles.firstRunAction} href={findModelsHref(mode)}>
+        Find {mode === 'image' ? 'an image' : 'a video'} model
+      </a>
+    </div>
   );
 }
 
@@ -265,7 +406,9 @@ export function ModelPicker({
  *
  * Three different nothings, and only one of them is "you have no models": the
  * other two are "your models are in the other tab" and "the models you have
- * need work first", and each carries the action that resolves it.
+ * need work first", and each carries the action that resolves it. All three
+ * end with the way to get one for *this* mode, because switching tabs is only
+ * an answer if the other tab is what you wanted.
  */
 function EmptyState({
   mode,
@@ -279,130 +422,37 @@ function EmptyState({
   onModeChange?: (mode: CreateMode) => void;
 }) {
   const elsewhere = partition.otherMode.map((entry) => entry.model);
-  const hidden = partition.hiddenNoTemplate.length;
 
   return (
-    <p className={styles.note} role="status">
-      <WarningIcon size={12} className={styles.noteIcon} />
-      <span>
-        {elsewhere.length > 0 ? (
-          <>
-            No {KIND_NOUN[mode]} models are installed. {listNames(elsewhere)}{' '}
-            {elsewhere.length === 1 ? 'is a' : 'are'} {KIND_NOUN[otherMode]}{' '}
-            {elsewhere.length === 1 ? 'model' : 'models'}.
-            {onModeChange ? (
-              <>
-                {' '}
-                <button
-                  type="button"
-                  className={styles.link}
-                  onClick={() => onModeChange(otherMode)}
-                >
-                  Switch to {otherMode === 'video' ? 'Video' : 'Image'} mode
-                </button>
-              </>
-            ) : null}
-          </>
-        ) : hidden > 0 ? (
-          <>
-            No {KIND_NOUN[mode]} models are installed. {hidden}{' '}
-            {hidden === 1 ? 'model is' : 'models are'} hidden because rippel doesn’t know how to
-            run {hidden === 1 ? 'it' : 'them'} yet. The Models page shows what each one needs.{' '}
-            <a className={styles.link} href="/models">
-              Open Models
-            </a>
-          </>
-        ) : (
-          <>
-            No {KIND_NOUN[mode]} models are installed.{' '}
-            <a className={styles.link} href="/models">
-              Manage models
-            </a>
-          </>
-        )}
-      </span>
-    </p>
+    <div className={styles.firstRun} role="status">
+      <p className={styles.firstRunTitle}>
+        You don’t have a model for making {KIND_NOUN[mode]}s yet
+      </p>
+      {elsewhere.length > 0 ? (
+        <p className={styles.firstRunText}>
+          {listNames(elsewhere)} {elsewhere.length === 1 ? 'makes' : 'make'} {KIND_NOUN[otherMode]}s.
+          {onModeChange ? (
+            <>
+              {' '}
+              <button
+                type="button"
+                className={styles.link}
+                onClick={() => onModeChange(otherMode)}
+              >
+                Switch to {otherMode === 'video' ? 'Video' : 'Image'} mode
+              </button>
+            </>
+          ) : null}
+        </p>
+      ) : (
+        <p className={styles.firstRunText}>
+          A model is the engine that makes the {KIND_NOUN[mode]}. Pick one from the catalogue and
+          rippel downloads it for you.
+        </p>
+      )}
+      <a className={styles.firstRunAction} href={findModelsHref(mode)}>
+        Find {mode === 'image' ? 'an image' : 'a video'} model
+      </a>
+    </div>
   );
-}
-
-// ---------------------------------------------------------------- reasons
-
-const KIND_NOUN: Record<CreateMode, string> = { image: 'image', video: 'video' };
-
-interface BlockedReason {
-  /** Two words, on the tile. */
-  badge: string;
-  /** The sentence, in the note and the tooltip. */
-  detail: string;
-  /** The server's own remedy, when it gave one. */
-  steps: string[];
-  /** The mode that *would* run this model, when there is one. */
-  switchTo: CreateMode | null;
-}
-
-/**
- * Why this model cannot run this job — the specific answer, not the count.
- *
- * The states that reach a *visible* tile are the fixable ones: the backend is
- * missing a file (the server tells us which, and how to fix it), or the job
- * wants a starting image. The unfixable ones are hidden, and only reach here
- * through the "show anyway" reveal, where the honest answer is that nobody has
- * written a graph for this family.
- */
-export function blockedReason(
-  entry: ModelEntry,
-  kind: JobKind,
-  capabilities: CapabilityMap,
-  readiness: ReadinessMap,
-): BlockedReason {
-  const model = entry.model;
-  const family = model.baseModel ?? 'this family';
-  const mode = modeOfKind(kind);
-  const answer = readiness.here[model.id];
-
-  if (entry.blocked === 'needs-setup') {
-    return {
-      badge: 'Needs setup',
-      detail: `cannot run here yet: ${answer?.summary ?? 'the backend is not set up for it.'}`,
-      steps: answer?.steps ?? [],
-      switchTo: null,
-    };
-  }
-
-  if (entry.blocked === 'needs-image') {
-    return {
-      badge: 'Needs an image',
-      detail: 'only runs from a starting image. Add one above and it becomes selectable.',
-      steps: [],
-      switchTo: null,
-    };
-  }
-
-  if (entry.hidden === 'other-mode' && entry.runsInMode) {
-    const only = entry.runsInMode;
-    return {
-      badge: only === 'video' ? 'Video model' : 'Image model',
-      detail: `is a ${KIND_NOUN[only]} model — it runs ${KIND_NOUN[only]} jobs, not ${KIND_NOUN[mode]} ones.`,
-      steps: [],
-      switchTo: only,
-    };
-  }
-
-  void capabilities;
-  return {
-    badge: NOT_SUPPORTED,
-    detail:
-      answer?.summary ??
-      `isn't supported yet — rippel has no recipe (workflow) for ${family} models.`,
-    steps: [],
-    switchTo: null,
-  };
-}
-
-/** "Hunyuan Video 720p and Ltx Video" — at most three, then "and 2 more". */
-function listNames(models: Model[]): string {
-  const names = models.slice(0, 2).map((model) => model.displayName);
-  const rest = models.length - names.length;
-  if (rest > 0) return `${names.join(', ')} and ${rest} more`;
-  return names.length === 2 ? `${names[0]} and ${names[1]}` : (names[0] ?? '');
 }
