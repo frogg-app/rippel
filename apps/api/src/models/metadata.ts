@@ -39,7 +39,9 @@
 import { createHash } from 'node:crypto';
 import sharp from 'sharp';
 import type { ModelCatalogEntry, ModelCatalogInfo } from '@comfy/shared';
+import type { ModelTags } from '@comfy/shared';
 import { query } from '../db.js';
+import { normaliseTags, tagKeys, tagsFromKeys } from './tags.js';
 import {
   fetchSourceFacts,
   parseReference,
@@ -96,6 +98,8 @@ export interface MetaRow {
   downloads: string | null;
   likes: number | null;
   pipeline_tag: string | null;
+  /** `group:value` keys (migration 018). Null on a row fetched before tags were. */
+  tags: string[] | null;
   preview_source: string | null;
   preview_borrowed_from: string | null;
   preview_type: string | null;
@@ -129,14 +133,27 @@ function toInfo(row: MetaRow): ModelCatalogInfo {
     likes: row.likes,
     pipelineTag: row.pipeline_tag,
     referenceUrl: row.reference_url,
+    tags: infoTags(row),
   };
+}
+
+/**
+ * The grouped tags for a row.
+ *
+ * A row from before migration 018 has no keys yet — it is stale and will be
+ * re-read — but in the meantime it still knows its task and its licence, and a
+ * card showing those is better than one showing nothing until the sweep lands.
+ */
+export function infoTags(row: Pick<MetaRow, 'tags' | 'pipeline_tag' | 'license'>): ModelTags {
+  if (row.tags) return tagsFromKeys(row.tags);
+  return normaliseTags([], { pipelineTag: row.pipeline_tag, license: row.license });
 }
 
 /** Everything we hold for a set of model pages. */
 async function loadRows(keys: string[]): Promise<Map<string, MetaRow>> {
   if (keys.length === 0) return new Map();
   const rows = await query<MetaRow>(
-    `SELECT source_key, preview_id, reference_url, license, downloads, likes, pipeline_tag,
+    `SELECT source_key, preview_id, reference_url, license, downloads, likes, pipeline_tag, tags,
             preview_source, preview_borrowed_from, preview_type, preview_rev,
             preview_bytes IS NOT NULL AS has_preview,
             preview_full_bytes IS NOT NULL AS has_full,
@@ -153,6 +170,9 @@ function isStale(row: MetaRow): boolean {
   // written: that is how a change to the rendition sizes reaches rows that are
   // otherwise good for another month.
   if (row.preview_rev < PREVIEW_REV && !row.error) return true;
+  // Likewise a row read before tags were: null is "never asked", where an
+  // empty array is "asked, and there are none" (see migration 018).
+  if (row.tags === null && !row.error) return true;
   const age = Date.now() - row.fetched_at.getTime();
   return row.error ? age > RETRY_MS : age > FRESH_MS;
 }
@@ -293,6 +313,7 @@ async function resolveOne(ref: SourceRef): Promise<boolean> {
     downloads: facts.downloads,
     likes: facts.likes,
     pipelineTag: facts.pipelineTag,
+    tags: tagKeys(facts.tags),
     preview,
     borrowedFrom,
   });
@@ -361,6 +382,8 @@ async function store(params: {
   downloads?: number | null;
   likes?: number | null;
   pipelineTag?: string | null;
+  /** Null for a failed read, so the row is not mistaken for "has no tags". */
+  tags?: string[] | null;
   preview?: Preview | null;
   borrowedFrom?: string | null;
   error?: string | null;
@@ -370,14 +393,15 @@ async function store(params: {
     `INSERT INTO model_catalogue_meta
        (source_key, preview_id, reference_url, license, downloads, likes, pipeline_tag,
         preview_source, preview_borrowed_from, preview_bytes, preview_type, error, fetched_at,
-        preview_full_bytes, preview_full_type, preview_rev)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, now(), $13, $14, $15)
+        preview_full_bytes, preview_full_type, preview_rev, tags)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, now(), $13, $14, $15, $16)
      ON CONFLICT (source_key) DO UPDATE SET
        reference_url = EXCLUDED.reference_url,
        license = EXCLUDED.license,
        downloads = EXCLUDED.downloads,
        likes = EXCLUDED.likes,
        pipeline_tag = EXCLUDED.pipeline_tag,
+       tags = EXCLUDED.tags,
        -- A refresh that found no picture keeps the one we already have: repos
        -- reorganise, and a card that loses its image on a routine re-read is a
        -- regression nobody asked for.
@@ -415,6 +439,7 @@ async function store(params: {
       preview?.full ?? null,
       preview ? 'image/webp' : null,
       PREVIEW_REV,
+      params.tags ?? null,
     ],
   );
 }

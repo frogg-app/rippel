@@ -14,11 +14,19 @@
  * floor, and it is also what a broken image falls back to. A grid where a third
  * of the tiles are broken icons is worse than a grid with no pictures at all.
  *
- * A card with a picture is **clickable**. Many of these images are contact
- * sheets — a 3x3 or 4x4 grid of samples in one file — where even an enlarged
- * card shows each sample at thumbnail size; the API keeps a second, ~1600px
- * rendition for that click, so opening one is a real gain in detail rather than
- * the card's own image scaled up.
+ * The art is **clickable**, and opens the detail drawer (CatalogueDrawer):
+ * everything that used to crowd the card's lower half — the filename, where
+ * rippel uses a support file, the licence, the model-page link, whose picture a
+ * borrowed sample is — lives there now, beside the full tag row. The large
+ * preview (PreviewLightbox) is one more click, from the drawer's own art: many
+ * of these images are contact sheets, and the ~1600px rendition is still the
+ * only way to see one properly.
+ *
+ * ## The tags
+ *
+ * `owner/name`, a stats row (likes, downloads, size) and at most five tag
+ * chips — task, then base, then free tags — with a "+N" chip for the rest,
+ * which opens the drawer. Every chip filters by itself. See `cardTags`.
  *
  * ## The verdict
  *
@@ -28,7 +36,8 @@
  * the one thing that was missing before a seven-gigabyte download.
  *
  * The install states are unchanged, and are still the ones the API can
- * distinguish:
+ * distinguish. They are `InstallControls`, shared with the drawer, so the two
+ * can never disagree about what a click would do:
  *
  *   available   the install button
  *   starting    the POST is in flight
@@ -39,7 +48,7 @@
  *   failed      the error, and the button back, labelled as a retry
  *   installed   no button at all: a re-install is answered with a 409
  */
-import { useState, type CSSProperties } from 'react';
+import { useState, type CSSProperties, type ReactNode } from 'react';
 import type { ModelCatalogEntry, ModelInstall } from '@comfy/shared';
 import {
   RUNNABILITY_LABEL,
@@ -50,14 +59,15 @@ import {
   generates,
   isLive,
 } from './catalogue';
-import { CheckIcon, DownloadCountIcon, ExpandIcon, InstallIcon, LinkIcon, WorkflowIcon } from './icons';
+import { cardTags, ownerOf, tagKey, type TagKey } from './discover';
+import { CheckIcon, DownloadCountIcon, HeartIcon, InstallIcon, WorkflowIcon } from './icons';
 import { InstallProgress } from './InstallProgress';
+import { TagChip } from './TagChip';
 import { TypeBadge } from './TypeBadge';
-import { PreviewLightbox } from './PreviewLightbox';
 import { Mark } from '../components/Mark';
 import styles from './ModelsPanels.module.css';
 
-export interface CatalogueCardProps {
+export interface InstallControlsProps {
   entry: ModelCatalogEntry;
   /** The most recent install of this file on this backend, if any. */
   install: ModelInstall | null;
@@ -68,10 +78,146 @@ export interface CatalogueCardProps {
   /** A refusal from the last attempt on this entry: a 400, a 409, a 502. */
   failure: string | null;
   now: number;
+}
+
+export interface CatalogueCardProps extends InstallControlsProps {
   /** Position in the grid, for the staggered entrance. */
   index?: number;
   /** Opens the templates browser filtered to this entry's family. */
   onWorkflows?: (entry: ModelCatalogEntry) => void;
+  /** Opens the detail drawer. */
+  onOpen?: (entry: ModelCatalogEntry) => void;
+  /** Toggles a tag filter; every chip on the card is one. */
+  onTag?: (key: TagKey) => void;
+  /** Tag keys currently filtered on, so their chips read as pressed. */
+  activeTags?: ReadonlySet<TagKey>;
+}
+
+/** Installed, or complete even before the catalogue's own flag catches up. */
+export function isDone(entry: ModelCatalogEntry, install: ModelInstall | null): boolean {
+  return entry.installed || install?.status === 'complete';
+}
+
+/** The family gradient: the floor under every card with no picture. */
+export function artGradient(base: string): CSSProperties {
+  const hue = familyHue(base);
+  return {
+    // Two stops off one hue, in the artboard's radial treatment.
+    background: `radial-gradient(120% 100% at 32% 24%, hsl(${hue} 62% 62%) 0%, hsl(${
+      (hue + 28) % 360
+    } 48% 28%) 55%, var(--ground-sunken) 100%)`,
+  };
+}
+
+/** `owner/` in the muted ink, then the name. No owner off HuggingFace. */
+export function OwnedName({ entry }: { entry: ModelCatalogEntry }) {
+  const owner = ownerOf(entry);
+  return (
+    <>
+      {owner ? <span className={styles.cardOrg}>{owner}/</span> : null}
+      {entry.name}
+    </>
+  );
+}
+
+/**
+ * The verdict line, as the card has always rendered it.
+ *
+ * A support file is never labelled "Support file" on its own, and never with
+ * the bare type word: what it does to a model, in plain words. Where in rippel
+ * it is used (`role.where`) is the drawer's to say; it passes it as children.
+ */
+export function CardVerdict({
+  entry,
+  onWorkflows,
+  children,
+}: {
+  entry: ModelCatalogEntry;
+  onWorkflows?: (entry: ModelCatalogEntry) => void;
+  children?: ReactNode;
+}) {
+  const verdict = entry.runnability;
+  // Derived from the type, not from the verdict: the verdict is per backend and
+  // is absent when one is offline, and "what this file is for" is not a fact
+  // about a backend.
+  if (!generates(entry.type)) {
+    const role = SUPPORT_ROLES[entry.type];
+    return (
+      <p className={`${styles.verdict} ${styles.verdict_muted}`} title={`${role.what} ${role.where}`}>
+        <span className={styles.verdictChip}>{role.noun}</span>
+        <span className={styles.verdictText}>
+          {role.what}
+          {children}
+        </span>
+      </p>
+    );
+  }
+  if (!verdict) return null;
+  return (
+    <p
+      className={`${styles.verdict} ${styles[`verdict_${RUNNABILITY_TONE[verdict.status]}`]}`}
+      // The detail is the API's sentence, and it names the missing file or
+      // the folder. It is on the element rather than always visible
+      // because it is a paragraph, not a label.
+      title={verdict.detail ?? verdict.summary}
+    >
+      <span className={styles.verdictChip}>{RUNNABILITY_LABEL[verdict.status]}</span>
+      <span className={styles.verdictText}>{verdict.detail ?? verdict.summary}</span>
+      {onWorkflows && verdict.status !== 'support' ? (
+        <button
+          type="button"
+          className={styles.cardWorkflows}
+          onClick={() => onWorkflows(entry)}
+          aria-label={`Workflows for ${entry.base} models`}
+        >
+          <WorkflowIcon size={12} />
+          Workflows
+        </button>
+      ) : null}
+    </p>
+  );
+}
+
+/** Progress, the install button, "Starting…", and a refusal: the states listed above. */
+export function InstallControls({
+  entry,
+  install,
+  starting,
+  canInstall,
+  onInstall,
+  failure,
+  now,
+}: InstallControlsProps) {
+  const live = install !== null && isLive(install);
+  const done = isDone(entry, install);
+  const retryable = install !== null && (install.status === 'failed' || install.status === 'cancelled');
+  return (
+    <>
+      {install && !done ? <InstallProgress install={install} now={now} compact /> : null}
+
+      {done ? (
+        <p className={styles.cardResting}>Already on this backend</p>
+      ) : live || starting ? null : (
+        <button
+          type="button"
+          className={styles.installButton}
+          onClick={() => onInstall(entry)}
+          disabled={!canInstall}
+        >
+          <InstallIcon size={13} />
+          {retryable ? 'Try again' : 'Install'}
+        </button>
+      )}
+
+      {starting ? <p className={styles.cardResting}>Starting…</p> : null}
+
+      {failure ? (
+        <p className={styles.cardFailure} role="alert">
+          {failure}
+        </p>
+      ) : null}
+    </>
+  );
 }
 
 export function CatalogueCard({
@@ -84,29 +230,19 @@ export function CatalogueCard({
   now,
   index = 0,
   onWorkflows,
+  onOpen,
+  onTag,
+  activeTags,
 }: CatalogueCardProps) {
-  const hue = familyHue(entry.base);
   const live = install !== null && isLive(install);
-  const done = entry.installed || install?.status === 'complete';
-  const retryable = install !== null && (install.status === 'failed' || install.status === 'cancelled');
+  const done = isDone(entry, install);
 
   // A cached preview can still 404 — the row was written before someone
   // cleared the table, say. One failure per card, then the gradient.
   const [imageBroken, setImageBroken] = useState(false);
-  const [enlarged, setEnlarged] = useState(false);
   const preview = imageBroken ? null : entry.info?.previewUrl ?? null;
-  // Rows cached by an earlier build have only the small rendition; those cards
-  // simply are not clickable rather than opening a picture no bigger than the
-  // one already on screen.
-  const full = preview ? entry.info?.previewFullUrl ?? null : null;
-
-  const verdict = entry.runnability;
   const info = entry.info;
-  // Derived from the type, not from the verdict: the verdict is per backend and
-  // is absent when one is offline, and "what this file is for" is not a fact
-  // about a backend.
-  const isSupport = !generates(entry.type);
-  const role = SUPPORT_ROLES[entry.type];
+  const tags = cardTags(entry);
 
   const art = (
     <>
@@ -133,23 +269,11 @@ export function CatalogueCard({
           <CheckIcon size={10} /> Installed
         </span>
       ) : null}
-      {full ? (
-        <span className={styles.cardExpand} aria-hidden>
-          <ExpandIcon size={13} />
-        </span>
-      ) : null}
     </>
   );
 
   const artClass = `${styles.cardArt} ${preview ? styles.cardArtPhoto : ''}`;
-  const artStyle = preview
-    ? undefined
-    : {
-        // Two stops off one hue, in the artboard's radial treatment.
-        background: `radial-gradient(120% 100% at 32% 24%, hsl(${hue} 62% 62%) 0%, hsl(${
-          (hue + 28) % 360
-        } 48% 28%) 55%, var(--ground-sunken) 100%)`,
-      };
+  const artStyle = preview ? undefined : artGradient(entry.base);
 
   return (
     <article
@@ -158,12 +282,13 @@ export function CatalogueCard({
       aria-label={entry.name}
     >
       <div className={styles.cardArtHolder}>
-        {full ? (
+        {onOpen ? (
           <button
             type="button"
-            className={`${artClass} ${styles.cardArtButton}`}
-            onClick={() => setEnlarged(true)}
-            aria-label={`See the full-size preview of ${entry.name}`}
+            className={`${artClass} ${styles.cardArtButton} ${styles.cardArtOpen}`}
+            style={artStyle}
+            onClick={() => onOpen(entry)}
+            aria-label={`Details of ${entry.name}`}
           >
             {art}
           </button>
@@ -180,123 +305,64 @@ export function CatalogueCard({
       <div className={styles.cardBody}>
         <div className={styles.cardHead}>
           <h3 className={styles.cardName} title={entry.name}>
-            {entry.name}
+            <OwnedName entry={entry} />
           </h3>
-          <p className={styles.cardMeta}>
-            {entry.base}
-            {entry.size ? (
-              <>
-                {' '}
-                &middot; <span className="mono">{entry.size}</span>
-              </>
+          <p className={styles.cardStats}>
+            {info?.likes ? (
+              <span title={`${info.likes.toLocaleString()} likes at the source`}>
+                <HeartIcon size={11} />
+                <span className="mono">{formatCount(info.likes)}</span>
+              </span>
             ) : null}
             {info?.downloads ? (
-              <>
-                {' '}
-                &middot;{' '}
-                <span className={styles.cardDownloads} title={`${info.downloads.toLocaleString()} downloads at the source`}>
-                  <DownloadCountIcon size={11} />
-                  <span className="mono">{formatCount(info.downloads)}</span>
-                </span>
-              </>
+              <span title={`${info.downloads.toLocaleString()} downloads at the source`}>
+                <DownloadCountIcon size={11} />
+                <span className="mono">{formatCount(info.downloads)}</span>
+              </span>
             ) : null}
-          </p>
-          <p className={styles.cardFile} title={entry.filename}>
-            {entry.filename}
+            {entry.size ? <span className="mono">{entry.size}</span> : null}
           </p>
         </div>
 
-        {isSupport ? (
-          // Never "Support file" on its own, and never the type word on its
-          // own. What it does to a model, and where in rippel it turns up.
-          <p className={`${styles.verdict} ${styles.verdict_muted}`} title={`${role.what} ${role.where}`}>
-            <span className={styles.verdictChip}>{role.noun}</span>
-            <span className={styles.verdictText}>
-              {role.what} <span className={styles.verdictWhere}>{role.where}</span>
-            </span>
-          </p>
-        ) : verdict ? (
-          <p
-            className={`${styles.verdict} ${styles[`verdict_${RUNNABILITY_TONE[verdict.status]}`]}`}
-            // The detail is the API's sentence, and it names the missing file or
-            // the folder. It is on the element rather than always visible
-            // because it is a paragraph, not a label.
-            title={verdict.detail ?? verdict.summary}
-          >
-            <span className={styles.verdictChip}>{RUNNABILITY_LABEL[verdict.status]}</span>
-            <span className={styles.verdictText}>{verdict.detail ?? verdict.summary}</span>
-            {onWorkflows && verdict.status !== 'support' ? (
+        {tags.shown.length > 0 ? (
+          <div className={styles.cardTags}>
+            {tags.shown.map(({ group, value }) => {
+              const key = tagKey(group, value);
+              return (
+                <TagChip
+                  key={key}
+                  group={group}
+                  value={value}
+                  on={activeTags?.has(key) ?? false}
+                  onClick={onTag ? () => onTag(key) : undefined}
+                />
+              );
+            })}
+            {tags.more > 0 && onOpen ? (
               <button
                 type="button"
-                className={styles.cardWorkflows}
-                onClick={() => onWorkflows(entry)}
-                aria-label={`Workflows for ${entry.base} models`}
+                className={`${styles.tagChip} ${styles.tagChipGhost}`}
+                onClick={() => onOpen(entry)}
+                aria-label={`${tags.more} more tags on ${entry.name}`}
               >
-                <WorkflowIcon size={12} />
-                Workflows
+                +{tags.more}
               </button>
             ) : null}
-          </p>
+          </div>
         ) : null}
 
-        {install && !done ? <InstallProgress install={install} now={now} compact /> : null}
+        <CardVerdict entry={entry} onWorkflows={onWorkflows} />
 
-        {done ? (
-          <p className={styles.cardResting}>Already on this backend</p>
-        ) : live || starting ? null : (
-          <button
-            type="button"
-            className={styles.installButton}
-            onClick={() => onInstall(entry)}
-            disabled={!canInstall}
-          >
-            <InstallIcon size={13} />
-            {retryable ? 'Try again' : 'Install'}
-          </button>
-        )}
-
-        {starting ? <p className={styles.cardResting}>Starting…</p> : null}
-
-        {failure ? (
-          <p className={styles.cardFailure} role="alert">
-            {failure}
-          </p>
-        ) : null}
-
-        {info?.license || info?.referenceUrl || info?.previewBorrowedFrom ? (
-          <p className={styles.cardSource}>
-            {info.license ? <span className={styles.licence}>{info.license}</span> : null}
-            {info.referenceUrl ? (
-              <a
-                className={styles.sourceLink}
-                href={info.referenceUrl}
-                target="_blank"
-                rel="noreferrer noopener"
-              >
-                Model page <LinkIcon size={10} />
-              </a>
-            ) : null}
-            {/* Whose picture this is, when it is not this model's own. A GGUF
-                quantisation has no samples of its own; showing the original's
-                is useful, and pretending it was rendered by this file is not. */}
-            {info.previewBorrowedFrom && preview ? (
-              <span className={styles.borrowed} title={`Sample image from ${info.previewBorrowedFrom}`}>
-                sample from {info.previewBorrowedFrom}
-              </span>
-            ) : null}
-          </p>
-        ) : null}
-      </div>
-
-      {enlarged && full ? (
-        <PreviewLightbox
-          name={entry.name}
-          src={full}
-          from={info?.previewFrom ?? null}
-          borrowedFrom={info?.previewBorrowedFrom ?? null}
-          onClose={() => setEnlarged(false)}
+        <InstallControls
+          entry={entry}
+          install={install}
+          starting={starting}
+          canInstall={canInstall}
+          onInstall={onInstall}
+          failure={failure}
+          now={now}
         />
-      ) : null}
+      </div>
     </article>
   );
 }

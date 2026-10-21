@@ -16,7 +16,11 @@
  *    photograph on about half of them — the API resolves each entry's model page
  *    and serves a cached sample image — but never a percentage: the transport
  *    reports tasks, not bytes. See CatalogueCard and InstallProgress.
- *  - 42 base families is a select, not a chip row. See FilterBar.
+ *  - 42 base families is a select on Installed, not a chip row. See FilterBar.
+ *    Discover has outgrown that band: its filters are a facet rail of model
+ *    tags beside the grid (FacetRail), a search box that takes tag tokens
+ *    (TagSearch), and a detail drawer per card (CatalogueDrawer), after
+ *    design/discover-tags.html. The vocabulary is in models/discover.ts.
  *
  * Route: `/models`, inside the `RequireAuth` + `AppShell` block in App.tsx.
  * Which tab is open lives in the query string — `/models?tab=discover` — not in
@@ -24,6 +28,12 @@
  * the back button steps back through the tabs you opened, and a tab worth
  * returning to can be pasted to somebody else. A bare `/models` is still valid
  * and opens Installed, and so does a `tab` value that means nothing.
+ *
+ * Discover's filters live there too, beside the tab — `?tab=discover&tag=
+ * task:text-to-image&tag=-license:other&sort=likes` — for the same reasons: a
+ * filtered view survives a reload and can be sent to somebody. Unlike the tab,
+ * a filter change *replaces* the history entry rather than pushing one; Back
+ * should leave Discover, not un-type a search one keystroke at a time.
  *
  * Reading the installed list is open to any signed-in user; the catalogue and
  * every install route are admin-only. A non-admin therefore gets a working
@@ -48,16 +58,29 @@ import { Notice } from '../models/Notice';
 import { CubeIcon, ChevronIcon } from '../models/icons';
 import { Dropdown } from '../components/Dropdown';
 import {
-  catalogueBases,
   catalogueTypes,
   familyLabel,
   filterCatalogue,
   filterInstalled,
   latestByFilename,
-  matchesRunFilter,
   MODEL_TYPES,
-  type RunFilter,
 } from '../models/catalogue';
+import {
+  DEFAULT_DISCOVER,
+  SORT_LABELS,
+  parseSearch,
+  readDiscover,
+  resolverFor,
+  sortCatalogue,
+  tagFacets,
+  vocabulary,
+  writeDiscover,
+  type CatalogueSort,
+  type DiscoverState,
+  type TagKey,
+} from '../models/discover';
+import { FacetRail } from '../models/FacetRail';
+import { TagSearch } from '../models/TagSearch';
 import { useCatalogue } from '../models/useCatalogue';
 import { useInstalls } from '../models/useInstalls';
 import { useModelLibrary } from '../models/useModelLibrary';
@@ -255,33 +278,57 @@ export function ModelsPage({ api = modelsApi, storageApi: storage = storageApi }
 
   // ------------------------------------------------------------- catalogue
 
-  const [catType, setCatType] = useState<ModelType | null>(DEFAULT_TYPE);
-  const [catBase, setCatBase] = useState<string | null>(null);
-  const [catQ, setCatQ] = useState('');
-  const [catRun, setCatRun] = useState<RunFilter>('all');
+  const discover = useMemo(() => readDiscover(params), [params]);
+  const setDiscover = useCallback(
+    (update: (current: DiscoverState) => DiscoverState) => {
+      setParams((current) => writeDiscover(current, update(readDiscover(current))), {
+        replace: true,
+      });
+    },
+    [setParams],
+  );
 
   // Filters are per backend: "SDXL" may not be a family the next machine's
-  // catalogue even has, and a stale chip would silently show nothing.
+  // catalogue even has, and a stale tag would silently show nothing. The
+  // verdict is per backend too — a model that runs on one machine may be
+  // missing its text encoder on the next. Only a *change* of backend resets,
+  // though: the first one being chosen on load must not wipe a filter that
+  // arrived in the URL.
+  const filteredFor = useRef<Uuid | null>(null);
   useEffect(() => {
-    setCatType(DEFAULT_TYPE);
-    setCatBase(null);
-    setCatQ('');
-    // The verdict is per backend too — a model that runs on one machine may be
-    // missing its text encoder on the next — so this resets with the rest.
-    setCatRun('all');
-  }, [backendId]);
+    if (filteredFor.current && backendId && filteredFor.current !== backendId) {
+      setDiscover((current) => ({ ...DEFAULT_DISCOVER, sort: current.sort }));
+    }
+    filteredFor.current = backendId;
+  }, [backendId, setDiscover]);
 
   const entries = catalogue.state.kind === 'ready' ? catalogue.state.entries : [];
-  // Everything except the type filter, for the same reason as above: this is
-  // the population the type chips count against.
+  // The bare words of the search box. Tag-shaped words are not text, whether
+  // or not they have been committed yet.
+  const catText = useMemo(() => parseSearch(discover.q).text, [discover.q]);
+
+  // Everything except the type filter: the population the type facet counts
+  // against, so a type states what clicking it would leave.
   const catalogueBeforeType = useMemo(
-    () => filterCatalogue(entries, { type: null, base: catBase, q: catQ, run: catRun }),
-    [entries, catBase, catQ, catRun],
+    () =>
+      filterCatalogue(entries, {
+        type: null,
+        base: null,
+        q: catText,
+        run: discover.runs ? 'runs' : 'all',
+        include: discover.include,
+        exclude: discover.exclude,
+      }),
+    [entries, catText, discover.runs, discover.include, discover.exclude],
   );
 
   const catalogueFiltered = useMemo(
-    () => catalogueBeforeType.filter((entry) => !catType || entry.type === catType),
-    [catalogueBeforeType, catType],
+    () =>
+      sortCatalogue(
+        catalogueBeforeType.filter((entry) => !discover.type || entry.type === discover.type),
+        discover.sort,
+      ),
+    [catalogueBeforeType, discover.type, discover.sort],
   );
 
   const catalogueTypeCounts = useMemo(
@@ -289,18 +336,28 @@ export function ModelsPage({ api = modelsApi, storageApi: storage = storageApi }
     [catalogueBeforeType],
   );
 
-  // Counts for the runnability segments, taken *under the other filters* and
-  // not under this one: a segment has to say how many rows it would leave, and
-  // a count that changed when you pressed it would be describing the answer
-  // rather than the choice.
-  const runCounts = useMemo(() => {
-    const rest = filterCatalogue(entries, { type: catType, base: catBase, q: catQ, run: 'all' });
-    return {
-      all: rest.length,
-      runs: rest.filter((entry) => matchesRunFilter(entry.runnability, 'runs')).length,
-      blocked: rest.filter((entry) => matchesRunFilter(entry.runnability, 'blocked')).length,
-    };
-  }, [entries, catType, catBase, catQ]);
+  const tagVocabulary = useMemo(() => vocabulary(entries), [entries]);
+  const tagCounts = useMemo(() => tagFacets(catalogueFiltered), [catalogueFiltered]);
+  const resolveTag = useMemo(() => resolverFor(tagVocabulary), [tagVocabulary]);
+  const activeTags = useMemo(() => new Set(discover.include), [discover.include]);
+
+  /** A chip, a facet row or a drawer tag: on if it was off, off if it was on. */
+  const toggleTag = useCallback(
+    (key: TagKey) =>
+      setDiscover((current) => ({
+        ...current,
+        include: current.include.includes(key)
+          ? current.include.filter((other) => other !== key)
+          : [...current.include, key],
+        exclude: current.exclude.filter((other) => other !== key),
+      })),
+    [setDiscover],
+  );
+
+  const clearDiscover = useCallback(
+    () => setDiscover((current) => ({ ...DEFAULT_DISCOVER, sort: current.sort })),
+    [setDiscover],
+  );
 
   const backendInstalls = useMemo(
     () => installs.installs.filter((install) => install.backendId === backendId),
@@ -482,33 +539,95 @@ export function ModelsPage({ api = modelsApi, storageApi: storage = storageApi }
             </div>
           </>
         ) : tab === 'discover' ? (
-          <>
-            {catalogue.state.kind === 'ready' && catalogue.state.entries.length > 0 ? (
-              <FilterBar
-                q={catQ}
-                onQ={setCatQ}
-                searchLabel="Search the catalogue"
-                searchPlaceholder={`Search what ${backend?.name ?? 'this backend'} can install`}
+          <div className={entries.length > 0 ? panels.discover : panels.discoverBare}>
+            {entries.length > 0 ? (
+              <FacetRail
                 types={catalogueTypeCounts}
-                allCount={catalogueBeforeType.length}
-                activeType={catType}
-                onType={setCatType}
-                familyOptions={catalogueBases(catalogue.state.entries).map((base) => ({
-                  value: base,
-                  label: base,
-                }))}
-                familyLabel="Base"
-                activeFamily={catBase}
-                onFamily={setCatBase}
-                shown={catalogueFiltered.length}
-                total={catalogue.state.entries.length}
-                run={catRun}
-                onRun={setCatRun}
-                runCounts={runCounts}
+                allTypesCount={catalogueBeforeType.length}
+                activeType={discover.type}
+                onType={(type) => setDiscover((current) => ({ ...current, type }))}
+                known={tagVocabulary}
+                counts={tagCounts}
+                include={discover.include}
+                onToggle={toggleTag}
               />
             ) : null}
 
             <div className={styles.scroller}>
+              {entries.length > 0 ? (
+                <div className={panels.discoverHead}>
+                  <TagSearch
+                    q={discover.q}
+                    onQ={(q) => setDiscover((current) => ({ ...current, q }))}
+                    include={discover.include}
+                    exclude={discover.exclude}
+                    onCommit={(tags, rest) =>
+                      setDiscover((current) => ({
+                        ...current,
+                        q: rest,
+                        // A tag moves between the lists rather than sitting in
+                        // both: including what was excluded un-excludes it.
+                        include: [
+                          ...current.include.filter((key) => !tags.exclude.includes(key)),
+                          ...tags.include.filter((key) => !current.include.includes(key)),
+                        ],
+                        exclude: [
+                          ...current.exclude.filter((key) => !tags.include.includes(key)),
+                          ...tags.exclude.filter((key) => !current.exclude.includes(key)),
+                        ],
+                      }))
+                    }
+                    onRemove={(key, negate) =>
+                      setDiscover((current) =>
+                        negate
+                          ? { ...current, exclude: current.exclude.filter((other) => other !== key) }
+                          : { ...current, include: current.include.filter((other) => other !== key) },
+                      )
+                    }
+                    known={tagVocabulary}
+                    counts={tagCounts}
+                    resolve={resolveTag}
+                    label="Search the catalogue"
+                    placeholder={`Search what ${backend?.name ?? 'this backend'} can install, or type a tag…`}
+                  />
+                  <p className={panels.searchHint}>
+                    Click any tag to filter · <code>tag:</code> <code>task:</code> <code>base:</code>{' '}
+                    <code>license:</code> in the box · <code>-tag</code> to exclude
+                  </p>
+                  <div className={panels.discoverBar}>
+                    <span className={panels.discoverCount}>
+                      <span className="mono">{catalogueFiltered.length}</span> of{' '}
+                      <span className="mono">{entries.length}</span> models
+                    </span>
+                    <span className={styles.spacer} />
+                    <label className={panels.runToggle}>
+                      <input
+                        type="checkbox"
+                        checked={discover.runs}
+                        onChange={(event) => {
+                          const runs = event.target.checked;
+                          setDiscover((current) => ({ ...current, runs }));
+                        }}
+                      />
+                      Runs on this backend
+                    </label>
+                    <div className={panels.sortSeg} role="group" aria-label="Sort by">
+                      {(Object.keys(SORT_LABELS) as CatalogueSort[]).map((sort) => (
+                        <button
+                          key={sort}
+                          type="button"
+                          className={discover.sort === sort ? panels.sortOn : undefined}
+                          aria-pressed={discover.sort === sort}
+                          onClick={() => setDiscover((current) => ({ ...current, sort }))}
+                        >
+                          {SORT_LABELS[sort]}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
               <CatalogueBody
                 state={catalogue.state}
                 filtered={catalogueFiltered}
@@ -520,15 +639,13 @@ export function ModelsPage({ api = modelsApi, storageApi: storage = storageApi }
                 now={now}
                 onReload={catalogue.reload}
                 onWorkflows={openTemplates}
-                onClearFilters={() => {
-                  setCatQ('');
-                  setCatType(DEFAULT_TYPE);
-                  setCatBase(null);
-                  setCatRun('all');
-                }}
+                onClearFilters={clearDiscover}
+                onTag={toggleTag}
+                activeTags={activeTags}
+                backendName={backend?.name ?? null}
               />
             </div>
-          </>
+          </div>
         ) : (
           <div className={styles.scroller}>
             {!isAdmin ? (
@@ -630,6 +747,9 @@ function CatalogueBody({
   onReload,
   onWorkflows,
   onClearFilters,
+  onTag,
+  activeTags,
+  backendName,
 }: {
   state: ReturnType<typeof useCatalogue>['state'];
   filtered: ModelCatalogEntry[];
@@ -642,6 +762,9 @@ function CatalogueBody({
   onReload: () => void;
   onWorkflows: (entry: ModelCatalogEntry) => void;
   onClearFilters: () => void;
+  onTag: (key: TagKey) => void;
+  activeTags: ReadonlySet<TagKey>;
+  backendName: string | null;
 }) {
   switch (state.kind) {
     case 'idle':
@@ -727,6 +850,9 @@ function CatalogueBody({
             failure={failure}
             now={now}
             onWorkflows={onWorkflows}
+            onTag={onTag}
+            activeTags={activeTags}
+            backendName={backendName}
           />
         </>
       );

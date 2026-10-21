@@ -10,7 +10,8 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { previewIdFor } from './metadata.js';
+import { infoTags, previewIdFor } from './metadata.js';
+import { normaliseTags, tagKeys, tagsFromKeys } from './tags.js';
 import {
   fetchSourceFacts,
   parseReference,
@@ -137,6 +138,33 @@ describe('fetchSourceFacts', () => {
     expect(many.derivedFrom).toBeNull();
   });
 
+  it('sorts the page’s tags into groups and drops the plumbing', async () => {
+    // FLUX.1-dev's real `tags[]`, plus what a quantisation of it adds.
+    stubHuggingFace(
+      {
+        pipeline_tag: 'text-to-image',
+        library_name: 'diffusers',
+        cardData: { license: 'other', base_model: 'black-forest-labs/FLUX.1-dev' },
+        tags: [
+          'diffusers', 'safetensors', 'gguf', 'text-to-image', 'image-generation', 'flux', 'en',
+          'license:other', 'endpoints_compatible', 'diffusers:FluxPipeline', 'region:us',
+          'base_model:quantized:black-forest-labs/FLUX.1-dev', 'arxiv:2403.03206',
+        ],
+      },
+      null,
+    );
+    const facts = await fetchSourceFacts({ kind: 'huggingface', repo: 'city96/FLUX.1-dev-gguf' });
+    expect(facts.tags).toEqual({
+      task: ['text-to-image'],
+      base: ['black-forest-labs/flux.1-dev'],
+      library: ['diffusers'],
+      format: ['safetensors', 'gguf'],
+      language: ['english'],
+      license: ['other'],
+      tag: ['image-generation', 'flux'],
+    });
+  });
+
   it('survives a repo with no model card at all', async () => {
     stubHuggingFace({ siblings: [{ rfilename: 'model.safetensors' }] }, null);
     const facts = await fetchSourceFacts({ kind: 'huggingface', repo: 'someone/weights-only' });
@@ -150,5 +178,74 @@ describe('sourceKeyOf', () => {
     expect(sourceKeyOf({ kind: 'huggingface', repo: 'city96/FLUX.1-dev-gguf' })).toBe(
       'hf:city96/FLUX.1-dev-gguf',
     );
+  });
+});
+
+describe('normaliseTags', () => {
+  it('strips HuggingFace’s hosting flags and bibliography entirely', () => {
+    const tags = normaliseTags([
+      'region:us', 'endpoints_compatible', 'autotrain_compatible', 'has_space', 'deploy:azure',
+      'arxiv:2307.01952', 'dataset:laion', 'template:sd-lora', 'diffusers:StableDiffusionXLPipeline',
+      'text-generation-inference', 'something-new:value',
+    ]);
+    expect(tagKeys(tags)).toEqual([]);
+  });
+
+  it('maps every base_model relation onto the base group', () => {
+    const tags = normaliseTags([
+      'base_model:stabilityai/stable-diffusion-xl-base-1.0',
+      'base_model:finetune:stabilityai/stable-diffusion-xl-base-1.0',
+      'base_model:adapter:black-forest-labs/FLUX.1-dev',
+      'base_model:merge:a/b',
+    ]);
+    expect(tags.base).toEqual([
+      'stabilityai/stable-diffusion-xl-base-1.0',
+      'black-forest-labs/flux.1-dev',
+      'a/b',
+    ]);
+  });
+
+  it('does not repeat a task or a library as a free tag', () => {
+    const tags = normaliseTags(['text-to-image', 'Photorealistic', 'diffusers', 'lora'], {
+      pipelineTag: 'text-to-image',
+    });
+    expect(tags.task).toEqual(['text-to-image']);
+    expect(tags.library).toEqual(['diffusers']);
+    expect(tags.tag).toEqual(['photorealistic', 'lora']);
+  });
+
+  it('spells out the languages it knows and guesses at none it does not', () => {
+    const tags = normaliseTags(['en', 'zh', 'multilingual', 'sd']);
+    expect(tags.language).toEqual(['english', 'chinese', 'multilingual']);
+    // "sd" is an ISO code and also Stable Diffusion; it stays a word.
+    expect(tags.tag).toEqual(['sd']);
+  });
+
+  it('prefers a real licence over "other"', () => {
+    expect(normaliseTags(['license:apache-2.0'], { license: 'other' }).license).toEqual(['apache-2.0']);
+    expect(normaliseTags(['license:other']).license).toEqual(['other']);
+  });
+
+  it('round-trips through the stored keys', () => {
+    const tags = normaliseTags(['text-to-image', 'safetensors', 'anime', 'base_model:a/b'], {
+      license: 'mit',
+    });
+    expect(tagsFromKeys(tagKeys(tags))).toEqual(tags);
+    // Rubbish in a stored row is skipped rather than thrown on.
+    expect(tagsFromKeys(['nonsense', 'colour:blue', 'tag:ok']).tag).toEqual(['ok']);
+  });
+});
+
+describe('infoTags', () => {
+  it('gives a row cached before tags existed its task and licence', () => {
+    expect(infoTags({ tags: null, pipeline_tag: 'text-to-image', license: 'openrail++' })).toMatchObject({
+      task: ['text-to-image'],
+      license: ['openrail++'],
+      tag: [],
+    });
+  });
+
+  it('reads stored keys when there are some', () => {
+    expect(infoTags({ tags: ['tag:anime'], pipeline_tag: null, license: null }).tag).toEqual(['anime']);
   });
 });
