@@ -145,7 +145,7 @@ function mockCode(): PairingCode {
     commands: {
       linux: `curl -fsSL -o /tmp/rippel-agent '${origin}/api/deployments/agent/linux-amd64' && chmod +x /tmp/rippel-agent && /tmp/rippel-agent install --server '${origin}' --code '${code}'`,
       darwin: `curl -fsSL -o /tmp/rippel-agent '${origin}/api/deployments/agent/macos-arm64' && chmod +x /tmp/rippel-agent && /tmp/rippel-agent install --server '${origin}' --code '${code}'`,
-      win32: `powershell -ExecutionPolicy Bypass -Command "& { iwr -UseBasicParsing '${origin}/api/deployments/agent/windows-amd64' -OutFile rippel-agent.exe; & ./rippel-agent.exe install --server '${origin}' --code '${code}' }"`,
+      win32: `$agent = Join-Path $env:TEMP 'rippel-agent.exe'; iwr -UseBasicParsing '${origin}/api/deployments/agent/windows-amd64' -OutFile $agent; & $agent install --server '${origin}' --code '${code}'`,
     },
   };
 }

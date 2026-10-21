@@ -173,10 +173,14 @@ export function oneLiner(platform: AgentPlatform, p: ScriptParams): string {
   const server = p.serverUrl.replace(/\/+$/, '');
   if (platform === 'win32') {
     return (
-      `powershell -ExecutionPolicy Bypass -Command "& { ` +
-      `iwr -UseBasicParsing '${server}/api/deployments/agent/windows-amd64' ` +
-      `-OutFile \\"$env:TEMP\\rippel-agent.exe\\"; ` +
-      `& \\"$env:TEMP\\rippel-agent.exe\\" install --server '${server}' --code '${p.code}' }"`
+      // Plain PowerShell, pasted into PowerShell. Wrapping it in a nested
+      // `powershell -Command "..."` meant escaping quotes for two parsers at
+      // once, and `\"` is not an escape to PowerShell, so the line broke. An
+      // .exe is not subject to execution policy, so no bypass is needed.
+      `[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12; ` +
+      `$agent = Join-Path $env:TEMP 'rippel-agent.exe'; ` +
+      `iwr -UseBasicParsing '${server}/api/deployments/agent/windows-amd64' -OutFile $agent; ` +
+      `& $agent install --server '${server}' --code '${p.code}'`
     );
   }
   const target = platform === 'darwin' ? 'macos-arm64' : 'linux-amd64';

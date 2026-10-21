@@ -906,6 +906,16 @@ describe('the generated installers', () => {
     }
   });
 
+  it('gives Windows one level of quoting, so it pastes into PowerShell as is', () => {
+    // A nested `powershell -Command "..."` needed `\"` inside, which PowerShell
+    // does not read as an escape: pasted, the line failed to parse.
+    const line = oneLiner('win32', params);
+    expect(line).not.toContain('\\"');
+    expect(line).not.toMatch(/^powershell/);
+    expect(line).toContain("Join-Path $env:TEMP 'rippel-agent.exe'");
+    expect(line).toContain('Tls12');
+  });
+
   it('picks the right macOS binary, because a Mac is genuinely still split', () => {
     const script = bashInstaller(params);
     expect(script).toContain('uname -m');
