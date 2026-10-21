@@ -61,10 +61,13 @@ import {
   filterInstalled,
   latestByFilename,
   MODEL_TYPES,
+  TYPE_LABELS,
 } from '../models/catalogue';
+import { INTENTS, INTENT_WORDS, type Intent } from '../models/intents';
 import {
   DEFAULT_DISCOVER,
   SORT_LABELS,
+  inScope,
   parseSearch,
   readDiscover,
   resolverFor,
@@ -308,33 +311,66 @@ export function ModelsPage({ api = modelsApi, storageApi: storage = storageApi }
   // or not they have been committed yet.
   const catText = useMemo(() => parseSearch(discover.q).text, [discover.q]);
 
-  // Everything except the type filter: the population the type facet counts
-  // against, so a type states what clicking it would leave.
-  const catalogueBeforeType = useMemo(
+  // Search and tags only: the population every chip and count below is a
+  // slice of. Intent, type and Works on this machine are applied on top (see
+  // `inScope`) so each can be counted with the others held still.
+  const catalogueSearched = useMemo(
     () =>
       filterCatalogue(entries, {
         type: null,
         base: null,
         q: catText,
-        run: discover.runs ? 'runs' : 'all',
+        run: 'all',
         include: discover.include,
         exclude: discover.exclude,
       }),
-    [entries, catText, discover.runs, discover.include, discover.exclude],
+    [entries, catText, discover.include, discover.exclude],
   );
 
   const catalogueFiltered = useMemo(
     () =>
       sortCatalogue(
-        catalogueBeforeType.filter((entry) => !discover.type || entry.type === discover.type),
+        catalogueSearched.filter((entry) => inScope(entry, discover)),
         discover.sort,
       ),
-    [catalogueBeforeType, discover.type, discover.sort],
+    [catalogueSearched, discover, discover.sort],
   );
 
+  // A type row says what clicking it would leave. Choosing a type widens the
+  // intent to Everything (see onType below), so its rows are counted that way;
+  // parts are counted too, because choosing one is the only way to browse
+  // them. "Any type" keeps the intent, so it is counted with it.
   const catalogueTypeCounts = useMemo(
-    () => catalogueTypes(catalogueBeforeType),
-    [catalogueBeforeType],
+    () => ({
+      types: catalogueTypes(
+        catalogueSearched.filter((entry) =>
+          inScope(entry, { ...discover, intent: 'all', type: entry.type }),
+        ),
+      ),
+      all: catalogueSearched.filter((entry) => inScope(entry, { ...discover, type: null })).length,
+    }),
+    [catalogueSearched, discover],
+  );
+
+  // How many each intent chip would show, everything else held still.
+  const intentCounts = useMemo(() => {
+    const counts = {} as Record<Intent, number>;
+    for (const intent of INTENTS) {
+      counts[intent] = catalogueSearched.filter((entry) =>
+        inScope(entry, { ...discover, intent }),
+      ).length;
+    }
+    return counts;
+  }, [catalogueSearched, discover]);
+
+  // What the empty state needs to offer the right way out: would turning off
+  // Works on this machine find anything?
+  const hiddenByRuns = useMemo(
+    () =>
+      discover.runs
+        ? catalogueSearched.filter((entry) => inScope(entry, { ...discover, runs: false })).length
+        : 0,
+    [catalogueSearched, discover],
   );
 
   const tagVocabulary = useMemo(() => vocabulary(entries), [entries]);
@@ -546,10 +582,15 @@ export function ModelsPage({ api = modelsApi, storageApi: storage = storageApi }
           <div className={entries.length > 0 ? panels.discover : panels.discoverBare}>
             {entries.length > 0 ? (
               <FacetRail
-                types={catalogueTypeCounts}
-                allTypesCount={catalogueBeforeType.length}
+                types={catalogueTypeCounts.types}
+                allTypesCount={catalogueTypeCounts.all}
                 activeType={discover.type}
-                onType={(type) => setDiscover((current) => ({ ...current, type }))}
+                // Choosing a type is the expert route: it widens the intent to
+                // Everything, or "Image decoders" under "Make images" would
+                // always be empty.
+                onType={(type) =>
+                  setDiscover((current) => ({ ...current, type, intent: type ? 'all' : current.intent }))
+                }
                 known={tagVocabulary}
                 counts={tagCounts}
                 include={discover.include}
@@ -561,6 +602,28 @@ export function ModelsPage({ api = modelsApi, storageApi: storage = storageApi }
               <ModelKinds />
               {entries.length > 0 ? (
                 <div className={panels.discoverHead}>
+                  <div className={panels.intentRow} role="group" aria-label="What do you want to do?">
+                    {INTENTS.map((intent) => (
+                      <button
+                        key={intent}
+                        type="button"
+                        className={`${panels.intentChip} ${discover.intent === intent ? panels.intentChipOn : ''}`}
+                        aria-pressed={discover.intent === intent}
+                        title={INTENT_WORDS[intent].explain}
+                        // An intent is the plain-language route, so it clears
+                        // the expert type filter rather than combining with it.
+                        onClick={() => setDiscover((current) => ({ ...current, intent, type: null }))}
+                      >
+                        {INTENT_WORDS[intent].label}
+                        <span className={`mono ${panels.intentCount}`}>{intentCounts[intent]}</span>
+                      </button>
+                    ))}
+                  </div>
+                  <p className={panels.intentExplain}>
+                    {discover.type
+                      ? `Showing ${TYPE_LABELS[discover.type].toLowerCase()} only, from More filters.`
+                      : INTENT_WORDS[discover.intent].explain}
+                  </p>
                   <TagSearch
                     q={discover.q}
                     onQ={(q) => setDiscover((current) => ({ ...current, q }))}
@@ -614,7 +677,7 @@ export function ModelsPage({ api = modelsApi, storageApi: storage = storageApi }
                           setDiscover((current) => ({ ...current, runs }));
                         }}
                       />
-                      Runs on this backend
+                      Works on this machine
                     </label>
                     <div className={panels.sortSeg} role="group" aria-label="Sort by">
                       {(Object.keys(SORT_LABELS) as CatalogueSort[]).map((sort) => (
@@ -645,6 +708,9 @@ export function ModelsPage({ api = modelsApi, storageApi: storage = storageApi }
                 onReload={catalogue.reload}
                 onWorkflows={openTemplates}
                 onClearFilters={clearDiscover}
+                hiddenByRuns={hiddenByRuns}
+                onShowEverything={() => setDiscover((current) => ({ ...current, runs: false }))}
+                intentLabel={discover.type ? null : INTENT_WORDS[discover.intent].label}
                 onTag={toggleTag}
                 activeTags={activeTags}
                 backendName={backend?.name ?? null}
@@ -756,6 +822,9 @@ function CatalogueBody({
   onTag,
   activeTags,
   backendName,
+  hiddenByRuns,
+  onShowEverything,
+  intentLabel,
 }: {
   state: ReturnType<typeof useCatalogue>['state'];
   filtered: ModelCatalogEntry[];
@@ -771,6 +840,10 @@ function CatalogueBody({
   onTag: (key: TagKey) => void;
   activeTags: ReadonlySet<TagKey>;
   backendName: string | null;
+  /** How many results Works on this machine is hiding right now. */
+  hiddenByRuns: number;
+  onShowEverything: () => void;
+  intentLabel: string | null;
 }) {
   switch (state.kind) {
     case 'idle':
@@ -819,6 +892,26 @@ function CatalogueBody({
             title="This backend offers nothing to install"
             message="Its install transport answered, but its catalogue is empty. ComfyUI-Manager builds that list from its own model list, so a Manager that has never fetched one has nothing to offer yet."
             action={{ label: 'Check again', onClick: onReload }}
+          />
+        );
+      }
+      if (filtered.length === 0 && hiddenByRuns > 0) {
+        // Not "nothing matches": there are matches, they just are not known
+        // to run here. Say so, and make the way out one click.
+        const machine = backendName ?? 'this machine';
+        return (
+          <Notice
+            title={`Nothing here runs on ${machine} yet`}
+            message={
+              <>
+                <span className="mono">{hiddenByRuns}</span>{' '}
+                {hiddenByRuns === 1 ? 'match' : 'matches'}
+                {intentLabel ? ` under “${intentLabel}”` : ''} {hiddenByRuns === 1 ? 'is' : 'are'} hidden because {machine} cannot run{' '}
+                {hiddenByRuns === 1 ? 'it' : 'them'} yet, or could not be asked. They may still be worth
+                a look.
+              </>
+            }
+            action={{ label: 'Show everything', onClick: onShowEverything }}
           />
         );
       }

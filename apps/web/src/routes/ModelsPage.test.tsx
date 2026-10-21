@@ -46,6 +46,9 @@ import {
   BACKEND_ID,
   installInState,
   makeBackend,
+  makeCatalogue,
+  makeEntry,
+  makeInfo,
   makeModel,
   makeOption,
   makeRunnability,
@@ -202,7 +205,7 @@ describe('ModelsPage', () => {
       const user = await openTab(/Discover/);
 
       // The screen opens on Checkpoint; this entry is a LoRA.
-      await user.click(screen.getByRole('button', { name: /All types/ }));
+      await user.click(screen.getByRole('button', { name: /^Everything/ }));
       // Narrow to the one entry we mean; the grid is 100 cards.
       await user.type(screen.getByLabelText('Search the catalogue'), 'Cinematic');
       const card = await screen.findByRole('article', { name: 'Cinematic Film Look' });
@@ -270,9 +273,11 @@ describe('ModelsPage', () => {
       const search = await screen.findByLabelText('Search the catalogue');
       // Widen past the Checkpoint default: this test is about paging the whole
       // catalogue, and there is a test of the default just below.
-      await user.click(screen.getByRole('button', { name: /All types/ }));
+      await user.click(screen.getByRole('button', { name: /^Everything/ }));
       // 100 entries, but the grid pages rather than painting them all at once.
-      await waitFor(() => expect(screen.getByText('48 of 100')).toBeInTheDocument());
+      // Everything is 99 of the 100: the one VAE is a part, and parts are not
+      // browse results until More filters → Type asks for them.
+      await waitFor(() => expect(screen.getByText('48 of 99')).toBeInTheDocument());
       expect(screen.getByRole('button', { name: 'Show 48 more' })).toBeInTheDocument();
 
       await user.type(search, 'halation');
@@ -282,6 +287,7 @@ describe('ModelsPage', () => {
       expect(screen.queryByRole('article', { name: 'RealESRGAN x2' })).not.toBeInTheDocument();
 
       await user.clear(search);
+      await user.click(screen.getByRole('button', { name: /More filters/ }));
       await user.click(screen.getByRole('button', { name: /^Image decoders/ }));
       await waitFor(() =>
         expect(screen.getByRole('article', { name: 'FLUX VAE' })).toBeInTheDocument(),
@@ -319,14 +325,16 @@ describe('ModelsPage', () => {
       // The licence is a drawer fact now, not card furniture.
       expect(within(sdxl).queryByText('openrail++')).not.toBeInTheDocument();
 
-      // One entry in the fixture runs; everything else is a support file, and
-      // a support file is not offered as either working or broken.
-      await user.click(screen.getByRole('button', { name: /All types/ }));
-      await user.click(screen.getByRole('checkbox', { name: 'Runs on this backend' }));
-      await waitFor(() => expect(resultCount()).toBe('1 of 100 models'));
-      expect(search()).toContain('runs=1');
-      expect(screen.getByRole('article', { name: 'SDXL Base 1.0' })).toBeInTheDocument();
+      // Works on this machine is on from the start, so the default URL says
+      // nothing; turning it off is what gets written down.
+      const works = screen.getByRole('checkbox', { name: 'Works on this machine' });
+      expect(works).toBeChecked();
+      expect(search()).not.toContain('runs');
+      // Make images: one model in the fixture, and it runs.
+      expect(resultCount()).toBe('1 of 100 models');
       expect(screen.queryByRole('article', { name: 'RealESRGAN x2' })).not.toBeInTheDocument();
+      await user.click(works);
+      await waitFor(() => expect(search()).toContain('runs=0'));
     });
 
     it('opens the large rendition when the preview is clicked', async () => {
@@ -496,61 +504,157 @@ describe('ModelsPage', () => {
 
   describe('the type filter', () => {
     /**
-     * The screen opens on the thing you can generate with. On the live
-     * catalogue that is 145 rows of 372 rather than all of them, and the
-     * add-ons are the long tail nobody arrives looking for.
+     * The screen opens on the job most people came for — Make images — rather
+     * than on a ComfyUI file type, and only on what works here. Type is an
+     * expert filter now, folded under More filters.
      */
-    it('opens on Checkpoint, with All types at the end of the row', async () => {
-      const api = makeStubApi();
-      renderPage(api);
-      await ready();
-      await openTab(/Discover/);
-
-      const checkpoint = await screen.findByRole('button', { name: /^Models\b/ });
-      expect(checkpoint).toHaveAttribute('aria-pressed', 'true');
-      const all = screen.getByRole('button', { name: /All types/ });
-      expect(all).toHaveAttribute('aria-pressed', 'false');
-
-      // Last in the row, not first: it stopped being the default, so it stops
-      // being the first thing the eye lands on.
-      const chips = within(
-        screen.getByRole('group', { name: 'Filter by model type' }),
-      ).getAllByRole('button');
-      expect(chips[chips.length - 1]).toBe(all);
-    });
-
-    /**
-     * The bug: the kind row counted *after* the type filter and the type row
-     * counted before it, so with Checkpoint selected one row said there were no
-     * support files while the row under it simultaneously offered 197 of them.
-     * The kind row is gone, and every remaining count obeys one rule — how many
-     * you would get if you clicked it, given everything else selected.
-     */
-    it('counts each chip against everything except the type filter', async () => {
+    it('opens on Make images, working models only, with Type under More filters', async () => {
       const api = makeStubApi();
       renderPage(api);
       await ready();
       const user = await openTab(/Discover/);
 
+      const intents = screen.getByRole('group', { name: 'What do you want to do?' });
+      const chips = within(intents).getAllByRole('button');
+      expect(chips.map((chip) => chip.textContent!.replace(/[0-9]+$/, ''))).toEqual([
+        'Make images',
+        'Make video',
+        'Edit an image',
+        'Enlarge images',
+        'Style add-ons',
+        'Everything',
+      ]);
+      expect(chips[0]).toHaveAttribute('aria-pressed', 'true');
+      expect(screen.getByText('Models that turn a prompt into a picture.')).toBeInTheDocument();
+      expect(screen.getByRole('checkbox', { name: 'Works on this machine' })).toBeChecked();
+      expect(screen.getByRole('article', { name: 'SDXL Base 1.0' })).toBeInTheDocument();
+      expect(screen.queryByRole('article', { name: 'Cinematic Film Look' })).not.toBeInTheDocument();
+
+      // Type is folded away until asked for.
+      expect(screen.queryByRole('group', { name: 'Filter by model type' })).not.toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: /More filters/ }));
+      expect(screen.getByRole('group', { name: 'Filter by model type' })).toBeInTheDocument();
+
+      // Each chip explains itself, and Style add-ons finds the add-ons.
+      await user.click(within(intents).getByRole('button', { name: /^Style add-ons/ }));
+      expect(screen.getByText(/Small extras that push a model/)).toBeInTheDocument();
+      await waitFor(() => expect(resultCount()).toBe('97 of 100 models'));
+      expect(search()).toContain('intent=styles');
+    });
+
+    /**
+     * Parts are not browse results: nobody goes looking for a VAE. They are
+     * reachable on purpose, through More filters → Type, and that widens the
+     * intent so the choice is never an empty screen.
+     */
+    it('hides parts until More filters asks for them', async () => {
+      const api = makeStubApi();
+      renderPage(api);
+      await ready();
+      const user = await openTab(/Discover/);
+      await user.click(screen.getByRole('button', { name: /^Everything/ }));
+      expect(screen.queryByRole('article', { name: 'FLUX VAE' })).not.toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: /More filters/ }));
+      const row = screen.getByRole('group', { name: 'Filter by model type' });
+      await user.click(within(row).getByRole('button', { name: /^Image decoders/ }));
+      expect(await screen.findByRole('article', { name: 'FLUX VAE' })).toBeInTheDocument();
+      expect(resultCount()).toBe('1 of 100 models');
+      expect(search()).toContain('type=vae');
+    });
+
+    /**
+     * Every count obeys one rule — how many you would get if you clicked it,
+     * given everything else selected. A type row is counted as the click would
+     * leave it, which widens the intent to Everything.
+     */
+    it('counts each type against everything except the type filter', async () => {
+      const api = makeStubApi();
+      renderPage(api);
+      await ready();
+      const user = await openTab(/Discover/);
+      await user.click(screen.getByRole('button', { name: /More filters/ }));
+
       const row = screen.getByRole('group', { name: 'Filter by model type' });
       const countOf = (name: RegExp) =>
         Number(within(row).getByRole('button', { name }).textContent!.replace(/[^0-9]+/g, ''));
 
-      // Checkpoint is selected, and the other chips still report real numbers
-      // rather than collapsing to zero.
+      // Make images is on, and the add-on row still reports what clicking it
+      // would show rather than collapsing to zero.
       const loras = countOf(/^Style add-ons/);
-      expect(loras).toBeGreaterThan(0);
-      expect(countOf(/All types/)).toBe(100);
+      expect(loras).toBe(97);
+      expect(countOf(/Any type/)).toBe(1);
 
-      // Selecting a different type changes no chip's count: they are all
-      // measured against the same population.
       await user.click(within(row).getByRole('button', { name: /^Style add-ons/ }));
       expect(countOf(/^Style add-ons/)).toBe(loras);
-      expect(countOf(/All types/)).toBe(100);
+      await waitFor(() => expect(resultCount()).toBe('97 of 100 models'));
 
-      // A search narrows every chip together, so they stay in agreement.
+      // A search narrows every row together, so they stay in agreement.
       await user.type(screen.getByLabelText('Search the catalogue'), 'halation');
-      await waitFor(() => expect(countOf(/All types/)).toBe(1));
+      await waitFor(() => expect(countOf(/^Style add-ons/)).toBe(1));
+    });
+
+    /**
+     * Nothing working is not the same as nothing at all: say which, and make
+     * the way out one click.
+     */
+    it('offers to show everything when nothing works here', async () => {
+      const ltx = makeEntry({
+        ref: 'checkpoints/ltx-video-2b.safetensors',
+        name: 'LTX-Video 2B',
+        filename: 'ltx-video-2b.safetensors',
+        type: 'checkpoint',
+        base: 'LTX-Video',
+        runnability: makeRunnability({ status: 'no-workflow', capabilities: ['txt2vid'] }),
+      });
+      const api = makeStubApi({ entries: [...makeCatalogue(), ltx] });
+      renderPage(api);
+      await ready();
+      const user = await openTab(/Discover/);
+      await user.click(
+        within(screen.getByRole('group', { name: 'What do you want to do?' })).getByRole('button', {
+          name: /^Make video/,
+        }),
+      );
+      expect(await screen.findByText('Nothing here runs on desktop-6900xt yet')).toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: 'Show everything' }));
+      expect(await screen.findByRole('article', { name: 'LTX-Video 2B' })).toBeInTheDocument();
+      expect(screen.getByRole('checkbox', { name: 'Works on this machine' })).not.toBeChecked();
+    });
+
+    /**
+     * A model that needs one more file still works here, says which part in
+     * plain words, and sorts after the ones that run as they are. A curated
+     * model that runs sorts first and says so.
+     */
+    it('puts recommended, working models first and names missing parts', async () => {
+      const needy = makeEntry({
+        ref: 'checkpoints/flux1-dev.safetensors',
+        name: 'FLUX.1 dev',
+        filename: 'flux1-dev.safetensors',
+        type: 'checkpoint',
+        base: 'FLUX.1',
+        info: makeInfo({ downloads: 9_000_000 }),
+        runnability: makeRunnability({
+          status: 'needs-companion',
+          capabilities: ['txt2img'],
+          missing: [
+            { filename: 't5xxl_fp16.safetensors', purpose: 'T5 text encoder', loader: 'DualCLIPLoader' },
+            { filename: 'ae.safetensors', purpose: 'VAE', loader: 'VAELoader' },
+          ],
+        }),
+      });
+      const api = makeStubApi({ entries: [needy, ...makeCatalogue()] });
+      renderPage(api);
+      await ready();
+      await openTab(/Discover/);
+
+      const cards = await screen.findAllByRole('article');
+      // SDXL base: fewer downloads, but recommended and ready.
+      expect(cards.map((card) => card.getAttribute('aria-label'))).toEqual(['SDXL Base 1.0', 'FLUX.1 dev']);
+      expect(within(cards[0]!).getByText('Recommended')).toBeInTheDocument();
+      expect(within(cards[1]!).queryByText('Recommended')).not.toBeInTheDocument();
+      expect(within(cards[1]!).getByText('Needs: Prompt reader, Image decoder')).toBeInTheDocument();
     });
 
     /** The badge says what the file is for, to a pointer and to a keyboard. */
@@ -559,7 +663,7 @@ describe('ModelsPage', () => {
       renderPage(api);
       await ready();
       const user = await openTab(/Discover/);
-      await user.click(screen.getByRole('button', { name: /All types/ }));
+      await user.click(screen.getByRole('button', { name: /^Everything/ }));
       await user.type(screen.getByLabelText('Search the catalogue'), 'Cinematic');
 
       const card = await screen.findByRole('article', { name: 'Cinematic Film Look' });
@@ -1036,7 +1140,7 @@ describe('ModelsPage', () => {
       renderPage(api);
       await ready();
       const user = await openTab(/Discover/);
-      await user.click(screen.getByRole('button', { name: /All types/ }));
+      await user.click(screen.getByRole('button', { name: /^Everything/ }));
 
       const box = screen.getByRole('combobox', { name: 'Search the catalogue' });
       await user.type(box, 'tag:fil');
@@ -1051,7 +1155,7 @@ describe('ModelsPage', () => {
       expect(new URLSearchParams(search()!).getAll('tag')).toEqual(['tag:film']);
 
       await user.keyboard('{Backspace}');
-      await waitFor(() => expect(resultCount()).toBe('100 of 100 models'));
+      await waitFor(() => expect(resultCount()).toBe('99 of 100 models'));
       expect(screen.queryByRole('button', { name: 'Remove tag film' })).not.toBeInTheDocument();
     });
 
@@ -1060,20 +1164,21 @@ describe('ModelsPage', () => {
       renderPage(api);
       await ready();
       const user = await openTab(/Discover/);
-      await user.click(screen.getByRole('button', { name: /All types/ }));
+      await user.click(screen.getByRole('button', { name: /^Everything/ }));
 
       await user.type(screen.getByRole('combobox', { name: 'Search the catalogue' }), '-task:text-to-image');
       await user.keyboard('{Enter}');
 
-      // Both entries with a task are gone; the 98 with none remain.
-      await waitFor(() => expect(resultCount()).toBe('98 of 100 models'));
+      // Both entries with a task are gone; the 97 with none remain (the VAE
+      // has none either, but it is a part, and parts are not browsed).
+      await waitFor(() => expect(resultCount()).toBe('97 of 100 models'));
       expect(screen.getByRole('button', { name: 'Remove exclusion task text-to-image' })).toBeInTheDocument();
       expect(new URLSearchParams(search()!).getAll('tag')).toEqual(['-task:text-to-image']);
     });
 
     it('restores tags, type and sort from the URL', async () => {
       const api = makeStubApi();
-      renderPage(api, admin, '/models?tab=discover&type=all&tag=tag:photorealistic&sort=likes');
+      renderPage(api, admin, '/models?tab=discover&intent=all&tag=tag:photorealistic&sort=likes');
       await ready();
 
       expect(await screen.findByRole('article', { name: 'Cinematic Film Look' })).toBeInTheDocument();
@@ -1087,7 +1192,7 @@ describe('ModelsPage', () => {
       renderPage(api);
       await ready();
       const user = await openTab(/Discover/);
-      await user.click(screen.getByRole('button', { name: /All types/ }));
+      await user.click(screen.getByRole('button', { name: /^Everything/ }));
 
       // Card chips: task, then base, then free tags.
       const cinematic = await screen.findByRole('article', { name: 'Cinematic Film Look' });
@@ -1168,21 +1273,22 @@ describe('ModelsPage', () => {
       renderPage(api);
       await ready();
       const user = await openTab(/Discover/);
-      await user.click(screen.getByRole('button', { name: /All types/ }));
+      await user.click(screen.getByRole('button', { name: /^Everything/ }));
 
       // The catalogue's own family spelling, folded into the base facet.
-      const base = screen.getByRole('group', { name: 'Filter by Base model' });
+      const base = screen.getByRole('group', { name: 'Filter by Model family' });
       const flux = within(base).getByRole('button', { name: /^flux\.1/ });
-      expect(flux).toHaveTextContent('2');
+      // The add-on, not the FLUX VAE beside it: that is a part.
+      expect(flux).toHaveTextContent('1');
       await user.click(flux);
 
       expect(flux).toHaveAttribute('aria-pressed', 'true');
-      await waitFor(() => expect(resultCount()).toBe('2 of 100 models'));
+      await waitFor(() => expect(resultCount()).toBe('1 of 100 models'));
       expect(new URLSearchParams(search()!).getAll('tag')).toEqual(['base:flux.1']);
-      expect(screen.getByRole('article', { name: 'FLUX VAE' })).toBeInTheDocument();
+      expect(screen.getByRole('article', { name: 'Cinematic Film Look' })).toBeInTheDocument();
 
       await user.click(flux);
-      await waitFor(() => expect(resultCount()).toBe('100 of 100 models'));
+      await waitFor(() => expect(resultCount()).toBe('99 of 100 models'));
     });
   });
 

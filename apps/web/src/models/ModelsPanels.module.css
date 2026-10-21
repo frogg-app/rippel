@@ -2399,3 +2399,115 @@ button.tagChipOn:hover {
   flex-direction: column;
   gap: var(--gap-sm);
 }
+
+/* -- intent chips: the first question Discover asks */
+
+.intentRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--gap-xs);
+  margin-bottom: 8px;
+}
+
+.intentChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  background: var(--surface-2);
+  font-size: var(--text-md);
+  color: var(--text-2);
+  transition: background var(--transition), border-color var(--transition), color var(--transition);
+}
+
+.intentChip:hover {
+  background: var(--surface-hover);
+  border-color: var(--line-input);
+}
+
+.intentChipOn,
+.intentChipOn:hover {
+  border-color: var(--accent-line);
+  background: var(--accent-tint);
+  color: var(--accent);
+}
+
+.intentCount {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.intentChipOn .intentCount {
+  color: var(--accent-quiet);
+}
+
+.intentExplain {
+  margin: 0 0 var(--gap-md);
+  font-size: var(--text-sm);
+  color: var(--text-3);
+}
+
+.moreFilters {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: var(--gap-md);
+  padding: 4px 8px;
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--text-4);
+}
+
+.moreFilters:hover:not(:disabled) {
+  color: var(--accent);
+}
+
+.moreFilters:disabled {
+  cursor: default;
+}
+
+/* -- "Recommended" and "Needs: …" on a card */
+
+.recommendedBadge {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--accent-line);
+  background: var(--accent-tint);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--accent);
+}
+
+.cardNeeds {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--models-warn);
+}
+
+@media (max-width: 720px) {
+  /* The rail stacks above the grid rather than squeezing it to nothing. */
+  .discover {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+  .rail {
+    max-height: 40vh;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .discoverBar {
+    flex-wrap: wrap;
+  }
+  .intentChip {
+    height: 32px;
+    padding: 0 12px;
+  }
+}
