@@ -118,3 +118,12 @@ describe('what it deliberately will not judge', () => {
     expect(coverageOf(graph).unknown).toEqual(['SomeNodeNobodyHasCapturedYet']);
   });
 });
+
+describe('dynamic combo inputs', () => {
+  it('accepts a child of a dynamic combo, and still catches a misspelt parent', () => {
+    const graph = (inputs: Record<string, unknown>) =>
+      ({ '1': { class_type: 'SaveVideo', inputs: { video: ['2', 0], filename_prefix: 'v', format: 'auto', ...inputs } }, '2': { class_type: 'SaveVideo', inputs: {} } }) as never;
+    expect(validateGraph(graph({ 'format.codec': 'auto' })).filter((p) => p.nodeId === '1')).toEqual([]);
+    expect(validateGraph(graph({ 'fromat.codec': 'auto' })).map((p) => p.input)).toContain('fromat.codec');
+  });
+});

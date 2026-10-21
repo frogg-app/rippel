@@ -113,6 +113,7 @@ export function validateGraph(graph: ComfyApiGraph): GraphProblem[] {
 
     for (const [name, value] of Object.entries(node.inputs)) {
       const input = declared[name];
+      if (!input && isDynamicComboChild(name, declared)) continue;
       if (!input) {
         // The typo case, and the reason this module exists.
         fail(`no input named "${name}" on ${node.class_type}`, name);
@@ -146,6 +147,20 @@ export function validateGraph(graph: ComfyApiGraph): GraphProblem[] {
   }
 
   return problems;
+}
+
+/**
+ * `format.codec` on SaveVideo: ComfyUI's dynamic combos bring their own inputs
+ * with them — choosing `format: auto` adds a `codec` — and the API format
+ * addresses those as `<parent>.<child>`. The captured specs record the parent
+ * as a dynamic combo but not the options inside it, so the most that can be
+ * said offline is that the child hangs off a parent that really is one. That
+ * still catches a typo in the parent's name.
+ */
+function isDynamicComboChild(name: string, declared: Record<string, InputSpec>): boolean {
+  const dot = name.indexOf('.');
+  if (dot <= 0) return false;
+  return declared[name.slice(0, dot)]?.type === 'COMFY_DYNAMICCOMBO_V3';
 }
 
 /** One line per problem, for a test failure somebody has to read at 2am. */
