@@ -177,10 +177,11 @@ export default async function modelInstallRoutes(app: FastifyInstance) {
         const offeredAll = await transport.catalogue();
         const direct = offeredAll.find((e) => e.ref === ref);
         let entry = direct;
+        let info: ObjectInfo | null = null;
         try {
           // Fail open, as the catalogue does: a backend that will not describe
           // itself still installs exactly what it offered.
-          const info = await objectInfoFor(backend.base_url).catch(() => null);
+          info = await objectInfoFor(backend.base_url).catch(() => null);
           const filename = ref.slice(ref.lastIndexOf('/') + 1);
           entry =
             offeredAll
@@ -206,7 +207,22 @@ export default async function modelInstallRoutes(app: FastifyInstance) {
           transport,
         });
 
-        return reply.code(202).send({ install });
+        // The parts the model cannot run without — its prompt reader, its
+        // decoder — come with it when this backend's catalogue offers them.
+        // Installing a FLUX file and only then being told it needs two more was
+        // the commonest dead end; the readiness screen could close the gap, but
+        // nobody goes looking for a screen to finish an install they started.
+        const companions = await installCompanions({
+          entry,
+          offered: offeredAll,
+          info,
+          backend,
+          transport,
+          requestedBy: req.user!.id,
+          after: install.id,
+        });
+
+        return reply.code(202).send({ install, companions });
       } catch (err) {
         if (err instanceof InstallConflict) {
           return reply.code(409).send({ error: 'conflict', message: err.message });
@@ -586,4 +602,50 @@ function judgeEntry(
   };
   const verdict = runnabilityFor({ ...input, folder: folderForSavePath(entry.savePath, entry.type) });
   return placedForWorkflow(entry, verdict, input, transportKind === 'rippel-agent');
+}
+
+/**
+ * Queue every missing companion of `entry` that the catalogue offers by exact
+ * filename. Best effort and silent on conflicts: a part already downloading or
+ * already present is the outcome we wanted, and a part we cannot supply stays
+ * on the card's verdict, which still names it.
+ */
+async function installCompanions(params: {
+  entry: ModelCatalogEntry;
+  offered: ModelCatalogEntry[];
+  info: ObjectInfo | null;
+  backend: { id: string; name: string };
+  transport: Awaited<ReturnType<typeof requireTransport>>;
+  requestedBy: string;
+  /** The install these parts wait behind: one download per machine at a time. */
+  after: string;
+}) {
+  let missing: { filename: string }[];
+  try {
+    missing = judgeEntry(params.entry, params.info, params.backend, params.transport.kind).verdict.missing ?? [];
+  } catch {
+    return [];
+  }
+  const started = [];
+  for (const companion of missing) {
+    const wanted = companion.filename.split(/[\\/]/).pop()!.toLowerCase();
+    const part = params.offered.find((e) => !e.installed && e.filename.toLowerCase() === wanted);
+    if (!part) continue;
+    try {
+      started.push(
+        await startInstall({
+          backendId: params.backend.id,
+          backendName: params.backend.name,
+          requestedBy: params.requestedBy,
+          entry: part,
+          transport: params.transport,
+          after: params.after,
+        }),
+      );
+    } catch {
+      // Already installing, already there, or refused: none of them should
+      // turn the install the person asked for into an error.
+    }
+  }
+  return started;
 }

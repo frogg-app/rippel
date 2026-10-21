@@ -401,6 +401,8 @@ export async function createInstall(params: {
   backendId: Uuid;
   requestedBy: Uuid;
   entry: { name: string; filename: string; type: ModelType; base: string; url: string; ref: string };
+  /** Recorded as `waiting` behind this install rather than started now. */
+  after?: Uuid;
 }): Promise<InstallRow> {
   // The catalogue ref is "<save_path>/<filename>" — the exact tuple the
   // transport's whitelist matches on. Splitting it back out here keeps the
@@ -409,8 +411,8 @@ export async function createInstall(params: {
 
   const row = await queryOne<InstallRow>(
     `INSERT INTO model_installs
-       (backend_id, requested_by, filename, display_name, model_type, base_model, url, save_path)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       (backend_id, requested_by, filename, display_name, model_type, base_model, url, save_path, status, after_install)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
      RETURNING *`,
     [
       params.backendId,
@@ -421,6 +423,8 @@ export async function createInstall(params: {
       params.entry.base,
       params.entry.url,
       savePath,
+      params.after ? 'waiting' : 'queued',
+      params.after ?? null,
     ],
   );
   return row!;
@@ -459,6 +463,8 @@ export async function startInstall(params: {
   requestedBy: Uuid;
   entry: ModelCatalogEntry;
   transport: ModelTransport;
+  /** Wait behind this install instead of starting now; see dispatchWaitingInstalls. */
+  after?: Uuid;
 }): Promise<ModelInstall> {
   const { entry } = params;
   if (entry.installed) {
@@ -471,6 +477,7 @@ export async function startInstall(params: {
       backendId: params.backendId,
       requestedBy: params.requestedBy,
       entry,
+      after: params.after,
     });
   } catch (err) {
     // The partial unique index on (backend_id, filename) for live rows.
@@ -482,16 +489,25 @@ export async function startInstall(params: {
     throw err;
   }
 
+  if (row.status === 'waiting') return toModelInstall(row);
+  return dispatchInstall(row, params.transport);
+}
+
+/**
+ * Hand a recorded install to its transport. Shared by `startInstall` and by
+ * the poller, which starts waiting installs when their turn comes.
+ */
+async function dispatchInstall(row: InstallRow, transport: ModelTransport): Promise<ModelInstall> {
   // The exact size, asked once, before anything is downloading. It is a HEAD
   // against the model host, so it costs a round trip and can fail in every way
   // a network call can — and none of those failures may stop an install. A null
   // here simply means the UI will show bytes-so-far without a percentage, which
   // is the honest fallback and exactly what happened before this existed.
-  await query('UPDATE model_installs SET transport_kind = $2 WHERE id = $1', [row.id, params.transport.kind]);
-  void resolveTotalBytes(row.id, params.transport, requestFromRow(row));
+  await query('UPDATE model_installs SET transport_kind = $2 WHERE id = $1', [row.id, transport.kind]);
+  void resolveTotalBytes(row.id, transport, requestFromRow(row));
 
   try {
-    await params.transport.install(requestFromRow(row));
+    await transport.install(requestFromRow(row));
   } catch (err) {
     await query(
       `UPDATE model_installs SET status = 'failed', error = $2, finished_at = now(), approval_required = NULL WHERE id = $1`,
@@ -536,4 +552,48 @@ async function resolveTotalBytes(
 
 function isUniqueViolation(err: unknown): boolean {
   return typeof err === 'object' && err !== null && (err as { code?: string }).code === '23505';
+}
+
+/**
+ * Start waiting installs whose turn has come.
+ *
+ * A waiting install goes when the install it follows has finished — whether
+ * it succeeded or not: a model's prompt reader is worth having even if the
+ * model itself failed, and a retry should not have to fetch it again — and
+ * nothing else is queued or downloading on that machine, since an agent runs
+ * one download at a time. One per backend per tick, oldest first.
+ */
+export async function dispatchWaitingInstalls(log: (msg: string) => void = () => {}): Promise<void> {
+  const ready = await query<InstallRow & { base_url: string }>(
+    `SELECT DISTINCT ON (mi.backend_id) mi.*, b.base_url
+       FROM model_installs mi
+       JOIN backends b ON b.id = mi.backend_id
+       LEFT JOIN model_installs prev ON prev.id = mi.after_install
+      WHERE mi.status = 'waiting'
+        AND (prev.id IS NULL OR prev.status IN ('complete', 'failed', 'cancelled'))
+        AND NOT EXISTS (
+          SELECT 1 FROM model_installs busy
+           WHERE busy.backend_id = mi.backend_id AND busy.status IN ('queued', 'downloading'))
+      ORDER BY mi.backend_id, mi.created_at`,
+  );
+  for (const row of ready) {
+    const claimed = await queryOne<InstallRow>(
+      `UPDATE model_installs SET status = 'queued' WHERE id = $1 AND status = 'waiting' RETURNING *`,
+      [row.id],
+    );
+    if (!claimed) continue;
+    try {
+      const transport = await requireTransport(row.base_url, row.backend_id);
+      await dispatchInstall(claimed, transport);
+      log(`[installs] ${row.filename} on ${row.backend_id}: waiting -> queued`);
+    } catch (err) {
+      // dispatchInstall marks a transport refusal failed itself; this is for a
+      // backend that has gone away entirely.
+      await query(
+        `UPDATE model_installs SET status = 'failed', error = $2, finished_at = now()
+          WHERE id = $1 AND status = 'queued'`,
+        [row.id, err instanceof Error ? err.message : String(err)],
+      );
+    }
+  }
 }

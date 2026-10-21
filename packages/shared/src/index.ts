@@ -765,6 +765,8 @@ export interface ReadinessInstallResult {
 }
 
 export type ModelInstallStatus =
+  /** Recorded, and waiting for an earlier download on the same machine. */
+  | 'waiting'
   | 'queued'
   | 'downloading'
   | 'complete'

@@ -8,7 +8,7 @@
  * restart mid-download costs nothing but a poll interval.
  */
 
-import { activeInstalls, refreshInstall } from './installs.js';
+import { activeInstalls, dispatchWaitingInstalls, refreshInstall } from './installs.js';
 
 /** Slow on purpose: multi-gigabyte downloads, and the check is not free. */
 const INTERVAL_MS = 15_000;
@@ -35,6 +35,9 @@ export function startInstallPoller(log: (msg: string) => void = console.log): ()
           log(`[installs] failed to refresh ${row.filename}: ${String(err)}`);
         }
       }
+      // After the refresh, so an install that just finished frees its
+      // machine for the part waiting behind it within the same tick.
+      await dispatchWaitingInstalls(log);
     } catch (err) {
       log(`[installs] poll failed: ${String(err)}`);
     } finally {
