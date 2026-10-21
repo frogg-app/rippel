@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -104,6 +105,29 @@ func (a *Agent) desktopStatus(w http.ResponseWriter) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"paused": paused, "connection": state, "checkin": connection, "server": cfg.ServerURL,
 		"hostname": hostname(), "tasks": tasks, "queue": queue, "queueError": queueError,
+		"agentVersion": AgentVersion, "engine": ComfyStatus(cfg),
 		"observedAt": time.Now().UTC(),
 	})
+}
+
+// desktopLogs is the tail of both logs a person would otherwise have to find on
+// disk: ComfyUI's own, and the agent's.
+func (a *Agent) desktopLogs(w http.ResponseWriter) {
+	cfg := a.config()
+	writeJSON(w, http.StatusOK, map[string]any{
+		"engine": TailComfyLog(cfg, 200),
+		"agent":  tailFile(filepath.Join(cfg.Home, "agent.log"), 200),
+	})
+}
+
+func tailFile(path string, n int) []string {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return []string{}
+	}
+	lines := strings.Split(strings.TrimRight(string(raw), "\n"), "\n")
+	if len(lines) > n {
+		lines = lines[len(lines)-n:]
+	}
+	return lines
 }

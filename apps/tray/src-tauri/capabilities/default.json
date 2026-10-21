@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "The panel may talk to the agent through `agent`, open rippel in a browser, and hide itself.",
+  "windows": ["main"],
+  "permissions": ["core:default", "core:window:allow-hide", "opener:allow-open-url"]
+}
