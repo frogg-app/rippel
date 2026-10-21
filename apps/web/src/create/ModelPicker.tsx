@@ -196,6 +196,7 @@ export function ModelPicker({
           <span>
             <strong className={styles.noteStrong}>{explainedEntry?.model.displayName}</strong>{' '}
             {explainedReason.detail}
+            {explainedReason.badge === 'No template' && <><span> Text to video starts from a prompt; image to video requires a starting image. </span><a className={styles.link} href="/models?workflows=1">Find compatible workflows</a></>}
             {explainedReason.steps.length > 0 ? (
               <> {explainedReason.steps.join(' ')}</>
             ) : null}

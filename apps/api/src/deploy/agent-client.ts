@@ -11,6 +11,7 @@
  */
 
 import type { AgentPlatform, AgentTask, ComfyState } from '@comfy/shared';
+import { tunnelAgentUrl } from './tunnel.js';
 import { env } from '../env.js';
 
 export class AgentError extends Error {
@@ -38,6 +39,7 @@ export interface AgentStatusResult extends AgentPingResult {
 }
 
 export interface AgentTarget {
+  agentUrl?: string;
   host: string;
   agentPort: number;
   token: string;
@@ -48,6 +50,7 @@ export interface ModelDownloadRequest { url: string; path: string; sha256: strin
 
 export interface AgentClient {
   approveModelHost(target: AgentTarget, taskId: string, body: { hostname: string; approve: boolean }): Promise<{ ok: true }>;
+  setVaeOnGpu(target: AgentTarget, onGpu: boolean): Promise<AgentTask>;
   setMemoryMode(target: AgentTarget, mode: 'auto' | 'ram'): Promise<AgentTask>;
   updateAgent(target: AgentTarget, sha256: string): Promise<AgentTask>;
   moveModel(target: AgentTarget, body: ModelMoveRequest): Promise<AgentTask>;
@@ -69,12 +72,10 @@ export interface AgentClient {
 /**
  * The agent's address as rippel dials it.
  *
- * Always http and always by host:port — the agent has no certificate and lives
- * on the same LAN as the ComfyUI it manages, which is the same trust boundary
- * the rest of this app already draws around backends.
+ * Use an explicitly configured HTTPS reverse proxy, or the direct LAN address.
  */
 export function agentUrl(target: AgentTarget, path: string): string {
-  return `http://${target.host}:${target.agentPort}${path}`;
+  return `${tunnelAgentUrl(target.token) ?? target.agentUrl ?? `http://${target.host}:${target.agentPort}`}${path}`;
 }
 
 export function makeAgentClient(opts: { fetchImpl?: typeof fetch; timeoutMs?: number } = {}): AgentClient {
@@ -92,6 +93,7 @@ export function makeAgentClient(opts: { fetchImpl?: typeof fetch; timeoutMs?: nu
     try {
       res = await fetchImpl(agentUrl(target, path), {
         method: init.method ?? 'GET',
+        redirect: 'error',
         headers: {
           'X-Rippel-Agent-Token': target.token,
           ...(init.body === undefined ? {} : { 'content-type': 'application/json' }),
@@ -118,6 +120,9 @@ export function makeAgentClient(opts: { fetchImpl?: typeof fetch; timeoutMs?: nu
       | null;
 
     if (!res.ok) {
+      if (res.status === 503 && tunnelAgentUrl(target.token)) {
+        throw new AgentError('unreachable', 'The agent tunnel is disconnected. Waiting for the agent to reconnect.', 503);
+      }
       const message = payload?.message ?? `The agent answered ${res.status}.`;
       if (res.status === 401) throw new AgentError('unauthorized', message, 401);
       if (res.status === 409) throw new AgentError('busy', message, 409);
@@ -128,6 +133,7 @@ export function makeAgentClient(opts: { fetchImpl?: typeof fetch; timeoutMs?: nu
 
   return {
     approveModelHost: (target, taskId, body) => call(target, `/agent/tasks/${encodeURIComponent(taskId)}/host-approval`, { method: 'POST', body }),
+    setVaeOnGpu: (target, onGpu) => call(target, '/agent/vae', { method: 'POST', body: { onGpu } }),
     setMemoryMode: async (target, mode) => (await call<{ task: AgentTask }>(target, '/agent/memory', { method: 'POST', body: { mode } })).task,
     updateAgent: async (target, sha256) => (await call<{ task: AgentTask }>(target, '/agent/update', { method: 'POST', body: { sha256 } })).task,
     moveModel: async (target, body) =>

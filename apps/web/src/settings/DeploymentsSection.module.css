@@ -474,7 +474,28 @@
   padding-top: var(--gap-md);
 }
 
-.memorySettings { display: grid; gap: 10px; padding: 16px 0; }
+.memorySettings { display: grid; gap: 8px; padding: 4px 0; }
 .memoryLabel { font-size: 13px; font-weight: 600; }
-.memorySelect { min-height: 40px; padding: 0 12px; color: inherit; background: var(--surface, #182126); border: 1px solid var(--border, #334047); border-radius: 10px; font: inherit; }
+
 .memoryNote { margin: 0; font-size: 12px; color: var(--text-muted, #8c9fa7); line-height: 1.5; }
+
+.backendLayout { display: grid; grid-template-columns: minmax(0, 1fr) 160px; gap: var(--gap-lg); align-items: start; }
+.backendDetails { display: flex; flex-direction: column; gap: var(--space-4); min-width: 0; }
+.backendActions { display: flex; flex-direction: column; gap: var(--gap-sm); border-left: 1px solid var(--line); padding-left: var(--space-4); }
+.backendActions > button, .backendActions .reasonWrap, .backendActions .reasonWrap > button { width: 100%; min-height: 40px; justify-content: center; }
+.backendActions .reasonTip { left: auto; right: 0; }
+.computeSetting { display: grid; grid-template-columns: 160px minmax(0, 1fr) auto; align-items: center; gap: var(--gap-sm); }
+.computeSetting + .computeSetting { border-top: 1px solid var(--line); padding-top: 8px; }
+.computeSetting > button { min-height: 34px; padding: 6px 12px; width: 195px; max-width: 100%; }
+.memoryLabel { display: flex; align-items: center; gap: 8px; }
+.memoryLabel input { accent-color: var(--accent); }
+@media (max-width: 700px) {
+  .backendLayout { grid-template-columns: minmax(0, 1fr); }
+  .backendActions { border-left: 0; border-top: 1px solid var(--line); padding-left: 0; padding-top: var(--space-4); }
+}
+
+
+@media (max-width: 1100px) { .computeSetting { grid-template-columns: minmax(0,1fr) auto; } .computeSetting > button { grid-column: 2; grid-row: 1 / span 2; } .computeSetting .memoryNote { grid-column: 1; } }
+@media (max-width: 450px) { .computeSetting > button { width: auto; max-width: 145px; } }
+
+.preferredInstall { border-color: var(--accent) !important; color: var(--accent) !important; }

@@ -35,7 +35,8 @@ const POLL_MS = 2000;
 export function DeploymentsSection({ api = defaultApi }: { api?: DeploymentsApi }) {
   const [deployments, setDeployments] = useState<Deployment[] | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
-  const [adding, setAdding] = useState<null | 'ssh' | 'manual'>(null);
+  const [adding, setAdding] = useState<null | 'ssh' | 'manual' | 'command'>(null);
+  const [installMethods, setInstallMethods] = useState<Record<string, 'manual' | 'command'>>({});
   const [toast, setToast] = useState<string | null>(null);
   const deploymentRevision = useRef(0);
 
@@ -106,6 +107,7 @@ export function DeploymentsSection({ api = defaultApi }: { api?: DeploymentsApi 
           <DeploymentCard
             key={deployment.id}
             deployment={deployment}
+            installMethod={installMethods[deployment.id] ?? 'manual'}
             index={index}
             api={api}
             onChange={(next) => {
@@ -136,15 +138,19 @@ export function DeploymentsSection({ api = defaultApi }: { api?: DeploymentsApi 
             void load();
           }}
         />
-      ) : adding === 'manual' ? (
+      ) : adding === 'manual' || adding === 'command' ? (
         <ManualInstall
+          method={adding}
           api={api}
           onCancel={() => setAdding(null)}
-          onCreated={onCreated}
+          onCreated={deployment => { setInstallMethods(previous => ({...previous, [deployment.id]: adding})); onCreated(deployment); }}
           onError={setToast}
         />
       ) : (
         <div className={styles.addRow}>
+          <button type="button" className={`${shared.add} ${styles.preferredInstall}`} onClick={() => setAdding('command')}>
+            <span aria-hidden>›_</span> Install with one command
+          </button>
           <button type="button" className={shared.add} onClick={() => setAdding('ssh')}>
             <PlusIcon size={14} />
             Deploy over SSH
@@ -178,6 +184,7 @@ const PLATFORM_LABEL: Record<AgentPlatform, string> = {
 
 function DeploymentCard({
   deployment,
+  installMethod,
   index,
   api,
   onChange,
@@ -185,6 +192,7 @@ function DeploymentCard({
   onError,
 }: {
   deployment: Deployment;
+  installMethod: 'manual' | 'command';
   index: number;
   api: DeploymentsApi;
   onChange: (next: Deployment) => void;
@@ -210,6 +218,8 @@ function DeploymentCard({
   }, [armed]);
 
   const comfy = deployment.comfy;
+  const [vaeOnGpu, setVaeOnGpu] = useState(comfy?.vaeOnGpu ?? true);
+  useEffect(() => { setVaeOnGpu(comfy?.vaeOnGpu ?? true); }, [comfy?.vaeOnGpu]);
   const [memory, setMemory] = useState<'auto' | 'ram'>(comfy?.memoryMode ?? 'auto');
   useEffect(() => { setMemory(comfy?.memoryMode ?? 'auto'); }, [comfy?.memoryMode]);
   const online = deployment.status === 'online';
@@ -394,6 +404,13 @@ function DeploymentCard({
     refreshBackends();
   });
 
+  const applyVAE = () => act('apply VAE settings', async () => {
+    await follow(await api.setVaeOnGpu(deployment.id, vaeOnGpu));
+    const status = await api.status(deployment.id);
+    onChange({ ...deployment, comfy: status.comfy });
+    refreshBackends();
+  });
+
   const update = () =>
     act('update ComfyUI', async () => {
       await follow(await api.updateComfy(deployment.id));
@@ -440,6 +457,8 @@ function DeploymentCard({
 
   return (
     <li className={shared.card} style={{ '--i': index } as React.CSSProperties}>
+      <div className={styles.backendLayout}>
+      <div className={styles.backendDetails}>
       <div className={shared.cardMain}>
         <span className={shared.dot} data-status={backendStatus} aria-hidden />
         <div className={shared.cardText}>
@@ -450,7 +469,7 @@ function DeploymentCard({
             </span>
           </div>
           <div className={`mono ${shared.cardUrl}`}>
-            {deployment.host}:{deployment.agentPort}
+            {deployment.tunnelConnected ? 'Connected through agent tunnel' : deployment.agentUrl ?? `${deployment.host}:${deployment.agentPort}`}
           </div>
           <div className={shared.cardMeta}>
             <span>{online ? 'Agent online' : agentInstalled ? 'Agent offline' : 'Agent not connected'}</span>
@@ -469,21 +488,31 @@ function DeploymentCard({
       <ComfySummary deployment={deployment} />
       {comfy?.installed ? (
         <div className={styles.memorySettings}>
-          <label className={styles.memoryLabel} htmlFor={`memory-${deployment.id}`}>Memory usage</label>
-          <div className={shared.cardActions}>
-            <select id={`memory-${deployment.id}`} className={styles.memorySelect} value={memory}
-              disabled={!comfy.memoryMode || !online || busy !== null}
-              onChange={(event) => setMemory(event.target.value as 'auto' | 'ram')}>
-              <option value="auto">Automatic</option>
-              <option value="ram">Use more system RAM</option>
-            </select>
+          <div className={styles.computeSetting}>
+            <label className={styles.memoryLabel} htmlFor={`memory-${deployment.id}`} title="Use more system RAM to help larger models fit; generation may be slower.">
+              <input id={`memory-${deployment.id}`} type="checkbox" checked={memory === 'ram'}
+                disabled={!comfy.memoryMode || !online || busy !== null}
+                onChange={event => setMemory(event.target.checked ? 'ram' : 'auto')} /> Use system memory
+            </label>
+            <p className={styles.memoryNote}>{comfy.memoryMode ? 'Off by default · May be slower' : 'Update the agent to change memory usage.'}</p>
             <button className={shared.action} type="button" onClick={() => void applyMemory()}
               disabled={!comfy.memoryMode || !online || busy !== null || memory === comfy.memoryMode}>
-              {busy === 'apply memory settings' ? 'Applying…' : comfy.running ? 'Apply and restart' : 'Apply'}
+              {busy === 'apply memory settings' ? 'Applying…' : comfy.running ? 'Apply memory and restart' : 'Apply memory'}
             </button>
           </div>
-          <p className={styles.memoryNote}>{comfy.memoryMode ? 'System RAM can help larger models fit, but generation may be slower.' : 'Update the agent to change memory usage.'}</p>
-          {busy === 'apply memory settings' ? <div className={shared.loading} role="status"><Mark size={16} ripple="loop" />Applying memory settings…</div> : null}
+          <div className={styles.computeSetting}>
+            <label className={styles.memoryLabel} htmlFor={`vae-${deployment.id}`} title="Run VAE encoding and decoding on the backend GPU. Turn off to use that backend’s CPU.">
+              <input id={`vae-${deployment.id}`} type="checkbox" checked={vaeOnGpu}
+                disabled={typeof comfy.vaeOnGpu !== 'boolean' || !online || busy !== null}
+                onChange={event => setVaeOnGpu(event.target.checked)} /> Run VAE on GPU
+            </label>
+            <p className={styles.memoryNote}>{typeof comfy.vaeOnGpu === 'boolean' ? 'On by default · CPU when off' : 'Update the agent to choose where the VAE runs.'}</p>
+            <button className={shared.action} type="button" onClick={() => void applyVAE()}
+              disabled={typeof comfy.vaeOnGpu !== 'boolean' || !online || busy !== null || vaeOnGpu === comfy.vaeOnGpu}>
+              {busy === 'apply VAE settings' ? 'Applying…' : comfy.running ? 'Apply VAE and restart' : 'Apply VAE'}
+            </button>
+          </div>
+          {busy === 'apply memory settings' || busy === 'apply VAE settings' ? <div className={shared.loading} role="status"><Mark size={16} ripple="loop" />Applying backend settings…</div> : null}
         </div>
       ) : null}
       {agentUpdate ? (
@@ -493,7 +522,8 @@ function DeploymentCard({
         </div>
       ) : null}
 
-      <div className={shared.cardActions}>
+      </div>
+      <div className={styles.backendActions} aria-label={`Actions for ${deployment.name}`}>
         <ReasonedButton className={shared.action} reason={busyReason ?? offlineReason}
           onClick={() => void updateAgent()}>
           Update agent
@@ -573,6 +603,8 @@ function DeploymentCard({
 
       </div>
 
+      </div>
+
       {probe ? (
         <span
           className={probe.ok ? `${shared.probe} ${shared.probeOk} pop` : `${shared.probe} ${shared.probeBad} pop`}
@@ -595,7 +627,7 @@ function DeploymentCard({
         </span>
       ) : null}
 
-      {showInstall && !agentInstalled ? <InstallInstructionsPanel api={api} deployment={deployment} /> : null}
+      {showInstall && !agentInstalled ? <InstallInstructionsPanel api={api} deployment={deployment} method={installMethod} /> : null}
       {task ? <TaskLog task={task} onDismiss={() => setTask(null)} /> : null}
       <footer className={styles.cardFooter}>
         <button
@@ -1059,7 +1091,7 @@ function plaintextToPublicHost(url: string): boolean {
   return true;
 }
 
-function InstallInstructionsPanel({ api, deployment }: { api: DeploymentsApi; deployment: Deployment }) {
+function InstallInstructionsPanel({ api, deployment, method }: { api: DeploymentsApi; deployment: Deployment; method: 'manual' | 'command' }) {
   const [data, setData] = useState<InstallInstructions | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
   // The command-line tabs still choose a platform; the download chooses a
@@ -1106,7 +1138,7 @@ function InstallInstructionsPanel({ api, deployment }: { api: DeploymentsApi; de
   return (
     <div className={styles.panel}>
       {/* ------------------------------------------------ download, then pair */}
-      <div className={`${styles.step} ${styles.stepLead}`}>
+      {method === 'manual' && <div className={`${styles.step} ${styles.stepLead}`}>
         <div className={styles.stepHead}>
           <h4 className={styles.stepTitle}>Set up {deployment.name}</h4>
         </div>
@@ -1138,11 +1170,11 @@ function InstallInstructionsPanel({ api, deployment }: { api: DeploymentsApi; de
         ) : null}
         <CopyField label="Server URL" value={data.serverUrl} />
         <PairingPanel api={api} deployment={deployment} />
-      </div>
+      </div>}
 
       {/* ------------------------------------------------ the command line */}
-      <details className={styles.details}>
-        <summary>Install from a command line instead</summary>
+      {method === 'command' && <div className={styles.step}>
+        <h4 className={styles.stepTitle}>Install on {deployment.name}</h4>
         <p className={styles.stepNote}>
           For a machine nobody is sitting at. Run it on <strong>{deployment.name}</strong> as the
           account that should own the ComfyUI install; re-running it upgrades in place.
@@ -1173,7 +1205,7 @@ function InstallInstructionsPanel({ api, deployment }: { api: DeploymentsApi; de
             instead.
           </p>
         ) : null}
-      </details>
+      </div>}
 
       <div className={styles.release}>
         <div>
@@ -1211,18 +1243,19 @@ function InstallInstructionsPanel({ api, deployment }: { api: DeploymentsApi; de
 }
 
 function ManualInstall({
+  method,
   api,
   onCancel,
   onCreated,
   onError,
 }: {
+  method: 'manual' | 'command';
   api: DeploymentsApi;
   onCancel: () => void;
   onCreated: (deployment: Deployment) => void;
   onError: (message: string) => void;
 }) {
   const [name, setName] = useState('');
-  const [host, setHost] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<{ field?: string; message: string } | null>(null);
   const [created, setCreated] = useState<Deployment | null>(null);
@@ -1233,7 +1266,7 @@ function ManualInstall({
     setBusy(true);
     setError(null);
     try {
-      const deployment = await api.create({ name: name.trim(), host: host.trim() });
+      const deployment = await api.create({ name: name.trim(), host: 'pending' });
       onCreated(deployment);
       setCreated(deployment);
     } catch (cause) {
@@ -1255,8 +1288,7 @@ function ManualInstall({
     return (
       <div className={shared.form}>
         <p className={shared.blurb}>
-          <strong>{created.name}</strong> is registered. Its card above has the download and a
-          pairing code.
+          <strong>{created.name}</strong> is registered. Its card above has {method === 'command' ? 'the install command' : 'the download and pairing code'}.
         </p>
         <div className={shared.formActions}>
           <button type="button" className={`${shared.action} ${shared.actionPrimary}`} onClick={onCancel}>
@@ -1268,9 +1300,9 @@ function ManualInstall({
   }
 
   return (
-    <form className={shared.form} onSubmit={(event) => void submit(event)} aria-label="Install the agent by hand">
+    <form className={shared.form} onSubmit={(event) => void submit(event)} aria-label={method === 'command' ? 'Install with one command' : 'Install the agent by hand'}>
       <p className={shared.blurb}>
-        Register the machine first. Nothing is installed until you run the agent on it.
+        Register the machine first, then run the agent. It connects back to rippel; remote machines need no inbound ports.
       </p>
       <div className={shared.formRow}>
         <label className={shared.field}>
@@ -1281,16 +1313,6 @@ function ManualInstall({
             onChange={(event) => setName(event.target.value)}
             placeholder="studio-4090"
             autoFocus
-            required
-          />
-        </label>
-        <label className={shared.field}>
-          <span className="label">Address on your network</span>
-          <input
-            className={`mono ${shared.input}`}
-            value={host}
-            onChange={(event) => setHost(event.target.value)}
-            placeholder="192.168.1.50"
             required
           />
         </label>
@@ -1305,7 +1327,7 @@ function ManualInstall({
           Cancel
         </button>
         <button type="submit" className={`${shared.action} ${shared.actionPrimary}`} disabled={busy}>
-          {busy ? 'Registering…' : 'Register and show the command'}
+          {busy ? 'Registering…' : method === 'command' ? 'Register and show the command' : 'Register and show downloads'}
         </button>
       </div>
     </form>

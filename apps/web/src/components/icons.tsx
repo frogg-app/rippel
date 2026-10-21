@@ -100,6 +100,15 @@ export function SettingsIcon(props: IconProps) {
   );
 }
 
+export function UsersIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <circle cx="9" cy="8" r="3" />
+      <path d="M3 20v-2a6 6 0 0 1 12 0v2M16 5a3 3 0 0 1 0 6M18 14a5 5 0 0 1 3 4v2" />
+    </Svg>
+  );
+}
+
 /** A stacked pair of machines — the Deployment section in Settings. */
 export function ServerIcon(props: IconProps) {
   return (

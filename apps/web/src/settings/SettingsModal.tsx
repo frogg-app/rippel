@@ -1,26 +1,31 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { CloseIcon } from '../library/icons';
-import { ServerIcon } from '../components/icons';
+import { ServerIcon, UsersIcon } from '../components/icons';
 import { DeploymentsSection } from './DeploymentsSection';
+import type { User } from '@comfy/shared';
+import { UsersSection } from './UsersSection';
 import { Mark } from '../components/Mark';
 import { deploymentsApi as defaultApi, type DeploymentsApi } from '../lib/api-deployments';
 import styles from './SettingsModal.module.css';
 
-type Section = 'backends' | 'about';
+type Section = 'backends' | 'users' | 'about';
 
 const SECTION_TITLE: Record<Section, string> = {
   backends: 'Backends',
+  users: 'Users',
   about: 'About',
 };
 
 export function SettingsModal({
   open,
   onClose,
+  currentUser,
   api = defaultApi,
   version = __APP_VERSION__,
 }: {
   open: boolean;
+  currentUser?: User;
   onClose: () => void;
   api?: DeploymentsApi;
   version?: string;
@@ -63,6 +68,12 @@ export function SettingsModal({
               <ServerIcon size={15} />
               Backends
             </button>
+            {currentUser?.role === 'admin' && <button type="button"
+              className={section === 'users' ? `${styles.sectionTab} ${styles.sectionOn}` : styles.sectionTab}
+              aria-current={section === 'users' ? 'page' : undefined} onClick={() => setSection('users')}>
+              <UsersIcon size={15} />
+              Users
+            </button>}
             <button
               type="button"
               className={section === 'about' ? `${styles.sectionTab} ${styles.sectionOn}` : styles.sectionTab}
@@ -85,6 +96,8 @@ export function SettingsModal({
           <div className={styles.paneBody} key={section}>
             {section === 'backends' ? (
               <DeploymentsSection api={api} />
+            ) : section === 'users' && currentUser?.role === 'admin' ? (
+              <UsersSection currentUserId={currentUser.id} />
             ) : (
               <AboutSection version={version} />
             )}

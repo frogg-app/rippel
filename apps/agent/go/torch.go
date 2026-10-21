@@ -56,5 +56,8 @@ func torchInstallArgs(platform, accelerator, gpuName string) ([]string, string, 
 		return []string{"-m", "pip", "install", "--index-url", "https://stable.repo.amd.com/rocm/whl-next/",
 			"torch[device-" + target + "]==2.13.0+rocm10.0.0", "torchvision[device-" + target + "]==0.28.0+rocm10.0.0", pins[2]}, strings.Join(pins, "\n") + "\n", nil
 	}
+	if accelerator == "cuda" {
+		return []string{"-m", "pip", "install", "torch>=2.7", "torchvision>=0.22", "torchaudio>=2.7", "--index-url", torchIndex(accelerator)}, "", nil
+	}
 	return []string{"-m", "pip", "install", "torch", "torchvision", "torchaudio", "--index-url", torchIndex(accelerator)}, "", nil
 }

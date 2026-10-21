@@ -31,6 +31,8 @@ interface UserRow {
   role: 'user' | 'admin';
   created_at: Date;
   password_hash: string;
+  settings_access?: boolean;
+  suspended?: boolean;
 }
 
 export default async function authRoutes(app: FastifyInstance) {
@@ -91,7 +93,7 @@ export default async function authRoutes(app: FastifyInstance) {
 
     const { email, password } = parsed.data;
     const row = await queryOne<UserRow>(
-      `SELECT id, email, display_name, role, created_at, password_hash
+      `SELECT id, email, display_name, role, settings_access, suspended, created_at, password_hash
          FROM users WHERE email_lower = lower($1)`,
       [email],
     );
@@ -111,6 +113,7 @@ export default async function authRoutes(app: FastifyInstance) {
         .send({ error: 'invalid_credentials', message: 'That email or password is not right.' });
     }
 
+    if (row.suspended) return reply.code(403).send({ error: 'suspended', message: 'This account is suspended. Contact an administrator.' });
     await createSession(row.id, req, reply);
     return { user: toUser(row) };
   });

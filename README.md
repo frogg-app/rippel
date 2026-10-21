@@ -22,6 +22,20 @@ docker compose up -d
 Then open the app and register — **the first account created becomes the
 administrator**, so a fresh install is never locked out of itself.
 
+Administrators can add accounts and edit permissions in **Settings → Users**.
+Regular users can receive backend settings access separately from administrator
+access. Click a condensed user row to expand its permissions. Administrators can
+also delete an idle account after confirming the loss of its history and library
+records; stored files remain on disk. You cannot delete your own account.
+Per-user restrictions include account suspension, disabling new
+generations, a queued job limit, and a daily generation limit. Blank limits are
+unlimited. Queue limits count waiting jobs, not running jobs. Daily usage counts accepted images/videos (including batches), resets
+at midnight UTC, and is not refunded by cancellation. Existing jobs finish when
+new generations are disabled. Suspension also revokes the user's sessions; at
+least one active administrator must remain.
+
+The backend pill at the top right selects the machine for new generations. Model and LoRA choices follow that selection, and explicitly targeted jobs never move to another backend.
+
 ## Connecting a backend
 
 Open **Settings → Backends** to connect a machine through the rippel agent.
@@ -29,14 +43,37 @@ A backend is an agent-managed machine; its generation engine is ComfyUI.
 The agent installs and updates the engine, starts and stops it, and enables
 file access for Rippel's storage tools.
 
-Choose **Deploy over SSH** or **Install by hand** to connect a machine.
+Choose **Install with one command** (the preferred path), **Deploy over SSH**,
+or **Install by hand** to connect a machine. The command option provides a
+platform-specific one-line installer; hand installation provides downloads and pairing.
 Once the agent is online, install the generation engine and choose
 **Enable generation**. Rippel gets the engine address from the agent.
 Standalone ComfyUI addresses and `COMFY_BACKENDS` startup seeding are no
 longer used to add machines. Existing records are preserved.
 
+Agents 0.4.0 and later maintain an authenticated outbound WebSocket to rippel.
+Commands, generation requests, progress, uploads, and outputs travel over that
+connection. Manual setup needs only a backend name and the installer: the agent
+address and inbound ports are not required, including behind NAT. For an internet
+backend, rippel must be reachable at its public HTTPS address (normally TCP 443).
+Its reverse proxy must support WebSocket upgrades on
+`/api/deployments/tunnel`. SSH deployment additionally needs the SSH host, port
+(default 22), and credentials for installation; runtime traffic still uses the
+tunnel. The agent reconnects automatically after disconnection.
+
+The API's internal tunnel gateway binds only to `127.0.0.1:4001` (override with
+`RIPPEL_TUNNEL_PORT`). Do not publish that port. Older agents retain direct LAN
+connections until updated. Multiple API instances require connection affinity;
+the tunnel registry belongs to the process handling that agent.
+
 The agent is a standalone binary. ComfyUI itself needs Python and git;
 the agent manages setup on supported platforms.
+
+Each backend has independent **Use system memory** (off by default) and
+**Run VAE on GPU** (on by default) checkboxes. Apply each choice to save it and
+restart the managed engine. Turning GPU VAE off runs decoding on that backend's
+CPU. Agent 0.3.2 or later supports both controls; use **Update agent** for older
+agents. Existing explicit CPU VAE launch settings are preserved until changed.
 
 Removing a backend disconnects it from Rippel and its generation list.
 It does not uninstall the agent or delete files on that machine. Removal is
@@ -106,3 +143,24 @@ npm run dev -w @comfy/api
 
 Migrations in `apps/api/src/migrations/` run automatically at boot and are
 append-only — never edit one that has shipped, add another.
+
+### Model catalogue refresh
+
+The API refreshes a persisted Hugging Face catalogue every six hours. It collects
+up to 500 popular and 100 recently updated repositories for each of text-to-image,
+image-to-image, text-to-video, and image-to-video, deduplicating across those lists.
+This is a bounded discovery feed, not a complete mirror of the Hub. Failed refreshes
+retain the last complete snapshot. Models appear in the existing Discover list;
+repository discovery alone does not enable installation or imply compatibility.
+The agent catalogue also discovers exact downloadable files declared by the
+backend's official local workflow templates, including subgraphs.
+
+To refresh immediately, run `npm run refresh:models -w @comfy/api` with the API's
+normal environment variables loaded. This fetches metadata only, not model weights.
+
+Model discovery also collects visual LoRA and VAE repositories. Publisher model
+card excerpts, declared base models, and tags are cached and searchable; these
+are descriptions, not a guarantee that two files work together. **Workflows**
+opens the backend's official library, where you can search, check required files,
+and import/test workflows whose controls and files are ready. Text-to-video and
+image-to-video are separate tasks; choose the task the model supports.

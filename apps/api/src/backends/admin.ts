@@ -198,7 +198,7 @@ export function makeBackendAdminRoutes(deps: AdminDeps = {}) {
   };
 
   return async function backendAdminRoutes(app: FastifyInstance) {
-    app.post('/backends', { onRequest: [app.requireAdmin] }, async (_req, reply) =>
+    app.post('/backends', { onRequest: [app.requireSettings] }, async (_req, reply) =>
       reply.code(409).send({
         error: 'agent_required',
         message: 'Connect a machine through Settings → Backends first.',
@@ -207,7 +207,7 @@ export function makeBackendAdminRoutes(deps: AdminDeps = {}) {
 
     app.patch<{ Params: { id: string }; Body: unknown }>(
       '/backends/:id',
-      { onRequest: [app.requireAdmin] },
+      { onRequest: [app.requireSettings] },
       async (req, reply) => {
         const existing = await db.queryOne<BackendRow>(`${SELECT_BACKEND} WHERE id = $1`, [req.params.id]);
         if (!existing) return reply.code(404).send({ error: 'not_found', message: 'No such backend.' });
@@ -258,7 +258,7 @@ export function makeBackendAdminRoutes(deps: AdminDeps = {}) {
 
     app.delete<{ Params: { id: string } }>(
       '/backends/:id',
-      { onRequest: [app.requireAdmin] },
+      { onRequest: [app.requireSettings] },
       async (req, reply) => {
         const existing = await db.queryOne<BackendRow>(`${SELECT_BACKEND} WHERE id = $1`, [req.params.id]);
         if (!existing) return reply.code(404).send({ error: 'not_found', message: 'No such backend.' });
@@ -282,7 +282,7 @@ export function makeBackendAdminRoutes(deps: AdminDeps = {}) {
 
     app.post<{ Params: { id: string } }>(
       '/backends/:id/probe',
-      { onRequest: [app.requireAdmin] },
+      { onRequest: [app.requireSettings] },
       async (req, reply) => {
         const existing = await db.queryOne<BackendRow>(`${SELECT_BACKEND} WHERE id = $1`, [req.params.id]);
         if (!existing) return reply.code(404).send({ error: 'not_found', message: 'No such backend.' });
@@ -292,7 +292,7 @@ export function makeBackendAdminRoutes(deps: AdminDeps = {}) {
 
     app.post<{ Body: { baseUrl?: unknown } }>(
       '/backends/probe',
-      { onRequest: [app.requireAdmin] },
+      { onRequest: [app.requireSettings] },
       async (req, reply) => {
         const baseUrl = normaliseBaseUrl(req.body?.baseUrl);
         if (!baseUrl) {

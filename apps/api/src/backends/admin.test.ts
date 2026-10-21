@@ -101,7 +101,7 @@ async function server(user: { id: string; role: 'admin' | 'user' } | null, opts:
   app.decorate('requireAuth', async (req: FastifyRequest, reply: FastifyReply) => {
     if (!req.user) await reply.code(401).send({ error: 'unauthorized' });
   });
-  app.decorate('requireAdmin', async (req: FastifyRequest, reply: FastifyReply) => {
+  app.decorate('requireSettings', async (req: FastifyRequest, reply: FastifyReply) => {
     if (!req.user) {
       await reply.code(401).send({ error: 'unauthorized' });
       return;

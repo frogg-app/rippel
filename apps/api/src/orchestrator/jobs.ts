@@ -8,7 +8,8 @@
  */
 
 import type { GenerationParams, Job, JobProgress, JobStatus, Uuid } from '@comfy/shared';
-import { query, queryOne } from '../db.js';
+import { reserveGeneration } from '../auth/generation-limits.js';
+import { query, queryOne, transaction } from '../db.js';
 import { publish } from './events.js';
 import { phaseForStatus } from './phases.js';
 
@@ -102,13 +103,15 @@ export async function createJob(
   params: GenerationParams,
   templateId: string,
 ): Promise<JobRow> {
-  const row = await queryOne<JobRow>(
-    `INSERT INTO jobs (user_id, kind, params, template_id, progress)
-     VALUES ($1, $2, $3, $4, '{}'::jsonb)
-     RETURNING *`,
-    [userId, params.kind, JSON.stringify(params), templateId],
-  );
-  return row!;
+  return transaction(async (client) => {
+    await reserveGeneration(client, userId, params.batchSize);
+    const result = await client.query<JobRow>(
+      `INSERT INTO jobs (user_id, kind, params, template_id, progress)
+       VALUES ($1, $2, $3, $4, '{}'::jsonb) RETURNING *`,
+      [userId, params.kind, JSON.stringify(params), templateId],
+    );
+    return result.rows[0]!;
+  });
 }
 
 /**

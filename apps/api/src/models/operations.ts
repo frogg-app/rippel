@@ -18,19 +18,34 @@ export async function planOperation(input: { backendId: string; modelId?: string
   [input.backendId, input.modelId ?? null, input.workflowId ?? null, input.actorId, JSON.stringify(input.steps)]);
 }
 export const getOperation = (id: string) => queryOne<ModelOperation>('SELECT * FROM model_operations WHERE id = $1', [id]);
-export async function startOperation(id: string): Promise<ModelOperation | null> {
-  const claimed = await queryOne<ModelOperation>(`UPDATE model_operations SET status = 'starting', updated_at = now()
-    WHERE id = $1 AND status = 'planned' RETURNING *`, [id]);
-  if (claimed) await dispatchStep(claimed);
+export async function startOperation(id: string, queue = false): Promise<ModelOperation | null> {
+  let claimed: ModelOperation | null;
+  try {
+    claimed = await queryOne<ModelOperation>(`UPDATE model_operations AS candidate SET status = 'starting', updated_at = now()
+      WHERE id = $1 AND status = 'planned'
+      ${queue ? `AND EXISTS (SELECT 1 FROM model_installs i WHERE i.operation_id = candidate.id AND i.status IN ('queued','downloading'))
+      AND NOT EXISTS (SELECT 1 FROM model_operations active WHERE active.backend_id = candidate.backend_id AND active.status IN ('starting','running'))
+      AND NOT EXISTS (SELECT 1 FROM model_operations earlier JOIN model_installs i ON i.operation_id = earlier.id
+        WHERE earlier.backend_id = candidate.backend_id AND earlier.status = 'planned' AND i.status IN ('queued','downloading')
+          AND (earlier.created_at, earlier.id) < (candidate.created_at, candidate.id))` : ''}
+      RETURNING *`, [id]);
+  } catch (error) {
+    // Another dispatcher can claim this backend between the check and update.
+    // The unique index is the final arbiter; no remote action was sent yet.
+    const conflict = error as { code?: string; constraint?: string };
+    if (!queue || conflict.code !== '23505' || conflict.constraint !== 'model_operation_active_backend') throw error;
+    return getOperation(id);
+  }
+  if (claimed) await dispatchStep(claimed, queue);
   return getOperation(id);
 }
 async function target(backendId: string) {
-  const row = await queryOne<{ host: string; agent_port: number; token: string }>(
-    'SELECT host, agent_port, token FROM deployments WHERE backend_id = $1 ORDER BY created_at DESC LIMIT 1', [backendId]);
+  const row = await queryOne<{ host: string; agent_url?: string | null; agent_port: number; token: string }>(
+    'SELECT host, agent_port, agent_url, token FROM deployments WHERE backend_id = $1 ORDER BY created_at DESC LIMIT 1', [backendId]);
   if (!row) throw new Error('This backend has no rippel agent.');
-  return { host: row.host, agentPort: row.agent_port, token: row.token };
+  return { host: row.host, agentPort: row.agent_port, token: row.token, ...(row.agent_url ? {agentUrl:row.agent_url} : {}) };
 }
-async function dispatchStep(operation: ModelOperation) {
+async function dispatchStep(operation: ModelOperation, queue = false) {
   try {
     if (!operation.backend_id) throw new Error('This backend has been removed.');
     const step = operation.steps[operation.step_index];
@@ -40,6 +55,12 @@ async function dispatchStep(operation: ModelOperation) {
     await query(`UPDATE model_operations SET status = 'running', agent_task_id = $2, progress = $3::jsonb, updated_at = now() WHERE id = $1`,
       [operation.id, task.id, JSON.stringify(task)]);
   } catch (error) {
+    // A definite busy refusal means nothing started. Keep queued downloads
+    // durable until the agent's other task ends; never replay lost responses.
+    if (queue && error instanceof AgentError && error.kind === 'busy' && operation.steps[operation.step_index]?.kind === 'download') {
+      await query(`UPDATE model_operations SET status='planned', agent_task_id=NULL, progress=NULL, error=NULL, updated_at=now() WHERE id=$1`, [operation.id]);
+      return;
+    }
     await query(`UPDATE model_operations SET status = 'failed', error = $2, updated_at = now() WHERE id = $1`,
       [operation.id, `Could not confirm the file operation: ${(error as Error).message} Re-check the backend before retrying.`]);
   }
@@ -97,6 +118,14 @@ export function startModelOperationPoller(log: (message: string) => void) {
         WHERE status='starting' AND updated_at < now() - interval '2 minutes'`);
       for (const operation of await query<ModelOperation>("SELECT * FROM model_operations WHERE status='running'")) {
         await pollOperation(operation).catch((error) => log(`File operation ${operation.id}: ${(error as Error).message}`));
+      }
+      // Only accepted, live installs belong to the queue. Unlinked plans and
+      // plans belonging to old failed attempts must never start implicitly.
+      for (const operation of await query<ModelOperation>(`SELECT o.* FROM model_operations o
+        JOIN model_installs i ON i.operation_id=o.id
+        WHERE o.status='planned' AND i.status IN ('queued','downloading')
+        ORDER BY o.created_at, o.id`)) {
+        await startOperation(operation.id, true).catch((error) => log(`Queued download ${operation.id}: ${(error as Error).message}`));
       }
     } finally { busy = false; }
   };

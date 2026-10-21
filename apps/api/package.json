@@ -11,7 +11,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "snapshot:nodes": "tsx src/scripts/snapshot-nodes.ts",
-    "smoke:workflows": "tsx src/scripts/smoke-workflows.ts"
+    "smoke:workflows": "tsx src/scripts/smoke-workflows.ts",
+    "refresh:models": "tsx src/scripts/refresh-model-catalogue.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.717.0",

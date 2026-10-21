@@ -10,6 +10,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { GenerationParams, Job, JobEvent } from '@comfy/shared';
+import { UserRestrictionError } from '../auth/generation-limits.js';
 import { query, queryOne } from '../db.js';
 import { compile, TemplateError, ValidationError } from '../compiler/index.js';
 import { chooseTemplate } from '../models/workflow-choice.js';
@@ -29,6 +30,7 @@ import { makeQueueRoutes } from './queue-routes.js';
  * shape and lets the compiler check meaning.
  */
 const generationParams = z.object({
+  targetBackendId: z.string().uuid().optional(),
   workflowId: z.string().refine((id) => id.startsWith('library-') && z.string().uuid().safeParse(id.slice(8)).success).optional(),
   kind: z.enum(['txt2img', 'img2img', 'txt2vid', 'img2vid', 'upscale']),
   prompt: z.string(),
@@ -134,11 +136,11 @@ export default async function jobRoutes(app: FastifyInstance) {
       // would sit queued forever into an immediate, explicable refusal.
       const candidates = await candidatesFor(params.modelId);
       const allowed = template.manifest.id.startsWith('library-') ? await readyBackendIds(template.manifest.id) : null;
-      const backend = candidates.find((candidate) => !allowed || allowed.includes(candidate.id));
+      const backend = candidates.find((candidate) => (!params.targetBackendId || candidate.id === params.targetBackendId) && (!allowed || allowed.includes(candidate.id)));
       if (!backend) {
         return reply.code(409).send({
           error: 'no_backend',
-          message: 'No online backend has that model right now.',
+          message: params.targetBackendId ? 'The selected backend is unavailable or cannot run this model and workflow.' : 'No online backend has that model right now.',
         });
       }
 
@@ -178,7 +180,12 @@ export default async function jobRoutes(app: FastifyInstance) {
         return reply.code(422).send({ error: 'missing_files', message: problem });
       }
 
-      const row = await createJob(req.user!.id, params, template.manifest.id);
+      let row: JobRow;
+      try { row = await createJob(req.user!.id, params, template.manifest.id); }
+      catch (error) {
+        if (error instanceof UserRestrictionError) return reply.code(error.statusCode).send({ error: error.code, message: error.message });
+        throw error;
+      }
       const job: Job = { ...(await jobWithAssets(row)), queuePosition: await queuePosition(row) };
 
       publish(row.user_id, { type: 'job.created', job });

@@ -6,12 +6,9 @@
  * a search-and-chips band; then the content. Three deviations from the artboard,
  * each forced by what the API can actually say, each noted where it happens:
  *
- *  - The artboard's source toggle is "Civitai / Hugging Face". The real install
- *    path is whitelisted per backend — a `ref` the backend's catalogue does not
- *    offer is refused — so the toggle is a **backend** picker instead. What you
- *    can install is a property of the machine you are installing onto, and a UI
- *    that offered a registry to search would be promising something the
- *    transport will not do.
+ *  - The catalogue combines backend install offers with cached Hugging Face
+ *    repositories. Discovery-only repositories remain visible, with explicit
+ *    access/setup requirements; only exact backend offers can be installed.
  *  - The artboard's cards are photographs with a percentage bar. There is now a
  *    photograph on about half of them — the API resolves each entry's model page
  *    and serves a cached sample image — but never a percentage: the transport
@@ -124,7 +121,7 @@ export function ModelsPage({ api = modelsApi, storageApi: storage = storageApi }
     [setParams],
   );
 
-  const [backendId, setBackendId] = useState<Uuid | null>(null);
+  const [backendId, setBackendId] = useState<Uuid | null>(() => params.get('backend'));
 
   // Default to the backend the shell's pill would show: an online one first,
   // because that is the one an install can actually run on.
@@ -154,11 +151,11 @@ export function ModelsPage({ api = modelsApi, storageApi: storage = storageApi }
   // ------------------------------------------------------------- workflows
 
   // The Workflows sheet: one model's options, or the templates browser.
-  const [sheet, setSheet] = useState<WorkflowSheetSubject | null>(null);
+  const [sheet, setSheet] = useState<WorkflowSheetSubject | null>(() => new URLSearchParams(window.location.search).has('workflows') ? {mode:'browse',family:null} : null);
   const closeSheet = useCallback(() => setSheet(null), []);
   const openModelWorkflows = useCallback((model: Model) => setSheet({ mode: 'model', model }), []);
   const openTemplates = useCallback(
-    (entry?: ModelCatalogEntry) => setSheet({ mode: 'browse', family: entry?.base ?? null }),
+    (entry?: ModelCatalogEntry) => setSheet({ mode: 'browse', family: entry?.base ?? null, sourceName: entry?.sourceWorkflow?.name }),
     [],
   );
 
@@ -219,7 +216,7 @@ export function ModelsPage({ api = modelsApi, storageApi: storage = storageApi }
   // row that means one thing on one tab and another on the next is a worse
   // trade than one extra click, and "All types" is one click away at the end
   // of the row.
-  const [installedType, setInstalledType] = useState<ModelType | null>(DEFAULT_TYPE);
+  const [installedType, setInstalledType] = useState<ModelType | null>(() => params.has('q') ? null : DEFAULT_TYPE);
   const [installedFamily, setInstalledFamily] = useState<string | null>(null);
   const [installedQ, setInstalledQ] = useState('');
 
@@ -258,17 +255,17 @@ export function ModelsPage({ api = modelsApi, storageApi: storage = storageApi }
 
   // ------------------------------------------------------------- catalogue
 
-  const [catType, setCatType] = useState<ModelType | null>(DEFAULT_TYPE);
+  const [catType, setCatType] = useState<ModelType | null>(() => params.has('q') ? null : DEFAULT_TYPE);
   const [catBase, setCatBase] = useState<string | null>(null);
-  const [catQ, setCatQ] = useState('');
+  const [catQ, setCatQ] = useState(() => params.get('q') ?? '');
   const [catRun, setCatRun] = useState<RunFilter>('all');
 
   // Filters are per backend: "SDXL" may not be a family the next machine's
   // catalogue even has, and a stale chip would silently show nothing.
   useEffect(() => {
-    setCatType(DEFAULT_TYPE);
+    setCatType(params.has('q') ? null : DEFAULT_TYPE);
     setCatBase(null);
-    setCatQ('');
+    setCatQ(params.get('q') ?? '');
     // The verdict is per backend too — a model that runs on one machine may be
     // missing its text encoder on the next — so this resets with the rest.
     setCatRun('all');
@@ -493,7 +490,7 @@ export function ModelsPage({ api = modelsApi, storageApi: storage = storageApi }
                 q={catQ}
                 onQ={setCatQ}
                 searchLabel="Search the catalogue"
-                searchPlaceholder={`Search what ${backend?.name ?? 'this backend'} can install`}
+                searchPlaceholder={`Search models for ${backend?.name ?? 'this backend'}`}
                 types={catalogueTypeCounts}
                 allCount={catalogueBeforeType.length}
                 activeType={catType}
@@ -514,6 +511,7 @@ export function ModelsPage({ api = modelsApi, storageApi: storage = storageApi }
             ) : null}
 
             <div className={styles.scroller}>
+              {catalogue.state.kind === 'ready' && catalogue.state.pending > 0 && <p role="status">Refreshing model catalogue and previews…</p>}
               <CatalogueBody
                 state={catalogue.state}
                 filtered={catalogueFiltered}

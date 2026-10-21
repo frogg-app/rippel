@@ -30,3 +30,13 @@ func TestROCmRefusesUnknownGPUAndAccelerator(t *testing.T) {
 		t.Fatal(args, err)
 	}
 }
+
+func TestCUDARequiresTorchThatCanImportCurrentComfyUI(t *testing.T) {
+	for _, platform := range []string{"windows", "linux"} {
+		args, _, err := torchInstallArgs(platform, "cuda", "")
+		joined := strings.Join(args, " ")
+		if err != nil || !strings.Contains(joined, "torch>=2.7") || !strings.Contains(joined, "/cu126") {
+			t.Fatalf("%s: %v %v", platform, args, err)
+		}
+	}
+}

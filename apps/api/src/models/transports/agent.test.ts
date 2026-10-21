@@ -1,4 +1,5 @@
 import { beforeEach, afterEach, expect, it, vi } from 'vitest';
+vi.mock('../workflow-catalogue.js', () => ({ workflowCatalogue: vi.fn(() => []) }));
 vi.mock('../../db.js', () => ({ query: vi.fn(), queryOne: vi.fn() }));
 vi.mock('../../deploy/agent-client.js', () => ({ agentClient: { ping: vi.fn() } }));
 vi.mock('../operations.js', () => ({ getOperation: vi.fn(), planOperation: vi.fn(), startOperation: vi.fn() }));
@@ -74,4 +75,25 @@ it('keeps host approval paused across transport recreation and clears it on fail
   expect(await transport().progress(request)).toMatchObject({ state: 'downloading', detail: 'Approval needed', approvalRequired: { hostname: 'cdn.example.com' } });
   vi.mocked(getOperation).mockResolvedValue({ status: 'failed', progress: { status: 'failed' }, error: 'Download host approval declined.' } as never);
   expect(await transport().progress(request)).toMatchObject({ state: 'failed', approvalRequired: null, error: 'Download host approval declined.' });
+});
+it('reports the active-operation lock as a retryable conflict', async () => {
+  vi.mocked(verifiedFile).mockResolvedValue({ name: request.filename, directory: 'diffusion_models', paths: [], url: request.url, sha256: 'a'.repeat(64), sizeBytes: 123 });
+  vi.mocked(queryOne).mockResolvedValue({ requested_by: 'admin' });
+  vi.mocked(planOperation).mockResolvedValue({ id: 'operation' } as never);
+  vi.mocked(startOperation).mockRejectedValue(Object.assign(new Error('duplicate key'), { code: '23505' }));
+  await expect(transport().install(request)).rejects.toMatchObject({
+    name: 'TransportBusy', retryable: true,
+    message: 'This machine is already installing a model. Wait for it to finish, then try again.',
+  });
+});
+it('accepts a waiting download and reports it as queued across restarts', async () => {
+  vi.mocked(verifiedFile).mockResolvedValue({ name: request.filename, directory: 'diffusion_models', paths: [], url: request.url, sha256: 'a'.repeat(64), sizeBytes: 123 });
+  vi.mocked(queryOne).mockResolvedValueOnce({ requested_by: 'admin' });
+  vi.mocked(planOperation).mockResolvedValue({ id: 'operation' } as never);
+  vi.mocked(startOperation).mockResolvedValue({ id: 'operation', status: 'planned' } as never);
+  await expect(transport().install(request)).resolves.toBeUndefined();
+  expect(startOperation).toHaveBeenCalledWith('operation', true);
+  vi.mocked(queryOne).mockResolvedValue({ operation_id: 'operation', created_at: new Date(0) });
+  vi.mocked(getOperation).mockResolvedValue({ status: 'planned' } as never);
+  expect(await transport().progress(request)).toMatchObject({ state: 'queued', detail: expect.stringContaining('Waiting') });
 });

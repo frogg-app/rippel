@@ -11,6 +11,7 @@ declare module 'fastify' {
     /** Preflight handler: 401s anonymous requests. */
     requireAuth: (req: FastifyRequest, reply: FastifyReply) => Promise<void>;
     /** Preflight handler: 401s anonymous, 403s non-admins. */
+    requireSettings: (req: FastifyRequest, reply: FastifyReply) => Promise<void>;
     requireAdmin: (req: FastifyRequest, reply: FastifyReply) => Promise<void>;
   }
 }
@@ -29,6 +30,13 @@ export default fp(async function authPlugin(app: FastifyInstance) {
   app.decorate('requireAuth', async (req: FastifyRequest, reply: FastifyReply) => {
     if (!req.user) {
       await reply.code(401).send({ error: 'unauthorized', message: 'Sign in to continue.' });
+    }
+  });
+
+  app.decorate('requireSettings', async (req: FastifyRequest, reply: FastifyReply) => {
+    if (!req.user) { await reply.code(401).send({ error: 'unauthorized', message: 'Sign in to continue.' }); return; }
+    if (req.user.role !== 'admin' && !req.user.settingsAccess) {
+      await reply.code(403).send({ error: 'forbidden', message: 'You do not have backend settings access.' });
     }
   });
 

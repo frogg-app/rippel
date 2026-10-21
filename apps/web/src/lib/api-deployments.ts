@@ -153,6 +153,7 @@ export interface DeploymentsApi {
   releases(signal?: AbortSignal): Promise<AgentRelease>;
   installComfy(id: Uuid, accelerator: string): Promise<AgentTask>;
   updateComfy(id: Uuid): Promise<AgentTask>;
+  setVaeOnGpu(id: Uuid, onGpu: boolean): Promise<AgentTask>;
   setMemoryMode(id: Uuid, mode: 'auto' | 'ram'): Promise<AgentTask>;
   updateAgent(id: Uuid): Promise<AgentTask>;
   power(id: Uuid, action: 'start' | 'stop' | 'restart'): Promise<unknown>;
@@ -189,6 +190,7 @@ export const deploymentsApi: DeploymentsApi = {
         body: { accelerator },
       })
     ).task,
+  setVaeOnGpu: async (id, onGpu) => (await request<{ task: AgentTask }>(`/deployments/${id}/vae`, { method: 'POST', body: { onGpu } })).task,
   setMemoryMode: async (id, mode) => (await request<{ task: AgentTask }>(`/deployments/${id}/memory`, { method: 'POST', body: { mode } })).task,
   updateAgent: async (id) => (await request<{ task: AgentTask }>(`/deployments/${id}/agent-update`, { method: 'POST' })).task,
   updateComfy: async (id) =>

@@ -50,6 +50,7 @@ export interface DropdownProps {
   className?: string;
   /** Extra class for the portalled menu, for a call-site width cap. */
   menuClassName?: string;
+  menuWidth?: number;
   'aria-label'?: string;
   'aria-labelledby'?: string;
   'aria-describedby'?: string;
@@ -103,6 +104,7 @@ export function Dropdown({
   id,
   className,
   menuClassName,
+  menuWidth,
   disabled = false,
   placeholder,
   keepPlaceholder = false,
@@ -146,7 +148,7 @@ export function Dropdown({
 
   // ------------------------------------------------------------- positioning
 
-  const position = useAnchoredPosition(triggerRef, open, { ...MENU_ANCHOR, align });
+  const position = useAnchoredPosition(triggerRef, open, { ...MENU_ANCHOR, align, width: menuWidth });
   useDismissOnOutside(open, [triggerRef, menuRef], () => setOpen(false));
 
   // Keep the cursor visible as it moves.

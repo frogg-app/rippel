@@ -31,11 +31,12 @@ import {
   generates,
 } from './catalogue';
 import { CloseIcon, WorkflowIcon } from './icons';
+import { OfficialWorkflows } from './OfficialWorkflows';
 import styles from './ModelsPanels.module.css';
 
 export type WorkflowSheetSubject =
   | { mode: 'model'; model: Model }
-  | { mode: 'browse'; family: string | null };
+  | { mode: 'browse'; family: string | null; sourceName?: string };
 
 export interface WorkflowSheetProps {
   api: ModelsApi;
@@ -115,6 +116,7 @@ export function WorkflowSheet({ api, subject, backendId, isAdmin, onClose, onAss
           </button>
         </header>
         <div className={styles.sheetBody}>
+          {isAdmin && <details className={styles.workflowLibraryFold} open={subject.mode === 'browse'}><summary>Browse the backend’s official workflow library</summary><OfficialWorkflows backendId={backendId} family={subject.mode === 'model' ? subject.model.baseModel : subject.family} sourceName={subject.mode === 'browse' ? subject.sourceName : undefined} /></details>}
           {subject.mode === 'model' && !generates(subject.model.type) ? (
             <SupportFile model={subject.model} />
           ) : subject.mode === 'model' ? (
@@ -278,7 +280,7 @@ function ModelOptions({
 
       {capabilities.length === 0 ? (
         <p className={styles.sheetProblem}>
-          No template is written for this family yet, so nothing here can generate with it.
+          No configured template matches this family yet. Browse the official library below to find a workflow and check its requirements.
         </p>
       ) : null}
 
@@ -419,8 +421,7 @@ function TemplateList({ api, family }: { api: ModelsApi; family: string | null }
     <>
       {wanted && shown.length === 0 ? (
         <p className={styles.sheetProblem}>
-          No template is written for {familyLabel(wanted)} models yet. Every template rippel ships is
-          listed below.
+          No configured template matches {familyLabel(wanted)} yet. The templates below are for other families; browse the official library for more options.
         </p>
       ) : null}
       <ul className={styles.sheetOptions} aria-label="Templates">

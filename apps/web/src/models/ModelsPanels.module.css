@@ -1767,3 +1767,19 @@
   .sheetMeta { grid-template-columns: 1fr; }
   .sheetMeta dd { margin: 0; overflow-wrap: anywhere; }
 }
+
+.modelDescription { font-size: var(--text-sm); color: var(--text-4); line-height: 1.5; overflow-wrap: anywhere; }
+.modelDescription summary { cursor: pointer; color: var(--text); }
+.modelDescription p { margin: 8px 0; }
+
+.workflowSearch { width: 100%; padding: 10px; margin: 12px 0; }
+.workflowHeading { text-align: left; color: var(--accent); background: transparent; border: 0; padding: 0; cursor: pointer; }
+.workflowControls { display: flex; flex-direction: column; gap: var(--gap); margin-top: var(--gap); overflow-wrap: anywhere; }
+.workflowControls label { display: flex; flex-direction: column; gap: 6px; }
+.workflowControls button { align-self: flex-start; }
+
+.workflowLibraryFold > summary { cursor: pointer; color: var(--accent); margin-bottom: var(--gap); }
+
+.workflowSearch, .workflowControls input { background: var(--surface-2); color: var(--text); border: 1px solid var(--line-input); border-radius: var(--radius-md); padding: 9px 12px; }
+.workflowControls > button { border: 1px solid var(--line-strong); border-radius: var(--radius-md); background: var(--surface-2); color: var(--text); padding: 8px 12px; cursor: pointer; }
+.workflowControls > button:disabled { opacity: .5; cursor: default; }

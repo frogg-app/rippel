@@ -157,7 +157,7 @@ describe.skipIf(!canRun)('the whole download, exactly as a browser would do it',
     // Content-Disposition header gave, and that file is then executed. Every
     // unit test here passes with a broken join; this one does not.
     const app = Fastify();
-    app.decorate('requireAdmin', async () => {});
+    app.decorate('requireSettings', async () => {});
     app.decorate('user', null);
     await app.register(
       makeDeploymentRoutes({

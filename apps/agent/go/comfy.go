@@ -43,6 +43,7 @@ const HelperDir = "comfyui-rippel-storage"
 // ComfyState is the wire shape rippel's ComfyState type expects. The JSON tags
 // are the contract; do not rename them without changing packages/shared.
 type ComfyState struct {
+	VAEOnGPU        bool    `json:"vaeOnGpu"`
 	MemoryMode      string  `json:"memoryMode"`
 	Installed       bool    `json:"installed"`
 	Running         bool    `json:"running"`
@@ -189,6 +190,7 @@ func ComfyStatus(cfg *Config) ComfyState {
 	state := ComfyState{
 		Installed:       installed,
 		MemoryMode:      memoryMode(cfg),
+		VAEOnGPU:        vaeOnGPU(cfg),
 		Running:         stats != nil,
 		Port:            cfg.ComfyPort,
 		HelperInstalled: helperInstalled,
@@ -234,7 +236,7 @@ func torchIndex(accelerator string) string {
 	case "cpu":
 		return "https://download.pytorch.org/whl/cpu"
 	}
-	return "https://download.pytorch.org/whl/cu124"
+	return "https://download.pytorch.org/whl/cu126"
 }
 
 func systemPython(task *Task) (string, error) {
@@ -339,8 +341,22 @@ func UpdateComfy(cfg *Config, task *Task) error {
 	if err := Run(task, cfg.ComfyPath, os.Environ(), "git", "pull", "--ff-only"); err != nil {
 		return err
 	}
-	if err := Run(task, cfg.ComfyPath, os.Environ(), venvPython(cfg),
-		"-m", "pip", "install", "-r", "requirements.txt"); err != nil {
+	// Requirements alone accept older torch builds that cannot import current
+	// ComfyUI. Repair CUDA installs from the vendor index before resolving them.
+	if DetectAccelerator() == "cuda" {
+		args, _, err := torchInstallArgs(runtime.GOOS, "cuda", "")
+		if err != nil {
+			return err
+		}
+		if err := Run(task, cfg.ComfyPath, os.Environ(), venvPython(cfg), args...); err != nil {
+			return err
+		}
+	}
+	args := []string{"-m", "pip", "install", "-r", "requirements.txt"}
+	if constraintPath := filepath.Join(cfg.ComfyPath, ".rippel-torch-constraints.txt"); exists(constraintPath) {
+		args = append(args, "-c", constraintPath)
+	}
+	if err := Run(task, cfg.ComfyPath, os.Environ(), venvPython(cfg), args...); err != nil {
 		return err
 	}
 	task.Append("ComfyUI updated.")

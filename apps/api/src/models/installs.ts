@@ -96,9 +96,9 @@ export function transportFor(baseUrl: string): ModelTransport {
 }
 
 export async function agentTransportFor(backendId: string, baseUrl: string): Promise<ModelTransport | null> {
-  const target = await queryOne<{ host: string; agent_port: number; token: string }>(
-    'SELECT host, agent_port, token FROM deployments WHERE backend_id = $1 ORDER BY created_at DESC LIMIT 1', [backendId]);
-  return target ? new AgentModelTransport(backendId, { host: target.host, agentPort: target.agent_port, token: target.token }, baseUrl) : null;
+  const target = await queryOne<{ host: string; agent_url?: string | null; agent_port: number; token: string }>(
+    'SELECT host, agent_port, agent_url, token FROM deployments WHERE backend_id = $1 ORDER BY created_at DESC LIMIT 1', [backendId]);
+  return target ? new AgentModelTransport(backendId, { host: target.host, agentPort: target.agent_port, token: target.token, ...(target.agent_url ? {agentUrl:target.agent_url} : {}) }, baseUrl) : null;
 }
 
 export async function requireTransport(baseUrl: string, backendId?: string): Promise<ModelTransport> {

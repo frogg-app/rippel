@@ -144,6 +144,7 @@ function fakeApi(initial: Deployment[] = [online], over: Partial<DeploymentsApi>
     })),
     releases: vi.fn(async () => instructions.release),
     installComfy: vi.fn(async () => done()),
+    setVaeOnGpu: vi.fn(async () => done({kind: 'set-memory'})),
     setMemoryMode: vi.fn(async () => done({kind: 'set-memory'})),
     updateAgent: vi.fn(),
     updateComfy: vi.fn(async () => done({ kind: 'update-comfyui' })),
@@ -318,16 +319,15 @@ describe('DeploymentsSection', () => {
     }
   });
 
-  it('gives the manual path a command carrying the token', async () => {
+  it('gives the preferred command path a command carrying the token', async () => {
     const { api } = fakeApi([]);
     render(<DeploymentsSection api={api} />);
 
-    await userEvent.click(await screen.findByRole('button', { name: /Install by hand/ }));
+    await userEvent.click(await screen.findByRole('button', { name: /Install with one command/ }));
     await userEvent.type(screen.getByPlaceholderText('studio-4090'), 'garage-box');
-    await userEvent.type(screen.getByPlaceholderText('192.168.1.50'), '10.0.0.7');
     await userEvent.click(screen.getByRole('button', { name: /Register and show the command/ }));
 
-    await waitFor(() => expect(api.create).toHaveBeenCalledWith({ name: 'garage-box', host: '10.0.0.7' }));
+    await waitFor(() => expect(api.create).toHaveBeenCalledWith({ name: 'garage-box', host: 'pending' }));
     const command = await screen.findByText(/curl -fsSL/);
     expect(command).toHaveTextContent('token=tok-secret');
 
@@ -335,20 +335,7 @@ describe('DeploymentsSection', () => {
     await userEvent.click(screen.getByRole('tab', { name: 'Windows' }));
     expect(await screen.findByText(/powershell -ExecutionPolicy Bypass/)).toBeInTheDocument();
 
-    // The download offered first comes from this rippel, not from GitHub: its
-    // filename carries the setup code, which is what makes it a one-click
-    // install rather than a file you then have to configure.
-    const primary = screen.getByRole('link', { name: /Download for/ });
-    expect(primary).toHaveAttribute(
-      'href',
-      expect.stringContaining('/api/deployments/d1/agent/'),
-    );
-    expect(primary).toHaveAttribute('download', expect.stringContaining('rippel-agent-setup-'));
-
-    // Every other build stays one click away, including both Macs.
-    for (const label of ['Windows', 'macOS (Apple silicon)', 'macOS (Intel)', 'Linux']) {
-      expect(screen.getByRole('link', { name: new RegExp(label.replace(/[()]/g, '\\$&')) })).toBeInTheDocument();
-    }
+    expect(screen.queryByRole('link', {name:/Download for/})).not.toBeInTheDocument();
   });
 
   /**
@@ -361,8 +348,7 @@ describe('DeploymentsSection', () => {
     render(<DeploymentsSection api={api} />);
     await userEvent.click(await screen.findByRole('button', { name: /Install by hand/ }));
     await userEvent.type(screen.getByPlaceholderText('studio-4090'), 'garage-box');
-    await userEvent.type(screen.getByPlaceholderText('192.168.1.50'), '10.0.0.7');
-    await userEvent.click(screen.getByRole('button', { name: /Register and show the command/ }));
+    await userEvent.click(screen.getByRole('button', { name: /Register and show downloads/ }));
 
     // One block, named for the machine — not a menu of three mechanisms.
     expect(await screen.findByRole('heading', { level: 4 })).toHaveTextContent('Set up garage-box');
@@ -383,9 +369,8 @@ describe('DeploymentsSection', () => {
     expect(screen.queryByText(/Configure it by hand instead/)).not.toBeInTheDocument();
     expect(screen.queryByText('tok-secret')).not.toBeInTheDocument();
 
-    // The command line is still there, but folded away as the alternative.
-    const details = screen.getByText('Install from a command line instead').closest('details');
-    expect(details).not.toHaveAttribute('open');
+    expect(screen.queryByText('Install from a command line instead')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Copy Install Agent')).not.toBeInTheDocument();
 
     // And nothing claims the agent is a folder of scripts needing a runtime.
     // These are the exact sentences the old panel shipped; the agent is one
@@ -436,12 +421,11 @@ describe('DeploymentsSection', () => {
   it('warns about plaintext to a public host, and only then', async () => {
     const { api } = fakeApi([]);
     const { unmount } = render(<DeploymentsSection api={api} />);
-    await userEvent.click(await screen.findByRole('button', { name: /Install by hand/ }));
+    await userEvent.click(await screen.findByRole('button', { name: /Install with one command/ }));
     await userEvent.type(screen.getByPlaceholderText('studio-4090'), 'garage-box');
-    await userEvent.type(screen.getByPlaceholderText('192.168.1.50'), '10.0.0.7');
     await userEvent.click(screen.getByRole('button', { name: /Register and show the command/ }));
 
-    expect(await screen.findByText('http://192.168.1.9:4000')).toBeInTheDocument();
+    expect(await screen.findByText(/curl -fsSL/)).toBeInTheDocument();
     // A LAN address in plaintext is how everyone runs this; no warning.
     expect(screen.queryByText(/carries the agent token in its URL/)).not.toBeInTheDocument();
     unmount();
@@ -459,9 +443,8 @@ describe('DeploymentsSection', () => {
       })),
     });
     render(<DeploymentsSection api={api2} />);
-    await userEvent.click(await screen.findByRole('button', { name: /Install by hand/ }));
+    await userEvent.click(await screen.findByRole('button', { name: /Install with one command/ }));
     await userEvent.type(screen.getByPlaceholderText('studio-4090'), 'garage-box');
-    await userEvent.type(screen.getByPlaceholderText('192.168.1.50'), '10.0.0.7');
     await userEvent.click(screen.getByRole('button', { name: /Register and show the command/ }));
 
     expect(await screen.findByText(/carries the agent token in its URL/)).toBeInTheDocument();
@@ -488,8 +471,8 @@ describe('DeploymentsSection', () => {
     render(<DeploymentsSection api={api} />);
 
     await userEvent.click(await screen.findByRole('button', { name: /Deploy over SSH/ }));
-    await userEvent.type(screen.getByPlaceholderText('studio-4090'), 'garage-box');
     await userEvent.type(screen.getByPlaceholderText('192.168.1.50'), '10.0.0.7');
+    await userEvent.type(screen.getByPlaceholderText('studio-4090'), 'garage-box');
     await userEvent.type(screen.getByPlaceholderText('steve'), 'steve');
     await userEvent.type(screen.getByLabelText('Password'), 'hunter2');
     await userEvent.click(screen.getByRole('button', { name: 'Install the agent' }));
@@ -588,7 +571,7 @@ describe('DeploymentsSection', () => {
     });
 
     /** The route is being built in parallel; its absence is not a broken screen. */
-    it('keeps the download and the command line when the route is missing', async () => {
+    it('keeps the download when the pairing route is missing', async () => {
       const { api } = fakeApi([waiting], {
         pairingCode: vi.fn(async () => {
           throw new ApiRequestError(404, 'not_found', 'Not found');
@@ -597,7 +580,7 @@ describe('DeploymentsSection', () => {
       render(<DeploymentsSection api={api} />);
       expect(await screen.findByText(/cannot issue pairing codes yet/)).toBeInTheDocument();
       expect(screen.getByRole('link', { name: /Download for/ })).toBeInTheDocument();
-      expect(screen.getByText('Install from a command line instead')).toBeInTheDocument();
+      expect(screen.queryByText('Install from a command line instead')).not.toBeInTheDocument();
     });
 
     /** A machine that has checked in has already spent a code. */
@@ -698,7 +681,7 @@ describe('agent update progress', () => {
 
 it('requires an agent update for memory settings on older agents', async () => {
  const {api}=fakeApi();render(<DeploymentsSection api={api}/>);
- expect(await screen.findByLabelText('Memory usage')).toBeDisabled();
+ expect(await screen.findByLabelText('Use system memory')).toBeDisabled();
  expect(screen.getByText('Update the agent to change memory usage.')).toBeInTheDocument();
 });
 
@@ -706,18 +689,29 @@ it('applies memory usage and refreshes engine state automatically', async () => 
  const comfy={...COMFY,memoryMode:'auto' as const};
  const {api}=fakeApi([{...online,comfy}],{status:vi.fn(async()=>({comfy:{...COMFY,memoryMode:'ram' as const},accelerator:'cuda' as const,tasks:[]}))});
  render(<DeploymentsSection api={api}/>);
- const select=await screen.findByLabelText('Memory usage');
- await userEvent.selectOptions(select,'ram');
- await userEvent.click(screen.getByRole('button',{name:'Apply and restart'}));
+ const select=await screen.findByLabelText('Use system memory');
+ await userEvent.click(select);
+ await userEvent.click(screen.getByRole('button',{name:'Apply memory and restart'}));
  await waitFor(()=>expect(api.setMemoryMode).toHaveBeenCalledWith('d1','ram'));
  await waitFor(()=>expect(api.status).toHaveBeenCalled());
- expect(select).toHaveValue('ram');
+ expect(select).toBeChecked();
 });
 
 it('saves memory settings without offering a restart for a stopped engine', async () => {
  const {api}=fakeApi([{...online,comfy:{...COMFY,running:false,memoryMode:'auto'}}]);
  render(<DeploymentsSection api={api}/>);
- await userEvent.selectOptions(await screen.findByLabelText('Memory usage'),'ram');
- expect(screen.getByRole('button',{name:'Apply'})).toBeEnabled();
- expect(screen.queryByRole('button',{name:'Apply and restart'})).not.toBeInTheDocument();
+ await userEvent.click(await screen.findByLabelText('Use system memory'));
+ expect(screen.getByRole('button',{name:'Apply memory'})).toBeEnabled();
+ expect(screen.queryByRole('button',{name:'Apply memory and restart'})).not.toBeInTheDocument();
+});
+
+it('defaults system memory off and GPU VAE on, with independent saved choices', async () => {
+ const {api}=fakeApi([{...online,comfy:{...COMFY,memoryMode:'auto',vaeOnGpu:true}}],{status:vi.fn(async()=>({comfy:{...COMFY,memoryMode:'auto' as const,vaeOnGpu:false},accelerator:'cuda' as const,tasks:[]}))});
+ render(<DeploymentsSection api={api}/>);
+ expect(await screen.findByLabelText('Use system memory')).not.toBeChecked();
+ const vae=screen.getByLabelText('Run VAE on GPU');expect(vae).toBeChecked();
+ await userEvent.click(vae);
+ await userEvent.click(screen.getByRole('button',{name:'Apply VAE and restart'}));
+ await waitFor(()=>expect(api.setVaeOnGpu).toHaveBeenCalledWith('d1',false));
+ expect(api.setMemoryMode).not.toHaveBeenCalled();
 });

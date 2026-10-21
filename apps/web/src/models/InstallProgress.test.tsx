@@ -141,3 +141,14 @@ describe('InstallProgress on a settled install', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('not present');
   });
 });
+
+it('shows a waiting download as queued without claiming download progress', () => {
+  render(<InstallProgress install={makeInstall({
+    status: 'queued', startedAt: null, bytesReceived: null,
+    detail: 'Waiting for this machine’s current downloads or file operations to finish',
+  })} now={NOW} />);
+  expect(screen.getByText('Queued')).toBeInTheDocument();
+  expect(screen.getByText(/Waiting for this machine/)).toBeInTheDocument();
+  expect(screen.queryByText('Downloading')).not.toBeInTheDocument();
+  expect(screen.getByRole('progressbar')).not.toHaveAttribute('aria-valuenow');
+});

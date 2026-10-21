@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { Mark } from '../components/Mark';
 import { CubeIcon, ImageIcon, SparkIcon } from '../components/icons';
@@ -7,6 +7,7 @@ import { QueueChip } from './QueueChip';
 import { UserMenu } from './UserMenu';
 import { ModeToggle } from './ModeToggle';
 import { primaryBackend, totalQueueDepth, useBackends } from './useBackends';
+import { useTargetBackend, setTargetBackend } from './useTargetBackend';
 import styles from './AppShell.module.css';
 
 /**
@@ -29,7 +30,11 @@ const TABS = [
 
 export function AppShell() {
   const { backends, loading, unreachable } = useBackends();
-  const primary = primaryBackend(backends);
+  const targetId = useTargetBackend();
+  const primary = backends.find(item => item.id === targetId) ?? primaryBackend(backends);
+  useEffect(() => {
+    if (!loading && primary && (!targetId || !backends.some(item => item.id === targetId))) setTargetBackend(primary.id);
+  }, [loading, primary, targetId, backends]);
   const location = useLocation();
   const onCreate = location.pathname.startsWith('/create');
 
@@ -98,12 +103,14 @@ export function AppShell() {
           </div>
           <div className={styles.status}>
             <QueueChip depth={totalQueueDepth(backends)} />
-            {section !== 'models' ? <BackendPill
+            {<BackendPill
               backend={primary}
               loading={loading}
               unreachable={unreachable}
               extraCount={Math.max(0, backends.length - 1)}
-            /> : null}
+              backends={backends}
+              onSelect={setTargetBackend}
+            />}
           </div>
         </header>
 

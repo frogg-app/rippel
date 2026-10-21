@@ -8,14 +8,17 @@ import { seed } from './seed.js';
 import { pruneSessions } from './auth/sessions.js';
 import { startBackendPoller } from './lib/backend-poller.js';
 import { startWorkflowTestPoller } from './library/workflows/tests.js';
+import { startHuggingFaceCataloguePoller } from './models/hugging-face-catalogue.js';
 import { startModelOperationPoller } from './models/operations.js';
 import { startInstallPoller } from './models/install-poller.js';
 import { startOrchestrator } from './orchestrator/runner.js';
 import authPlugin from './plugins/auth.js';
+import userRoutes from './routes/users.js';
 import authRoutes from './routes/auth.js';
 import backendRoutes from './routes/backends.js';
 import backendStorageRoutes from './backends/storage.js';
 import backendAdminRoutes from './backends/admin.js';
+import tunnelRoutes, { startTunnelGateway, restoreTunnelTargets } from './deploy/tunnel.js';
 import deploymentRoutes from './deploy/routes.js';
 import healthRoutes from './routes/health.js';
 import modelRoutes from './routes/models.js';
@@ -42,16 +45,18 @@ const app = Fastify({
 await app.register(cookie, { secret: env.authSecret });
 await app.register(authPlugin);
 // Job progress is pushed over a socket rather than polled; see orchestrator/routes.ts.
-await app.register(websocket);
+await app.register(websocket, { options: { maxPayload: 96 * 1024 } });
 
 await app.register(
   async (api) => {
     await api.register(healthRoutes);
     await api.register(authRoutes);
+    await api.register(userRoutes);
     await api.register(backendRoutes);
     await api.register(backendStorageRoutes);
     await api.register(backendAdminRoutes);
     await api.register(deploymentRoutes);
+    await api.register(tunnelRoutes);
     await api.register(modelRoutes);
     await api.register(assetRoutes);
     await api.register(modelInstallRoutes);
@@ -85,8 +90,11 @@ async function main() {
   await migrate((msg) => app.log.info(msg));
   await seed((msg) => app.log.info(msg));
 
+  await restoreTunnelTargets();
+  const stopTunnel = await startTunnelGateway();
   const stopPoller = startBackendPoller((msg) => app.log.info(msg));
   const stopInstallPoller = startInstallPoller((msg) => app.log.info(msg));
+  const stopHuggingFace = startHuggingFaceCataloguePoller((msg) => app.log.info(msg));
   const stopModelOperations = startModelOperationPoller((msg) => app.log.info(msg));
   const stopWorkflowTests = startWorkflowTestPoller((msg) => app.log.info(msg));
   const stopOrchestrator = startOrchestrator((msg) => app.log.info(msg));
@@ -102,8 +110,10 @@ async function main() {
     stopPoller();
     stopInstallPoller();
     stopModelOperations();
+    stopHuggingFace();
     stopWorkflowTests();
     stopOrchestrator();
+    await stopTunnel();
     await app.close();
     await pool.end();
     process.exit(0);

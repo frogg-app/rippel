@@ -93,6 +93,9 @@ export function sourceUrl(ref: SourceRef): string {
 
 /** What one model page told us. Every field is optional at the source. */
 export interface SourceFacts {
+  description: string | null;
+  baseModels: string[];
+  tags: string[];
   referenceUrl: string;
   license: string | null;
   downloads: number | null;
@@ -128,6 +131,7 @@ async function getText(url: string, timeoutMs = 20_000): Promise<string> {
 }
 
 interface HfModel {
+  tags?: string[];
   downloads?: number;
   likes?: number;
   pipeline_tag?: string;
@@ -175,6 +179,23 @@ function firstDeclaredBaseModel(cardData: HfModel['cardData']): string | null {
     return declared[0];
   }
   return null;
+}
+
+/** Keep a short publisher excerpt as text; never render remote HTML. */
+export function modelCardDescription(markdown: string): string | null {
+  const text = markdown.slice(0, 100_000)
+    .replace(/^---\s*\n[\s\S]*?\n---\s*\n/, '')
+    .replace(/```[\s\S]*?```/g, '')
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
+    .replace(/<[^>]*>/g, '')
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1');
+  const paragraph = text.split(/\n\s*\n/).map(block => block.split('\n').filter(line => !/^\s*(#|\||[-*]\s|https?:)/.test(line)).join(' ').replace(/[*_`]/g, '').replace(/\s+/g, ' ').trim()).find(block => block.length >= 50);
+  return paragraph ? paragraph.slice(0, 600) + (paragraph.length > 600 ? '…' : '') : null;
+}
+export function declaredBaseModels(value: unknown): string[] {
+  return (Array.isArray(value) ? value : [value]).filter((item): item is string => typeof item === 'string' && /^[\w.-]+\/[\w.-]+$/.test(item)).slice(0, 20);
 }
 
 async function huggingFaceFacts(repo: string): Promise<SourceFacts> {
@@ -230,6 +251,9 @@ async function huggingFaceFacts(repo: string): Promise<SourceFacts> {
   const parent = firstDeclaredBaseModel(model.cardData);
 
   return {
+    description: modelCardDescription(card),
+    baseModels: declaredBaseModels(model.cardData?.base_model),
+    tags: (model.tags ?? []).filter(tag => typeof tag === 'string').slice(0, 50),
     referenceUrl: `https://huggingface.co/${repo}`,
     license: typeof license === 'string' ? license : Array.isArray(license) ? String(license[0] ?? '') || null : null,
     downloads: typeof model.downloads === 'number' ? model.downloads : null,

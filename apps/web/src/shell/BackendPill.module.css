@@ -103,3 +103,5 @@
   .name { max-width: 120px; }
   .pill { gap: var(--gap-sm); padding: 0 var(--gap); }
 }
+
+button.pill { color: var(--text-2); cursor: pointer; font-size: var(--text-sm); }

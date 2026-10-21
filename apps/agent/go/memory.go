@@ -21,6 +21,19 @@ func memoryMode(cfg *Config) string {
 // --lowvram alone does not do this on current dynamic-VRAM ComfyUI versions.
 func comfyMemoryArgs(cfg *Config) []string {
 	args := strings.Fields(cfg.ComfyArgs)
+	// An explicit per-backend choice overrides the legacy launch flag.
+	if cfg.VAEOnGPU != nil {
+		filtered := make([]string, 0, len(args)+1)
+		for _, arg := range args {
+			if arg != "--cpu-vae" {
+				filtered = append(filtered, arg)
+			}
+		}
+		args = filtered
+		if !*cfg.VAEOnGPU {
+			args = append(args, "--cpu-vae")
+		}
+	}
 	if memoryMode(cfg) != "ram" {
 		return args
 	}
@@ -67,6 +80,34 @@ func (a *Agent) setMemory(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, "configured_by_environment", "Memory mode is controlled by this agent's environment.")
 		return
 	}
+	a.applyComputeSetting(w, map[string]any{"memoryMode": body.Mode}, "Memory", func(cfg *Config) { cfg.MemoryMode = body.Mode })
+}
+
+func vaeOnGPU(cfg *Config) bool {
+	if cfg.VAEOnGPU != nil {
+		return *cfg.VAEOnGPU
+	}
+	for _, arg := range strings.Fields(cfg.ComfyArgs) {
+		if arg == "--cpu-vae" {
+			return false
+		}
+	}
+	return true
+}
+
+func (a *Agent) setVAE(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		OnGPU *bool `json:"onGpu"`
+	}
+	if err := readBody(r, &body); err != nil || body.OnGPU == nil {
+		writeError(w, http.StatusBadRequest, "bad_request", "Choose whether to run the VAE on GPU.")
+		return
+	}
+	value := *body.OnGPU
+	a.applyComputeSetting(w, map[string]any{"vaeOnGpu": value}, "VAE", func(cfg *Config) { cfg.VAEOnGPU = &value })
+}
+
+func (a *Agent) applyComputeSetting(w http.ResponseWriter, patch map[string]any, label string, apply func(*Config)) {
 	a.begin(w, "set-memory", func(task *Task) error {
 		defer a.changed()
 		cfg := a.config()
@@ -77,13 +118,13 @@ func (a *Agent) setMemory(w http.ResponseWriter, r *http.Request) {
 			return fmt.Errorf("The engine was started outside this agent. Stop it there before changing memory mode.")
 		}
 		// Persist before modifying the live configuration; a failed write leaves it intact.
-		if err := SaveConfig(map[string]any{"memoryMode": body.Mode}); err != nil {
+		if err := SaveConfig(patch); err != nil {
 			return err
 		}
 		a.mu.Lock()
-		a.cfg.MemoryMode = body.Mode
+		apply(a.cfg)
 		a.mu.Unlock()
-		task.Append("Memory setting saved.")
+		task.Append(label + " setting saved.")
 		if owned {
 			task.Append("Restarting the generation engine.")
 			if _, err := StopComfy(cfg, 10*time.Second); err != nil {

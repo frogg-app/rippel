@@ -86,9 +86,12 @@ const FULL_MAX = 1600;
  * are re-resolved by the ordinary staleness sweep; until one succeeds they keep
  * serving the picture they have, so a deploy never blanks the grid.
  */
-const PREVIEW_REV = 2;
+const PREVIEW_REV = 3;
 
 export interface MetaRow {
+  description: string | null;
+  base_models: string[];
+  tags: string[];
   source_key: string;
   preview_id: string;
   reference_url: string;
@@ -116,6 +119,9 @@ export function previewIdFor(sourceKey: string): string {
 
 function toInfo(row: MetaRow): ModelCatalogInfo {
   return {
+    description: row.description,
+    baseModels: row.base_models,
+    tags: row.tags,
     previewUrl: row.has_preview ? `/api/model-previews/${row.preview_id}` : null,
     // Only offered when a bigger rendition really exists, so the UI can decide
     // whether a card is worth making clickable rather than guessing.
@@ -136,7 +142,7 @@ function toInfo(row: MetaRow): ModelCatalogInfo {
 async function loadRows(keys: string[]): Promise<Map<string, MetaRow>> {
   if (keys.length === 0) return new Map();
   const rows = await query<MetaRow>(
-    `SELECT source_key, preview_id, reference_url, license, downloads, likes, pipeline_tag,
+    `SELECT source_key, preview_id, reference_url, license, downloads, likes, pipeline_tag, description, base_models, tags,
             preview_source, preview_borrowed_from, preview_type, preview_rev,
             preview_bytes IS NOT NULL AS has_preview,
             preview_full_bytes IS NOT NULL AS has_full,
@@ -188,12 +194,14 @@ export async function withCatalogueInfo(
     const row = rows.get(key);
     if (!row || isStale(row)) stale.push(ref);
   }
+  const installedRefs = new Set(entries.filter(entry => entry.installed).map(entry => parseReference(entry.reference)).filter((ref): ref is SourceRef => ref !== null).map(sourceKeyOf));
+  stale.sort((a,b) => Number(installedRefs.has(sourceKeyOf(b))) - Number(installedRefs.has(sourceKeyOf(a))));
   if (stale.length > 0) void startSweep(stale, log);
 
   const withInfo = entries.map((entry) => {
     const ref = parseReference(entry.reference);
     const row = ref ? rows.get(sourceKeyOf(ref)) : undefined;
-    return { ...entry, info: row ? toInfo(row) : null };
+    return { ...entry, info: row ? { ...entry.info, ...toInfo(row) } : entry.info };
   });
 
   return { entries: withInfo, pending: stale.length };
@@ -227,7 +235,7 @@ async function startSweep(refs: SourceRef[], log: (message: string) => void): Pr
     let withPicture = 0;
     const queue = [...refs];
     const workers = Array.from({ length: Math.min(SWEEP_CONCURRENCY, queue.length) }, async () => {
-      for (let ref = queue.pop(); ref; ref = queue.pop()) {
+      for (let ref = queue.shift(); ref; ref = queue.shift()) {
         const outcome = await resolveOne(ref).catch((err: unknown) => {
           log(`catalogue metadata: ${sourceLabel(ref)} failed hard: ${String(err)}`);
           return null;
@@ -288,6 +296,9 @@ async function resolveOne(ref: SourceRef): Promise<boolean> {
 
   await store({
     key,
+    description: facts.description,
+    baseModels: facts.baseModels,
+    tags: facts.tags,
     referenceUrl: facts.referenceUrl,
     license: facts.license,
     downloads: facts.downloads,
@@ -355,6 +366,9 @@ function hostAndPath(url: string): string {
 }
 
 async function store(params: {
+  description?: string | null;
+  baseModels?: string[];
+  tags?: string[];
   key: string;
   referenceUrl: string;
   license?: string | null;
@@ -370,9 +384,12 @@ async function store(params: {
     `INSERT INTO model_catalogue_meta
        (source_key, preview_id, reference_url, license, downloads, likes, pipeline_tag,
         preview_source, preview_borrowed_from, preview_bytes, preview_type, error, fetched_at,
-        preview_full_bytes, preview_full_type, preview_rev)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, now(), $13, $14, $15)
+        preview_full_bytes, preview_full_type, preview_rev, description, base_models, tags)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, now(), $13, $14, $15, $16, $17::jsonb, $18::jsonb)
      ON CONFLICT (source_key) DO UPDATE SET
+       description = COALESCE(EXCLUDED.description, model_catalogue_meta.description),
+       base_models = CASE WHEN EXCLUDED.error IS NULL THEN EXCLUDED.base_models ELSE model_catalogue_meta.base_models END,
+       tags = CASE WHEN EXCLUDED.error IS NULL THEN EXCLUDED.tags ELSE model_catalogue_meta.tags END,
        reference_url = EXCLUDED.reference_url,
        license = EXCLUDED.license,
        downloads = EXCLUDED.downloads,
@@ -415,6 +432,9 @@ async function store(params: {
       preview?.full ?? null,
       preview ? 'image/webp' : null,
       PREVIEW_REV,
+      params.description ?? null,
+      JSON.stringify(params.baseModels ?? []),
+      JSON.stringify(params.tags ?? []),
     ],
   );
 }

@@ -10,6 +10,7 @@ export async function verifiedFile(file: WorkflowFile, fetchImpl: typeof fetch =
   }
   if (url.hostname !== 'huggingface.co') throw new Error(`No verified checksum and size are available for ${file.name}.`);
   const response = await fetchImpl(url, { method: 'HEAD', redirect: 'manual', signal: AbortSignal.timeout(15_000) });
+  if (response.status === 401 || response.status === 403) throw new Error(`Access to ${file.name} requires permission on Hugging Face. Authenticated model downloads are not supported yet.`);
   if (response.status >= 400) throw new Error(`Publisher metadata for ${file.name} returned HTTP ${response.status}.`);
   const sha256 = (response.headers.get('x-linked-etag') ?? response.headers.get('etag') ?? '').replace(/^"|"$/g, '');
   const sizeBytes = Number(response.headers.get('x-linked-size') ?? (response.ok ? response.headers.get('content-length') : null));

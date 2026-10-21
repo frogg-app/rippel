@@ -16,7 +16,19 @@ export interface User {
   email: string;
   displayName: string | null;
   role: 'user' | 'admin';
+  settingsAccess?: boolean;
   createdAt: string;
+}
+
+export interface ManagedUser extends User {
+  settingsAccess: boolean;
+  suspended: boolean;
+  generationEnabled: boolean;
+  maxQueuedJobs: number | null;
+  dailyGenerationLimit: number | null;
+  activeJobs: number;
+  queuedJobs?: number;
+  generationsToday: number;
 }
 
 // ---------------------------------------------------------------- backends
@@ -222,6 +234,8 @@ export interface Upload {
  * field in it is optional — omitted means "let the quality preset decide".
  */
 export interface GenerationParams {
+  /** Restrict dispatch to the backend chosen by the user. */
+  targetBackendId?: Uuid;
   /** Explicit Ready library workflow selected by the user. */
   workflowId?: string;
   kind: JobKind;
@@ -310,6 +324,10 @@ export interface ApiError {
  * to fetch a picture from huggingface.co on behalf of 372 tiles.
  */
 export interface ModelCatalogInfo {
+  /** Plain-text excerpt from the publisher’s model card. */
+  description?: string | null;
+  baseModels?: string[];
+  tags?: string[];
   /** `/api/model-previews/<id>` on this API, or null when we found no image. */
   previewUrl: string | null;
   /**
@@ -415,6 +433,10 @@ export interface ModelRunnability {
  * answer to "what can I install here" comes from the backend itself.
  */
 export interface ModelCatalogEntry {
+  /** Repository discovery without a verified downloadable file. */
+  installBlockedReason?: string;
+  /** Official workflow that declares this file; does not prove local readiness. */
+  sourceWorkflow?: { name: string; title: string };
   /** Stable within one backend's catalogue; not a database id. */
   ref: string;
   name: string;
@@ -903,6 +925,7 @@ export type AgentPlatform = 'linux' | 'darwin' | 'win32' | 'unknown';
 /** What the agent reports about the ComfyUI it manages. */
 export interface ComfyState {
   memoryMode?: 'auto' | 'ram';
+  vaeOnGpu?: boolean;
   /** Whether an install exists at the agent's ComfyUI path. */
   installed: boolean;
   /** Whether that install is running and answering on its port. */
@@ -925,6 +948,10 @@ export interface ComfyState {
 }
 
 export interface Deployment {
+  tunnelConnected?: boolean;
+  /** Public HTTPS origins; omit for direct host/port connections. */
+  agentUrl?: string;
+  engineUrl?: string;
   id: Uuid;
   name: string;
   /** Host or IP rippel reaches the agent on. */
@@ -950,6 +977,9 @@ export interface Deployment {
 }
 
 export interface DeploymentInput {
+  /** Public HTTPS origins; omit for direct host/port connections. */
+  agentUrl?: string;
+  engineUrl?: string;
   name: string;
   host: string;
   agentPort?: number;
@@ -998,6 +1028,9 @@ export interface SshRun {
 
 /** What an administrator sends to install the agent over SSH. */
 export interface SshInstallInput {
+  /** Public HTTPS origins; omit for direct host/port connections. */
+  agentUrl?: string;
+  engineUrl?: string;
   /** Name for the deployment the install creates. */
   name: string;
   host: string;

@@ -1,5 +1,6 @@
 import type { Backend } from '@comfy/shared';
 import { memoryReading } from '../lib/format';
+import { Dropdown } from '../components/Dropdown';
 import styles from './BackendPill.module.css';
 
 /**
@@ -14,12 +15,16 @@ export function BackendPill({
   loading,
   unreachable,
   extraCount,
+  backends,
+  onSelect,
 }: {
   backend: Backend | null;
   loading: boolean;
   unreachable: boolean;
   /** Backends beyond the one shown, surfaced as "+2". */
   extraCount: number;
+  backends?: Backend[];
+  onSelect?: (id: string) => void;
 }) {
   if (loading) {
     return (
@@ -56,6 +61,15 @@ export function BackendPill({
 
   const status = backend.enabled ? backend.status : 'offline';
   const memory = memoryReading(backend);
+  if (backends && onSelect) return (
+    <Dropdown value={backend.id} onChange={onSelect} aria-label="Target backend"
+      className={styles.pill} menuWidth={280} align="end"
+      options={backends.map(item => ({ value: item.id, label: `${item.name}${!item.enabled ? ' · disabled' : item.status !== 'online' ? ' · offline' : ''}`, disabled: !item.enabled || item.status !== 'online' }))}
+      leading={<span className={styles.dot} data-status={status} />}>
+      {memory && status === 'online' ? <span className={`mono ${styles.memory}`}>{memory.text} {memory.isOperatorBudget ? 'budget' : 'reported'}</span> : null}
+    </Dropdown>
+  );
+
 
   return (
     <div

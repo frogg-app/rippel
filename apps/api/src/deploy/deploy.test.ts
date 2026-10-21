@@ -13,7 +13,7 @@
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import { describe, expect, it, vi } from 'vitest';
 import type { AgentTask, ComfyState } from '@comfy/shared';
-import { makeDeploymentRoutes, normaliseHost, type DeployDb } from './routes.js';
+import { makeDeploymentRoutes, normaliseHost, httpsOrigin, type DeployDb } from './routes.js';
 import { bashInstaller, oneLiner, powershellInstaller } from './scripts.js';
 import { clearReleaseCache, latestAgentRelease } from './releases.js';
 import { AGENT_BINARIES, availableBinaries, downloadFileName, encodeSetup, setupLink } from './binaries.js';
@@ -41,6 +41,8 @@ interface Row {
   name: string;
   host: string;
   agent_port: number;
+  agent_url?: string | null;
+  engine_url?: string | null;
   platform: string;
   status: string;
   token: string;
@@ -58,6 +60,8 @@ function row(over: Partial<Row> = {}): Row {
     name: 'studio-4090',
     host: '192.168.1.50',
     agent_port: 8189,
+    agent_url: null as string | null,
+    engine_url: null as string | null,
     platform: 'linux',
     status: 'online',
     token: 'tok-secret',
@@ -94,13 +98,15 @@ function fakeDb(rows: Row[], backends: { id: string; name: string; base_url: str
     }
     if (sql.includes('INSERT INTO deployments')) {
       const [name, host, agent_port, ...rest] = params as [string, string, number, ...unknown[]];
-      const platform = rest.length === 3 ? (rest[0] as string) : 'unknown';
-      const token = rest.length === 3 ? (rest[1] as string) : (rest[0] as string);
+      const platform = sql.includes('agent_port, platform,') ? (rest[0] as string) : 'unknown';
+      const token = sql.includes('agent_port, platform,') ? (rest[1] as string) : (rest[0] as string);
       const made = row({
         id: `new-${++next}`,
         name,
         host,
         agent_port,
+        agent_url: rest[rest.length-2] as string | null,
+        engine_url: rest[rest.length-1] as string | null,
         platform,
         status: 'pending',
         token,
@@ -186,6 +192,7 @@ function fakeAgent(over: Partial<AgentClient> = {}): AgentClient {
     power: async () => ({ started: true }),
     installHelper: async () => task({ kind: 'install-helper' }),
     comfyLog: async () => [],
+    setVaeOnGpu: async () => task(),
     setMemoryMode: async () => task(),
     updateAgent: async () => task(),
     moveModel: async () => task(),
@@ -212,7 +219,7 @@ async function server(
   app.decorate('requireAuth', async (req: FastifyRequest, reply: FastifyReply) => {
     if (!req.user) await reply.code(401).send({ error: 'unauthorized' });
   });
-  app.decorate('requireAdmin', async (req: FastifyRequest, reply: FastifyReply) => {
+  app.decorate('requireSettings', async (req: FastifyRequest, reply: FastifyReply) => {
     if (!req.user) {
       await reply.code(401).send({ error: 'unauthorized' });
       return;
@@ -745,4 +752,44 @@ describe('memory usage', () => {
     const res=await app.inject({method:'POST',url:`/deployments/${D1}/memory`,payload:{mode:'ram'}});
     expect(res.statusCode).toBe(200);expect(res.json().task).toBeDefined();expect(change).toHaveBeenCalledWith(expect.anything(),'ram');await app.close();
   });
+});
+
+
+describe('VAE placement', () => {
+  it('requires settings access and a boolean', async () => {
+    const app = await server(USER, { rows: [row()] });
+    expect((await app.inject({method:'POST',url:`/deployments/${D1}/vae`,payload:{onGpu:false}})).statusCode).toBe(403);
+    await app.close();
+    const admin = await server(ADMIN, { rows: [row()] });
+    expect((await admin.inject({method:'POST',url:`/deployments/${D1}/vae`,payload:{onGpu:'false'}})).statusCode).toBe(400);
+    await admin.close();
+  });
+  it('refuses busy backends and agents without VAE controls', async () => {
+    const change = vi.fn(async () => task());
+    const busy = await server(ADMIN, {rows:[row({backend_id:'b1'})],busy:true,agent:fakeAgent({setVaeOnGpu:change})});
+    expect((await busy.inject({method:'POST',url:`/deployments/${D1}/vae`,payload:{onGpu:false}})).statusCode).toBe(409);
+    expect(change).not.toHaveBeenCalled(); await busy.close();
+    const old = await server(ADMIN, {rows:[row()]});
+    expect((await old.inject({method:'POST',url:`/deployments/${D1}/vae`,payload:{onGpu:false}})).json().error).toBe('update_required');
+    await old.close();
+  });
+  it('preserves an explicit CPU selection when forwarding to the agent', async () => {
+    const change = vi.fn(async () => task());
+    const app = await server(ADMIN, {rows:[row()],agent:fakeAgent({setVaeOnGpu:change,status:async()=>({ok:true,version:'0.3.2',platform:'win32',hostname:'desktop',comfy:{...COMFY,memoryMode:'auto',vaeOnGpu:true},accelerator:'rocm',tasks:[]})})});
+    const res=await app.inject({method:'POST',url:`/deployments/${D1}/vae`,payload:{onGpu:false}});
+    expect(res.statusCode).toBe(200);expect(res.json().task).toBeDefined();expect(change).toHaveBeenCalledWith(expect.anything(),false);await app.close();
+  });
+});
+
+describe('public HTTPS endpoints', () => {
+ it('accepts only HTTPS origins without embedded credentials or paths', () => {
+  expect(httpsOrigin.parse('https://agent.example.com:8443/')).toBe('https://agent.example.com:8443');
+  for(const value of ['http://agent.example.com','https://user:secret@agent.example.com','https://agent.example.com/path','https://agent.example.com?token=secret'])expect(httpsOrigin.safeParse(value).success).toBe(false);
+ });
+ it('uses the configured HTTPS agent address for status requests', async () => {
+  const status=vi.fn(async()=>({ok:true as const,version:'0.3.2',platform:'win32' as const,hostname:'remote',comfy:COMFY,accelerator:'rocm' as const,tasks:[]}));
+  const app=await server(ADMIN,{rows:[row({agent_url:'https://agent.example.com:8443',engine_url:'https://engine.example.com'})],agent:fakeAgent({status})});
+  expect((await app.inject(`/deployments/${D1}/status`)).statusCode).toBe(200);
+  expect(status).toHaveBeenCalledWith(expect.objectContaining({agentUrl:'https://agent.example.com:8443'}));await app.close();
+ });
 });

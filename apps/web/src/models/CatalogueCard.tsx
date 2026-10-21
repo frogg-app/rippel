@@ -206,6 +206,8 @@ export function CatalogueCard({
           </p>
         </div>
 
+        {(info?.description || entry.description) && <details className={styles.modelDescription}><summary>About this model</summary><p>{info?.description || entry.description}</p>{info?.description && <span>From the publisher’s model card.</span>}</details>}
+        {!!info?.baseModels?.length && <p className={styles.cardResting}>Declared base: {info.baseModels.join(', ')}</p>}
         {isSupport ? (
           // Never "Support file" on its own, and never the type word on its
           // own. What it does to a model, and where in rippel it turns up.
@@ -223,8 +225,8 @@ export function CatalogueCard({
             // because it is a paragraph, not a label.
             title={verdict.detail ?? verdict.summary}
           >
-            <span className={styles.verdictChip}>{RUNNABILITY_LABEL[verdict.status]}</span>
-            <span className={styles.verdictText}>{verdict.detail ?? verdict.summary}</span>
+            <span className={styles.verdictChip}>{entry.sourceWorkflow && verdict.status === 'no-workflow' ? 'Workflow setup needed' : RUNNABILITY_LABEL[verdict.status]}</span>
+            <span className={styles.verdictText}>{entry.sourceWorkflow && verdict.status === 'no-workflow' ? `${entry.sourceWorkflow.title} is available in ComfyUI’s workflow library. It has not been configured in rippel.` : verdict.detail ?? verdict.summary}</span>
             {onWorkflows && verdict.status !== 'support' ? (
               <button
                 type="button"
@@ -239,10 +241,14 @@ export function CatalogueCard({
           </p>
         ) : null}
 
+        {entry.sourceWorkflow ? <p className={styles.cardResting}>From workflow: {entry.sourceWorkflow.title}</p> : null}
+
         {install && !done ? <InstallProgress install={install} now={now} compact /> : null}
 
         {done ? (
           <p className={styles.cardResting}>Already on this backend</p>
+        ) : entry.installBlockedReason ? (
+          <p className={styles.cardResting}>{entry.installBlockedReason}</p>
         ) : live || starting ? null : (
           <button
             type="button"

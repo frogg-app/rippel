@@ -10,6 +10,8 @@
 
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { cachedHuggingFaceModels, huggingFaceCataloguePending } from './hugging-face-catalogue.js';
+import { workflowCataloguePending } from './workflow-catalogue.js';
 import { hostApprovalRoutes } from './host-approval.js';
 import type {
   BackendReadiness,
@@ -35,7 +37,7 @@ import {
   type InstallRow,
 } from './installs.js';
 import { readinessFor } from './readiness.js';
-import { TransportError, TransportUnavailable, type ModelTransport } from './transport.js';
+import { TransportBusy, TransportError, TransportUnavailable, type ModelTransport } from './transport.js';
 
 interface BackendUrlRow {
   id: string;
@@ -81,7 +83,9 @@ export default async function modelInstallRoutes(app: FastifyInstance) {
         const transport = await requireTransport(backend.base_url, backend.id);
         const raw: ModelCatalogEntry[] = await transport.catalogue();
 
-        const { entries, pending } = await withCatalogueInfo(raw, (message) => req.log.info(message));
+        const represented = new Set(raw.map(entry => entry.reference?.replace(/\/$/, '').toLowerCase()));
+        const discovered = (await cachedHuggingFaceModels()).filter(entry => !represented.has(entry.reference?.toLowerCase()));
+        const { entries, pending } = await withCatalogueInfo([...raw, ...discovered], (message) => req.log.info(message));
 
         let info: ObjectInfo | null = null;
         try {
@@ -94,7 +98,7 @@ export default async function modelInstallRoutes(app: FastifyInstance) {
         return {
           entries: entries.map((entry) => ({
             ...entry,
-            runnability: runnabilityFor({
+            runnability: entry.installBlockedReason ? { ...entry.runnability!, backendId: backend.id } : runnabilityFor({
               filename: entry.filename,
               type: entry.type,
               catalogueBase: entry.base,
@@ -105,7 +109,7 @@ export default async function modelInstallRoutes(app: FastifyInstance) {
               installed: entry.installed,
             }),
           })),
-          pending,
+          pending: pending + workflowCataloguePending(backend.id, backend.base_url) + huggingFaceCataloguePending(),
         };
       } catch (err) {
         return transportFailure(reply, err);
@@ -534,6 +538,9 @@ async function resolveSubject(
  * its own status rather than being flattened into a 502.
  */
 function transportFailure(reply: import('fastify').FastifyReply, err: unknown) {
+  if (err instanceof TransportBusy) {
+    return reply.code(409).send({ error: 'conflict', message: err.message });
+  }
   if (err instanceof TransportUnavailable) {
     return reply.code(501).send({ error: 'not_implemented', message: err.message });
   }

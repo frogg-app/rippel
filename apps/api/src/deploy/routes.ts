@@ -1,3 +1,4 @@
+import { tunnelConnected, tunnelEngineUrl, disconnectTunnel } from './tunnel.js';
 /**
  * Deployment routes.
  *
@@ -68,6 +69,8 @@ interface DeploymentRow {
   name: string;
   host: string;
   agent_port: number;
+  agent_url?: string | null;
+  engine_url?: string | null;
   platform: AgentPlatform;
   status: 'pending' | 'online' | 'offline';
   token: string;
@@ -79,7 +82,7 @@ interface DeploymentRow {
   created_at: Date;
 }
 
-const SELECT = `SELECT d.id, d.name, d.host, d.agent_port, d.platform, d.status, d.token,
+const SELECT = `SELECT d.id, d.name, d.host, d.agent_port, d.agent_url, d.engine_url, d.platform, d.status, d.token,
                        d.agent_version, d.comfy, d.backend_id, b.name AS backend_name,
                        d.last_seen_at, d.created_at
                   FROM deployments d
@@ -107,6 +110,9 @@ function toDeployment(row: DeploymentRow): Deployment {
     name: row.name,
     host: row.host,
     agentPort: row.agent_port,
+    tunnelConnected: tunnelConnected(row.id),
+    ...(row.agent_url ? { agentUrl: row.agent_url } : {}),
+    ...(row.engine_url ? { engineUrl: row.engine_url } : {}),
     platform: row.platform,
     status: liveStatus(row),
     agentVersion: row.agent_version,
@@ -120,7 +126,7 @@ function toDeployment(row: DeploymentRow): Deployment {
 }
 
 function targetOf(row: DeploymentRow): AgentTarget {
-  return { host: row.host, agentPort: row.agent_port, token: row.token };
+  return { host: row.host, agentPort: row.agent_port, token: row.token, ...(row.agent_url ? {agentUrl: row.agent_url} : {}) };
 }
 
 /**
@@ -142,10 +148,16 @@ export function normaliseHost(raw: unknown): string | null {
   return text.toLowerCase();
 }
 
+export const httpsOrigin = z.string().trim().url().refine(value => {
+  const url = new URL(value);
+  return url.protocol === 'https:' && !url.username && !url.password && !url.search && !url.hash && url.pathname === '/';
+}, 'Use an HTTPS address with no path, credentials, query, or fragment.').transform(value => new URL(value).origin);
 const createSchema = z.object({
   name: z.string().trim().min(1).max(60),
   host: z.string(),
   agentPort: z.number().int().min(1).max(65535).optional(),
+  agentUrl: httpsOrigin.optional(),
+  engineUrl: httpsOrigin.optional(),
 });
 
 const sshSchema = z
@@ -159,6 +171,8 @@ const sshSchema = z
     passphrase: z.string().max(1024).optional(),
     useSudo: z.boolean().optional(),
     agentPort: z.number().int().min(1).max(65535).optional(),
+  agentUrl: httpsOrigin.optional(),
+  engineUrl: httpsOrigin.optional(),
     platform: z.enum(['linux', 'darwin', 'win32']).optional(),
     comfyPort: z.number().int().min(1).max(65535).optional(),
   })
@@ -392,16 +406,16 @@ export function makeDeploymentRoutes(deps: DeployDeps = {}) {
 
     // ------------------------------------------------------------ admin-facing
 
-    app.get('/deployments', { onRequest: [app.requireAdmin] }, async () => {
+    app.get('/deployments', { onRequest: [app.requireSettings] }, async () => {
       const rows = await db.query<DeploymentRow>(`${SELECT} ORDER BY d.name`);
       return { deployments: rows.map(toDeployment) };
     });
 
-    app.get('/deployments/releases', { onRequest: [app.requireAdmin] }, async () => ({
+    app.get('/deployments/releases', { onRequest: [app.requireSettings] }, async () => ({
       release: await latestAgentRelease(fetchImpl),
     }));
 
-    app.post<{ Body: unknown }>('/deployments', { onRequest: [app.requireAdmin] }, async (req, reply) => {
+    app.post<{ Body: unknown }>('/deployments', { onRequest: [app.requireSettings] }, async (req, reply) => {
       const parsed = createSchema.safeParse(req.body);
       if (!parsed.success) {
         const issue = parsed.error.issues[0];
@@ -433,11 +447,11 @@ export function makeDeploymentRoutes(deps: DeployDeps = {}) {
 
       const row = await db.queryOne<DeploymentRow>(
         `WITH inserted AS (
-           INSERT INTO deployments (name, host, agent_port, token, created_by)
-           VALUES ($1, $2, $3, $4, $5)
+           INSERT INTO deployments (name, host, agent_port, token, created_by, agent_url, engine_url)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)
            RETURNING *
          )
-         SELECT i.id, i.name, i.host, i.agent_port, i.platform, i.status, i.token,
+         SELECT i.id, i.name, i.host, i.agent_port, i.agent_url, i.engine_url, i.platform, i.status, i.token,
                 i.agent_version, i.comfy, i.backend_id, NULL::text AS backend_name,
                 i.last_seen_at, i.created_at
            FROM inserted i`,
@@ -447,6 +461,8 @@ export function makeDeploymentRoutes(deps: DeployDeps = {}) {
           parsed.data.agentPort ?? env.deploy.agentPort,
           newToken(),
           req.user!.id,
+          parsed.data.agentUrl ?? null,
+          parsed.data.engineUrl ?? null,
         ],
       );
       return reply.code(201).send({ deployment: toDeployment(row!) });
@@ -454,7 +470,7 @@ export function makeDeploymentRoutes(deps: DeployDeps = {}) {
 
     app.delete<{ Params: { id: string } }>(
       '/deployments/:id',
-      { onRequest: [app.requireAdmin] },
+      { onRequest: [app.requireSettings] },
       async (req, reply) => {
         const row = await loadOr404(req, reply);
         if (!row) return;
@@ -477,6 +493,7 @@ export function makeDeploymentRoutes(deps: DeployDeps = {}) {
           return true;
         });
         if (!removed) return reply.code(409).send({ error: 'busy', message: 'This backend is busy. Wait for its current work to finish before removing it.' });
+        disconnectTunnel(row.id);
         return reply.code(204).send();
       },
     );
@@ -484,7 +501,7 @@ export function makeDeploymentRoutes(deps: DeployDeps = {}) {
     /** The commands and links the manual install page shows. */
     app.get<{ Params: { id: string } }>(
       '/deployments/:id/install',
-      { onRequest: [app.requireAdmin] },
+      { onRequest: [app.requireSettings] },
       async (req, reply) => {
         const row = await loadOr404(req, reply);
         if (!row) return;
@@ -535,7 +552,7 @@ export function makeDeploymentRoutes(deps: DeployDeps = {}) {
 
     app.post<{ Params: { id: string } }>(
       '/deployments/:id/probe',
-      { onRequest: [app.requireAdmin] },
+      { onRequest: [app.requireSettings] },
       async (req, reply): Promise<AgentProbe | undefined> => {
         const row = await loadOr404(req, reply);
         if (!row) return;
@@ -568,7 +585,7 @@ export function makeDeploymentRoutes(deps: DeployDeps = {}) {
     /** Ask the agent directly, and record what it said. */
     app.get<{ Params: { id: string } }>(
       '/deployments/:id/status',
-      { onRequest: [app.requireAdmin] },
+      { onRequest: [app.requireSettings] },
       async (req, reply) => {
         const row = await loadOr404(req, reply);
         if (!row) return;
@@ -591,7 +608,7 @@ export function makeDeploymentRoutes(deps: DeployDeps = {}) {
 
     app.get<{ Params: { id: string; taskId: string }; Querystring: { since?: string } }>(
       '/deployments/:id/tasks/:taskId',
-      { onRequest: [app.requireAdmin] },
+      { onRequest: [app.requireSettings] },
       async (req, reply) => {
         const row = await loadOr404(req, reply);
         if (!row) return;
@@ -606,7 +623,7 @@ export function makeDeploymentRoutes(deps: DeployDeps = {}) {
       },
     );
 
-    app.post<{ Params: { id: string }; Body: { mode?: string } }>('/deployments/:id/memory', { onRequest: [app.requireAdmin] }, async (req, reply) => {
+    app.post<{ Params: { id: string }; Body: { mode?: string } }>('/deployments/:id/memory', { onRequest: [app.requireSettings] }, async (req, reply) => {
       const row = await loadOr404(req, reply);
       if (!row) return;
       const mode = req.body?.mode;
@@ -624,7 +641,25 @@ export function makeDeploymentRoutes(deps: DeployDeps = {}) {
       } catch (cause) { return agentFailure(reply, cause); }
     });
 
-    app.post<{ Params: { id: string } }>('/deployments/:id/agent-update', { onRequest: [app.requireAdmin] }, async (req, reply) => {
+    app.post<{ Params: { id: string }; Body: { onGpu?: boolean } }>('/deployments/:id/vae', { onRequest: [app.requireSettings] }, async (req, reply) => {
+      const row = await loadOr404(req, reply);
+      if (!row) return;
+      const onGpu = req.body?.onGpu;
+      if (typeof onGpu !== 'boolean') return reply.code(400).send({ error: 'invalid_input', message: 'Choose whether to run the VAE on GPU.' });
+      if (row.backend_id) {
+        const busy = await db.query(`SELECT 1 FROM jobs WHERE backend_id = $1 AND status IN ('dispatched','running','uploading')
+          UNION ALL SELECT 1 FROM model_installs WHERE backend_id = $1 AND status IN ('queued','downloading')
+          UNION ALL SELECT 1 FROM model_operations WHERE backend_id = $1 AND status IN ('starting','running') LIMIT 1`, [row.backend_id]);
+        if (busy.length) return reply.code(409).send({ error: 'busy', message: 'Wait for generation and downloads to finish before changing VAE processing.' });
+      }
+      try {
+        const status = await agent.status(targetOf(row));
+        if (typeof status.comfy.vaeOnGpu !== 'boolean') return reply.code(409).send({ error: 'update_required', message: 'Update the agent to change VAE processing.' });
+        return { task: await agent.setVaeOnGpu(targetOf(row), onGpu) };
+      } catch (cause) { return agentFailure(reply, cause); }
+    });
+
+    app.post<{ Params: { id: string } }>('/deployments/:id/agent-update', { onRequest: [app.requireSettings] }, async (req, reply) => {
       const row = await loadOr404(req,reply);
       if (!row) return;
       try {
@@ -640,7 +675,7 @@ export function makeDeploymentRoutes(deps: DeployDeps = {}) {
 
     app.post<{ Params: { id: string }; Body: { accelerator?: string } }>(
       '/deployments/:id/comfyui/install',
-      { onRequest: [app.requireAdmin] },
+      { onRequest: [app.requireSettings] },
       async (req, reply) => {
         const row = await loadOr404(req, reply);
         if (!row) return;
@@ -662,7 +697,7 @@ export function makeDeploymentRoutes(deps: DeployDeps = {}) {
 
     app.post<{ Params: { id: string } }>(
       '/deployments/:id/comfyui/update',
-      { onRequest: [app.requireAdmin] },
+      { onRequest: [app.requireSettings] },
       async (req, reply) => {
         const row = await loadOr404(req, reply);
         if (!row) return;
@@ -676,7 +711,7 @@ export function makeDeploymentRoutes(deps: DeployDeps = {}) {
 
     app.post<{ Params: { id: string; action: string } }>(
       '/deployments/:id/comfyui/:action',
-      { onRequest: [app.requireAdmin] },
+      { onRequest: [app.requireSettings] },
       async (req, reply) => {
         const row = await loadOr404(req, reply);
         if (!row) return;
@@ -706,7 +741,7 @@ export function makeDeploymentRoutes(deps: DeployDeps = {}) {
      */
     app.post<{ Params: { id: string } }>(
       '/deployments/:id/helper/install',
-      { onRequest: [app.requireAdmin] },
+      { onRequest: [app.requireSettings] },
       async (req, reply) => {
         const row = await loadOr404(req, reply);
         if (!row) return;
@@ -735,7 +770,7 @@ export function makeDeploymentRoutes(deps: DeployDeps = {}) {
      */
     app.post<{ Params: { id: string }; Body: { name?: string } }>(
       '/deployments/:id/backend',
-      { onRequest: [app.requireAdmin] },
+      { onRequest: [app.requireSettings] },
       async (req, reply) => {
         const row = await loadOr404(req, reply);
         if (!row) return;
@@ -746,7 +781,7 @@ export function makeDeploymentRoutes(deps: DeployDeps = {}) {
           });
         }
         const port = row.comfy?.port ?? 8188;
-        const baseUrl = `http://${row.host}:${port}`;
+        const baseUrl = tunnelConnected(row.id) ? tunnelEngineUrl(row.id) : row.engine_url ?? `http://${row.host}:${port}`;
         const name = (req.body?.name ?? row.name).trim().slice(0, 60) || row.name;
 
         const clash = await db.queryOne<{ id: string }>(
@@ -778,7 +813,7 @@ export function makeDeploymentRoutes(deps: DeployDeps = {}) {
 
     app.post<{ Body: unknown }>(
       '/deployments/ssh-install',
-      { onRequest: [app.requireAdmin] },
+      { onRequest: [app.requireSettings] },
       async (req, reply) => {
         const parsed = sshSchema.safeParse(req.body);
         if (!parsed.success) {
@@ -814,11 +849,11 @@ export function makeDeploymentRoutes(deps: DeployDeps = {}) {
         // against rather than nothing.
         const row = await db.queryOne<DeploymentRow>(
           `WITH inserted AS (
-             INSERT INTO deployments (name, host, agent_port, platform, token, created_by)
-             VALUES ($1, $2, $3, $4, $5, $6)
+             INSERT INTO deployments (name, host, agent_port, platform, token, created_by, agent_url, engine_url)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
              RETURNING *
            )
-           SELECT i.id, i.name, i.host, i.agent_port, i.platform, i.status, i.token,
+           SELECT i.id, i.name, i.host, i.agent_port, i.agent_url, i.engine_url, i.platform, i.status, i.token,
                   i.agent_version, i.comfy, i.backend_id, NULL::text AS backend_name,
                   i.last_seen_at, i.created_at
              FROM inserted i`,
@@ -829,6 +864,8 @@ export function makeDeploymentRoutes(deps: DeployDeps = {}) {
             parsed.data.platform ?? 'unknown',
             newToken(),
             req.user!.id,
+            parsed.data.agentUrl ?? null,
+            parsed.data.engineUrl ?? null,
           ],
         );
 
@@ -852,7 +889,7 @@ export function makeDeploymentRoutes(deps: DeployDeps = {}) {
 
     app.get<{ Params: { id: string }; Querystring: { since?: string } }>(
       '/deployments/runs/:id',
-      { onRequest: [app.requireAdmin] },
+      { onRequest: [app.requireSettings] },
       async (req, reply) => {
         const run = getRun(req.params.id);
         if (!run) {

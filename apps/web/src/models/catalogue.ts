@@ -445,7 +445,10 @@ export function filterCatalogue(
     return (
       entry.name.toLowerCase().includes(q) ||
       entry.filename.toLowerCase().includes(q) ||
-      (entry.description?.toLowerCase().includes(q) ?? false)
+      (entry.description?.toLowerCase().includes(q) ?? false) ||
+      (entry.info?.description?.toLowerCase().includes(q) ?? false) ||
+      (entry.info?.baseModels?.some(base => base.toLowerCase().includes(q)) ?? false) ||
+      (entry.info?.tags?.some(tag => tag.toLowerCase().includes(q)) ?? false)
     );
   });
 }

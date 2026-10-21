@@ -1,0 +1,29 @@
+.section { display: flex; flex-direction: column; gap: var(--space-4); }
+.section p { color: var(--text-4); font-size: var(--text-sm); line-height: 1.5; margin: 0; }
+.card { display: flex; flex-direction: column; gap: var(--gap); padding: var(--gap-lg); border: 1px solid var(--line-strong); border-radius: var(--radius-lg); background: var(--surface-1); }
+.card h3 { margin: 0; font-size: var(--text-lg); }
+.card fieldset { border: 0; padding: 0; margin: 0; display: flex; flex-direction: column; gap: var(--gap); }
+.card label { display: flex; flex-direction: column; gap: 6px; font-size: var(--text-sm); }
+.card label.check { flex-direction: row; align-items: center; gap: 10px; }
+.card input:not([type=checkbox]), .card select { padding: 9px 12px; width: 100%; min-width: 0; border: 1px solid var(--line-input); border-radius: var(--radius-md); background: var(--surface-2); color: var(--text); }
+.card input[type=checkbox] { accent-color: var(--accent); }
+.section button { align-self: flex-start; padding: 9px 14px; border: 1px solid var(--line-strong); border-radius: var(--radius-md); background: var(--surface-2); color: var(--text); cursor: pointer; }
+.section button:disabled { opacity: .5; cursor: default; }
+.limits { display: grid; grid-template-columns: 1fr 1fr; gap: var(--gap); }
+@media (max-width: 560px) { .limits { grid-template-columns: 1fr; } }
+
+.userRow { border: 1px solid var(--line-strong); border-radius: var(--radius-md); overflow: hidden; }
+.section .userSummary { display: flex; align-items: center; gap: var(--space-4); width: 100%; padding: 12px 16px; border: 0; border-radius: 0; text-align: left; }
+.identity, .overview { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.identity { flex: 1; }
+.identity span { overflow-wrap: anywhere; }
+.identity span, .overview { font-size: var(--text-sm); color: var(--text-4); }
+.overview { text-align: right; }
+.userSummary svg { flex-shrink: 0; transition: transform .15s; }
+.expanded { transform: rotate(180deg); }
+.userRow .card { border: 0; border-top: 1px solid var(--line); border-radius: 0; }
+.deleteArea { border-top: 1px solid var(--line); padding-top: var(--space-4); display: flex; flex-direction: column; gap: var(--gap); }
+.deleteActions { display: flex; gap: var(--gap); flex-wrap: wrap; }
+@media (max-width: 600px) { .section .userSummary { flex-wrap: wrap; } .overview { text-align: left; flex-basis: 100%; order: 1; } }
+
+.card [role=combobox] { width: 100%; justify-content: space-between; text-align: left; }

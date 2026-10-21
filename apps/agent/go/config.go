@@ -14,7 +14,7 @@ import (
 // AgentVersion is reported on every ping and check-in. rippel stores it against
 // the deployment, so it is the one string an operator sees when asking "what is
 // actually running on that box".
-const AgentVersion = "0.3.1"
+const AgentVersion = "0.4.2"
 
 // Config is the agent's settings, and the directory they came from.
 //
@@ -33,6 +33,7 @@ type Config struct {
 	ComfyPath          string   `json:"comfyPath,omitempty"`
 	ComfyPort          int      `json:"comfyPort,omitempty"`
 	ComfyArgs          string   `json:"comfyArgs,omitempty"`
+	VAEOnGPU           *bool    `json:"vaeOnGpu,omitempty"`
 	MemoryMode         string   `json:"memoryMode,omitempty"`
 	StorageToken       string   `json:"storageToken,omitempty"`
 	HeartbeatSeconds   int      `json:"heartbeatSeconds,omitempty"`
@@ -157,6 +158,7 @@ func LoadConfig() (*Config, error) {
 		DeploymentID:       envString("RIPPEL_DEPLOYMENT_ID", file.DeploymentID, ""),
 		Host:               envString("RIPPEL_AGENT_HOST", file.Host, "0.0.0.0"),
 		ComfyArgs:          envString("RIPPEL_COMFY_ARGS", file.ComfyArgs, ""),
+		VAEOnGPU:           file.VAEOnGPU,
 		MemoryMode:         envString("RIPPEL_MEMORY_MODE", file.MemoryMode, "auto"),
 		StorageToken:       envString("RIPPEL_STORAGE_TOKEN", file.StorageToken, ""),
 		Platform:           normalisePlatform(),

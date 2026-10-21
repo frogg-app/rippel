@@ -59,3 +59,14 @@ describe('SettingsModal', () => {
     expect(screen.getByRole('dialog', { name: 'Settings' })).toBeInTheDocument();
   });
 });
+
+it('shows user management only to administrators and grants delegated settings access', async () => {
+  const view=render(withAuth({...member,settingsAccess:true},<UserMenu/>));
+  await userEvent.click(screen.getByRole('button',{name:'Settings'}));
+  await screen.findByText(/No backends yet/);
+  expect(screen.queryByRole('button',{name:'Users'})).not.toBeInTheDocument();
+  view.unmount();
+  render(<SettingsModal open currentUser={admin} onClose={()=>{}}/>);
+  await screen.findByText(/No backends yet/);
+  expect(screen.getByRole('button',{name:'Users'})).toBeInTheDocument();
+});

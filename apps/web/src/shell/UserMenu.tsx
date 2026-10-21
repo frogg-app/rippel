@@ -32,7 +32,7 @@ export function UserMenu({ placement = 'bar' }: { placement?: 'bar' | 'rail' }) 
 
   return (
     <div className={placement === 'rail' ? `${styles.wrap} ${styles.rail}` : styles.wrap} ref={container}>
-      {user.role === 'admin' ? (
+      {user.role === 'admin' || user.settingsAccess ? (
         <button
           type="button"
           className={styles.settingsButton}
@@ -70,8 +70,8 @@ export function UserMenu({ placement = 'bar' }: { placement?: 'bar' | 'rail' }) 
         </div>
       ) : null}
 
-      {user.role === 'admin' ? (
-        <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      {user.role === 'admin' || user.settingsAccess ? (
+        <SettingsModal currentUser={user} open={settingsOpen} onClose={() => setSettingsOpen(false)} />
       ) : null}
     </div>
   );

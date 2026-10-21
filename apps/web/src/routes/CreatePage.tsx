@@ -50,9 +50,11 @@ import { isRunnable, useReadiness } from '../create/useReadiness';
 import { partitionModels } from '../create/visibility';
 import { placeInQueue, refreshQueue, useQueue } from '../lib/api-queue';
 import { isTerminal } from '../create/jobProgress';
+import { useTargetBackend } from '../shell/useTargetBackend';
 import styles from './CreatePage.module.css';
 
 export function CreatePage() {
+  const targetBackendId = useTargetBackend();
   const [form, setForm] = useState<CreateFormState>(initialFormState);
   const [advancedOpen, setAdvancedOpen] = useAdvancedOpen();
   const [mode, setMode] = useCreateMode();
@@ -166,13 +168,13 @@ export function CreatePage() {
     // what the sampler gets. `prepareSubmit` re-rolls it unless it is locked.
     const submitted = prepareSubmit(form);
     setForm(submitted);
-    void stage.submit(toGenerationParams(submitted)).then(() => {
+    void stage.submit({ ...toGenerationParams(submitted), ...(targetBackendId ? { targetBackendId } : {}) }).then(() => {
       // Ask straight away rather than waiting out the poll: the job you just
       // started should appear in the line while your finger is still on the
       // button.
       refreshQueue();
     });
-  }, [form, stage, submittable.ok]);
+  }, [form, stage, submittable.ok, targetBackendId]);
 
   const remix = useCallback(
     (job: Job) => {

@@ -66,9 +66,9 @@ export async function candidatesFor(modelId: Uuid): Promise<Candidate[]> {
  * than a physical size and, as this project learned the hard way, may not even
  * describe the card you meant. Job counts are something we measure ourselves.
  */
-export async function pickBackend(modelId: Uuid, allowedIds?: readonly string[]): Promise<Candidate> {
+export async function pickBackend(modelId: Uuid, allowedIds?: readonly string[], targetId?: string): Promise<Candidate> {
   const candidates = await candidatesFor(modelId);
-  const chosen = candidates.find((candidate) => !allowedIds || allowedIds.includes(candidate.id));
+  const chosen = candidates.find((candidate) => (!targetId || candidate.id === targetId) && (!allowedIds || allowedIds.includes(candidate.id)));
 
   if (!chosen) {
     // Distinguish "nowhere has it" from "the places that have it are down",

@@ -4,9 +4,10 @@ import type { ModelCatalogEntry, AgentTask } from '@comfy/shared';
 import { query, queryOne } from '../../db.js';
 import { agentClient, type AgentTarget } from '../../deploy/agent-client.js';
 import { folderForType } from '../../workflows/folders.js';
+import { workflowCatalogue } from '../workflow-catalogue.js';
 import { verifiedFile } from '../download-metadata.js';
 import { getOperation, planOperation, startOperation } from '../operations.js';
-import { TransportError, type InstallRequest, type ModelTransport, type InstallProgress } from '../transport.js';
+import { TransportBusy, TransportError, type InstallRequest, type ModelTransport, type InstallProgress } from '../transport.js';
 import { parseCatalogue, type RawCatalogueEntry } from './comfy-manager.js';
 
 export const AGENT_CATALOGUE_URL = 'https://raw.githubusercontent.com/Comfy-Org/ComfyUI-Manager/main/model-list.json';
@@ -63,7 +64,8 @@ export class AgentModelTransport implements ModelTransport {
     } catch { return false; }
   }
   async catalogue(): Promise<ModelCatalogEntry[]> {
-    const entries = await agentCatalogue();
+    const upstream = await agentCatalogue();
+    const entries = [...new Map([...workflowCatalogue(this.backendId, this.baseUrl), ...upstream].map(entry => [entry.ref, entry])).values()];
     const present = new Set<string>();
     await Promise.all([...new Set(entries.map(entry => entry.savePath.split('/')[0]!))].map(async folder => {
       const response = await fetch(`${this.baseUrl}/api/models/${encodeURIComponent(folder)}`, { signal: AbortSignal.timeout(5000) });
@@ -88,11 +90,11 @@ export class AgentModelTransport implements ModelTransport {
       if (!operation) throw new Error('Download could not be recorded.');
       // Journal the association before dispatch; never replay a lost response.
       await query('UPDATE model_installs SET operation_id = $2, bytes_total = $3 WHERE id = $1', [request.installId, operation.id, file.sizeBytes]);
-      const started = await startOperation(operation.id);
+      const started = await startOperation(operation.id, true);
       if (!started) throw new Error('Download could not be started.');
       if (started.status === 'failed') throw new Error(started.error ?? 'Agent could not start the download.');
     } catch (error) {
-      if ((error as { code?: string })?.code === '23505') throw new TransportError('This machine is already installing a model. Wait for it to finish, then try again.');
+      if ((error as { code?: string })?.code === '23505') throw new TransportBusy('This machine is already installing a model. Wait for it to finish, then try again.');
       throw new TransportError(error instanceof Error ? error.message : 'The download could not start.');
     }
   }
@@ -104,6 +106,8 @@ export class AgentModelTransport implements ModelTransport {
     }
     const operation = await getOperation(row.operation_id);
     if (!operation) return { state: 'failed', detail: null, error: 'Download record is missing.' };
+    if (operation.status === 'planned') return { state: 'queued', detail: 'Waiting for this machine’s current downloads or file operations to finish' };
+    if (operation.status === 'starting') return { state: 'queued', detail: 'Starting download' };
     const task = operation.progress as AgentTask | null;
     return { state: operation.status === 'done' ? 'complete' : operation.status === 'failed' ? 'failed' : 'downloading',
       detail: task?.approvalRequired ? 'Approval needed' : operation.status === 'done' ? 'Download verified' : 'Downloading model',

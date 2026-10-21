@@ -1,3 +1,4 @@
+import { setTargetBackend } from '../shell/useTargetBackend';
 /**
  * The Create screen, driven through the DOM.
  *
@@ -248,6 +249,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  act(() => setTargetBackend(null));
   vi.restoreAllMocks();
 });
 
@@ -298,7 +300,8 @@ describe('CreatePage', () => {
     );
   });
 
-  it('POSTs params that match the form', async () => {
+  it('POSTs params and the chosen backend that match the form', async () => {
+    act(() => setTargetBackend('backend-1'));
     const user = userEvent.setup();
     render(<CreatePage />);
     await screen.findByRole('radio', { name: /SDXL Base/i });
@@ -310,6 +313,7 @@ describe('CreatePage', () => {
 
     await waitFor(() => expect(created).toHaveLength(1));
     expect(created[0]).toMatchObject({
+      targetBackendId: 'backend-1',
       kind: 'txt2img',
       prompt: 'a rain-slick street',
       modelId: 'model-sdxl',

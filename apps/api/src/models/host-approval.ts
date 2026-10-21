@@ -11,15 +11,15 @@ export async function hostApprovalRoutes(app: FastifyInstance) {
     { onRequest: [app.requireAdmin] }, async (req, reply) => {
       const body = z.object({ hostname: z.string().min(1).max(253), approve: z.boolean() }).strict().safeParse(req.body);
       if (!body.success) return reply.code(400).send({ error: 'bad_request', message: 'Choose whether to approve this host.' });
-      const row = await queryOne<{ host: string; agent_port: number; token: string; agent_task_id: string }>(
-        `SELECT d.host, d.agent_port, d.token, o.agent_task_id
+      const row = await queryOne<{ host: string; agent_url?: string | null; agent_port: number; token: string; agent_task_id: string }>(
+        `SELECT d.host, d.agent_port, d.agent_url, d.token, o.agent_task_id
          FROM model_installs i JOIN model_operations o ON o.id=i.operation_id AND o.backend_id=i.backend_id
          JOIN deployments d ON d.backend_id=i.backend_id
          WHERE i.id=$1 AND i.backend_id=$2 AND i.status IN ('queued','downloading')
            AND o.status='running' AND o.agent_task_id IS NOT NULL
          ORDER BY d.created_at DESC LIMIT 1`, [req.params.installId, req.params.id]);
       if (!row) return reply.code(409).send({ error: 'not_pending', message: 'This download is no longer waiting for approval.' });
-      const target = { host: row.host, agentPort: row.agent_port, token: row.token };
+      const target = { host: row.host, agentPort: row.agent_port, token: row.token, ...(row.agent_url ? {agentUrl:row.agent_url} : {}) };
       try {
         const { task } = await agentClient.task(target, row.agent_task_id, 0);
         if (task.status !== 'running' || task.approvalRequired?.hostname !== body.data.hostname)

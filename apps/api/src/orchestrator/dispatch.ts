@@ -117,7 +117,7 @@ export async function dispatch(job: JobRow, clientId: string): Promise<Dispatche
   // compile in are only correct for the backend that reported them.
   const templateId = job.params.workflowId ?? (job.template_id?.startsWith('library-') ? job.template_id : undefined);
   const allowed = templateId ? await readyBackendIds(templateId) : undefined;
-  const backend = await pickBackend(job.params.modelId, allowed);
+  const backend = await pickBackend(job.params.modelId, allowed, job.params.targetBackendId);
   const choice = await chooseTemplate({
     modelId: job.params.modelId,
     templateId,

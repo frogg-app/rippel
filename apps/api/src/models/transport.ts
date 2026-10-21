@@ -34,6 +34,14 @@ export class TransportError extends Error {
   }
 }
 
+/** A running file operation prevents another install from starting. */
+export class TransportBusy extends TransportError {
+  constructor(message: string) {
+    super(message, true);
+    this.name = 'TransportBusy';
+  }
+}
+
 /** Raised when the backend has no install mechanism at all. */
 export class TransportUnavailable extends TransportError {
   constructor(message: string) {

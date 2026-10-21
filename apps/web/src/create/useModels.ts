@@ -2,7 +2,8 @@
  * Checkpoints and LoRAs for the pickers, plus the answer to "can I actually
  * generate with this one?".
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
+import { useTargetBackend } from '../shell/useTargetBackend';
 import type { JobKind, Model } from '@comfy/shared';
 import { type CapabilityMap, modelsApi, modelSupported, workflowsApi } from '../lib/api-jobs';
 
@@ -22,6 +23,7 @@ export interface ModelsState {
 const EMPTY_CAPABILITIES: CapabilityMap = { byFamily: {}, unknownFamily: [], live: false };
 
 export function useModels(): ModelsState {
+  const targetId = useTargetBackend();
   const [state, setState] = useState<ModelsState>({
     checkpoints: [],
     loras: [],
@@ -60,9 +62,11 @@ export function useModels(): ModelsState {
     })();
 
     return () => controller.abort();
-  }, []);
-
-  return state;
+  }, [targetId]);
+  return useMemo(() => targetId ? { ...state,
+    checkpoints: state.checkpoints.filter(model => model.backendIds.includes(targetId)).map(model => ({ ...model, backendIds: [targetId] })),
+    loras: state.loras.filter(model => model.backendIds.includes(targetId)).map(model => ({ ...model, backendIds: [targetId] })),
+  } : state, [state, targetId]);
 }
 
 export function supports(model: Model, kind: JobKind, capabilities: CapabilityMap): boolean {

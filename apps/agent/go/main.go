@@ -142,6 +142,8 @@ func runAgent() error {
 	signals := make(chan os.Signal, 1)
 	signal.Notify(signals, os.Interrupt, syscall.SIGTERM)
 
+	stopTunnel := StartTunnel(agent, serviceLog)
+	defer stopTunnel()
 	serverErr := make(chan error, 1)
 	go func() {
 		err := server.Serve(listener)

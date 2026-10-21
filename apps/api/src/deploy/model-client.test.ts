@@ -20,3 +20,9 @@ it('preserves agent refusals so the card can explain a failed operation', async 
   const client = makeAgentClient({ fetchImpl: async () => new Response(JSON.stringify({ message: 'destination exists' }), { status: 409 }) });
   await expect(client.moveModel(target, { from: 'a', to: 'b' })).rejects.toMatchObject<Partial<AgentError>>({ kind: 'busy', message: 'destination exists' });
 });
+
+it('uses the public HTTPS origin and refuses redirects when sending the agent token', async () => {
+ const fetchImpl=vi.fn(async()=>Response.json({ok:true}));const client=makeAgentClient({fetchImpl});
+ await client.ping({...target,agentUrl:'https://agent.example.com:8443'});
+ expect(fetchImpl).toHaveBeenCalledWith('https://agent.example.com:8443/agent/ping',expect.objectContaining({redirect:'error',headers:expect.objectContaining({'X-Rippel-Agent-Token':'secret'})}));
+});

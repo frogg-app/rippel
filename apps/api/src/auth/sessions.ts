@@ -22,6 +22,7 @@ interface UserRow {
   email: string;
   display_name: string | null;
   role: 'user' | 'admin';
+  settings_access?: boolean;
   created_at: Date;
 }
 
@@ -31,6 +32,7 @@ function toUser(row: UserRow): SessionUser {
     email: row.email,
     displayName: row.display_name,
     role: row.role,
+    settingsAccess: row.settings_access ?? false,
     createdAt: row.created_at.toISOString(),
   };
 }
@@ -64,10 +66,11 @@ export async function resolveSession(req: FastifyRequest): Promise<SessionUser |
   if (!token) return null;
 
   const row = await queryOne<UserRow & { session_id: string }>(
-    `SELECT u.id, u.email, u.display_name, u.role, u.created_at, s.id AS session_id
+    `SELECT u.id, u.email, u.display_name, u.role, u.settings_access, u.created_at, s.id AS session_id
        FROM sessions s
        JOIN users u ON u.id = s.user_id
       WHERE s.token_hash = $1
+        AND NOT u.suspended
         AND s.revoked_at IS NULL
         AND s.expires_at > now()`,
     [hashToken(token)],

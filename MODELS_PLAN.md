@@ -736,3 +736,15 @@ At the end of each run, report:
   The older Wan 5B entry omits its source flag, so its locally verified native graph
   is explicitly recognised. Its enabled image-input variant imports successfully
   and reports missing files on the empty backend. Five route/status tests pass.
+
+- **2026-09-12 — steve-pc GPU VAE enabled and verified.** Removed `--cpu-vae`
+  from the agent's persisted `comfyArgs`; retained `--cuda-device 1` for the RX
+  6900 XT. Waited until generation queues were empty before restarting ComfyUI.
+  Log confirms `VAE load device: cuda:0, offload device: cpu, dtype: torch.float32`.
+  VAE decoding runs on the backend GPU; rippel receives already-decoded images.
+  Baseline request: 75.962 seconds on CPU VAE. First GPU request: 84.708 seconds
+  (64.681 seconds decoding, consistent with cold kernel setup). Warm request
+  with the same graph and a new seed: 20.209 seconds total, 3.577 seconds decoding.
+  Both GPU runs produced readable, nonblank PNGs. The two test outputs use the
+  backend-only `rippel-vae-gpu-check` filename prefix. No precision override was
+  added. The previous CPU-VAE launch flags are historical, not the current setup.

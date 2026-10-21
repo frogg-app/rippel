@@ -254,6 +254,11 @@ func (a *Agent) route(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if r.Method == http.MethodPost && path == "/agent/vae" {
+		a.setVAE(w, r)
+		return
+	}
+
 	if r.Method == http.MethodPost && path == "/agent/memory" {
 		a.setMemory(w, r)
 		return

@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import userEvent from '@testing-library/user-event';
 import { render, screen } from '@testing-library/react';
 import type { Backend } from '@comfy/shared';
 import { BackendPill } from './BackendPill';
@@ -68,4 +69,15 @@ describe('BackendPill', () => {
     render(<BackendPill backend={null} loading={false} unreachable extraCount={0} />);
     expect(screen.getByText('Server unreachable')).toBeInTheDocument();
   });
+});
+
+it('chooses an online target from the backend pill', async () => {
+ const onSelect = vi.fn();
+ render(<BackendPill backend={backend()} loading={false} unreachable={false} extraCount={1}
+   backends={[backend(), backend({id:'b2',name:'paz-2080'}), backend({id:'b3',name:'offline-box',status:'offline'})]} onSelect={onSelect} />);
+ const user = userEvent.setup();
+ await user.click(screen.getByRole('combobox', {name:'Target backend'}));
+ expect(screen.getByRole('option', {name:'offline-box · offline'})).toHaveAttribute('aria-disabled','true');
+ await user.click(screen.getByRole('option', {name:'paz-2080'}));
+ expect(onSelect).toHaveBeenCalledWith('b2');
 });

@@ -156,3 +156,82 @@ func TestMemoryModeEnvironmentOverrideAndSaveFailure(t *testing.T) {
 		t.Fatal("failed save modified live settings")
 	}
 }
+
+func TestVAEAndMemoryDefaultsAndIndependence(t *testing.T) {
+	cfg := &Config{ComfyArgs: "--cuda-device 1"}
+	if !vaeOnGPU(cfg) || memoryMode(cfg) != "auto" {
+		t.Fatal("wrong defaults")
+	}
+	cpu := false
+	cfg.VAEOnGPU = &cpu
+	if got := comfyMemoryArgs(cfg); !reflect.DeepEqual(got, []string{"--cuda-device", "1", "--cpu-vae"}) {
+		t.Fatal(got)
+	}
+	cfg.MemoryMode = "ram"
+	if got := comfyMemoryArgs(cfg); !reflect.DeepEqual(got, []string{"--cuda-device", "1", "--cpu-vae", "--novram"}) {
+		t.Fatal(got)
+	}
+	gpu := true
+	cfg.VAEOnGPU = &gpu
+	cfg.ComfyArgs = "--cpu-vae --cuda-device 1"
+	if got := comfyMemoryArgs(cfg); !reflect.DeepEqual(got, []string{"--cuda-device", "1", "--novram"}) {
+		t.Fatal(got)
+	}
+}
+
+func TestVAEChoicePersistsAcrossAgentRestart(t *testing.T) {
+	cfg := testConfig(t)
+	t.Setenv("RIPPEL_AGENT_HOME", cfg.Home)
+	agent := NewAgent(cfg, nil)
+	req := httptest.NewRequest("POST", "/agent/vae", strings.NewReader(`{"onGpu":false}`))
+	req.Header.Set("X-Rippel-Agent-Token", cfg.Token)
+	res := httptest.NewRecorder()
+	agent.Handler().ServeHTTP(res, req)
+	if res.Code != 202 {
+		t.Fatal(res.Code, res.Body.String())
+	}
+	var payload struct{ Task TaskView }
+	json.Unmarshal(res.Body.Bytes(), &payload)
+	task := agent.tasks.Get(payload.Task.ID)
+	deadline := time.Now().Add(3 * time.Second)
+	for task.Status() == "running" && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	if task.Status() != "done" {
+		t.Fatal(task.snapshot(-1))
+	}
+	saved, err := os.ReadFile(filepath.Join(cfg.Home, "config.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var reloaded Config
+	if err = json.Unmarshal(saved, &reloaded); err != nil {
+		t.Fatal(err)
+	}
+	if vaeOnGPU(&reloaded) {
+		t.Fatal("CPU VAE choice was not persisted")
+	}
+	if memoryMode(&reloaded) != "auto" {
+		t.Fatal("VAE changed memory mode")
+	}
+}
+
+func TestVAERequiresBooleanAndAuthentication(t *testing.T) {
+	for _, tc := range []struct {
+		body   string
+		auth   bool
+		status int
+	}{{`{}`, true, 400}, {`{"onGpu":"yes"}`, true, 400}, {`{"onGpu":true}`, false, 401}} {
+		cfg := testConfig(t)
+		agent := NewAgent(cfg, nil)
+		req := httptest.NewRequest("POST", "/agent/vae", strings.NewReader(tc.body))
+		if tc.auth {
+			req.Header.Set("X-Rippel-Agent-Token", cfg.Token)
+		}
+		res := httptest.NewRecorder()
+		agent.Handler().ServeHTTP(res, req)
+		if res.Code != tc.status {
+			t.Fatal(res.Code, res.Body.String())
+		}
+	}
+}
