@@ -1,50 +1,38 @@
-/* Tiles: 72px tall, three across the panel, name over a bottom-up scrim. The
-   art is painted by an inline gradient or a preview image; selection changes
-   the ring, never the art, so nothing shifts. */
-.grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 9px;
-}
-
-.tile {
-  position: relative;
-  height: 72px;
-  animation: rise var(--dur-slow) var(--ease-out) both;
-  animation-delay: calc(var(--i, 0) * 45ms);
+/* The panel's model row: the chosen checkpoint's art, its name and state, and
+   the affordance that opens the modal. One fixed height whether it is loading,
+   chosen or empty-handed, so nothing below it moves when the probes land. */
+.summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  height: 64px;
+  padding: 8px 12px 8px 8px;
   border-radius: 12px;
-  overflow: hidden;
   border: 1px solid var(--line-strong);
+  background: var(--surface-2);
   box-shadow: var(--edge-highlight);
+  text-align: left;
+  animation: rise var(--dur-slow) var(--ease-out) both;
   transition:
     border-color var(--transition),
-    transform var(--dur-slow) var(--ease-spring),
-    box-shadow var(--dur-slow) var(--ease-out),
-    filter var(--transition);
+    background var(--transition);
 }
 
-.tile:hover:not([aria-disabled='true']) {
-  transform: translateY(-2px);
+button.summary:hover,
+button.summary:focus-visible {
   border-color: var(--line-input);
-  box-shadow: var(--shadow-2);
+  background: var(--surface-hover);
 }
 
-.tile:active:not([aria-disabled='true']) {
-  transform: translateY(0) scale(0.98);
-}
-
-.tileOn,
-.tileOn:hover:not([aria-disabled='true']) {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-tint-strong), 0 6px 18px rgba(156, 207, 216, 0.16);
-}
-
-/* Not-runnable: drained of colour, and it says why on the tile. */
-.tileBlocked {
-  cursor: not-allowed;
-  filter: grayscale(0.85) brightness(0.5);
-  border-style: dashed;
-  border-color: var(--line);
+.thumb {
+  position: relative;
+  flex-shrink: 0;
+  width: 48px;
+  height: 48px;
+  border-radius: 9px;
+  overflow: hidden;
+  background: var(--surface-hover);
 }
 
 .art {
@@ -53,53 +41,56 @@
   width: 100%;
   height: 100%;
   object-fit: cover;
-  transition: transform var(--dur-page) var(--ease-out);
 }
 
-.tile:hover:not([aria-disabled='true']) .art {
-  transform: scale(1.06);
+.meta {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
 .name {
-  position: absolute;
-  inset: auto 0 0 0;
-  padding: 7px 8px 6px;
-  background: linear-gradient(180deg, rgba(0, 0, 0, 0), rgba(4, 6, 8, 0.92));
-  font-size: 10.5px;
+  font-size: var(--text-base);
   font-weight: 600;
-  color: var(--text-2);
-  text-align: left;
-  line-height: 1.25;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  transition: color var(--transition);
-}
-
-.tileOn .name {
   color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.badge {
-  position: absolute;
-  top: 5px;
-  left: 5px;
-  padding: 2px 6px;
-  border-radius: 6px;
-  background: var(--badge-strong);
-  border: 1px solid var(--line-strong);
-  font-size: 9.5px;
-  letter-spacing: 0.03em;
-  color: var(--text-3);
+.family {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.change {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--text-xs);
+  color: var(--text-4);
 }
 
 .skeleton {
   background: linear-gradient(90deg, var(--surface-2) 0%, var(--surface-hover) 50%, var(--surface-2) 100%);
   background-size: 200% 100%;
   animation: shimmer 1.6s linear infinite;
-  border-style: solid;
   border-color: var(--line);
+}
+
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
 }
 
 .note {
@@ -116,25 +107,6 @@
 .noteIcon {
   flex-shrink: 0;
   margin-top: 2px;
-}
-
-/* The tile whose reason is currently spelled out under the grid. */
-.tileExplained {
-  border-style: solid;
-  border-color: var(--line-input);
-}
-
-.badgeSoft {
-  position: absolute;
-  top: 5px;
-  right: 5px;
-  padding: 2px 6px;
-  border-radius: 6px;
-  background: var(--badge-strong);
-  border: 1px solid var(--line);
-  font-size: 9.5px;
-  letter-spacing: 0.03em;
-  color: var(--text-4);
 }
 
 .noteStrong {
@@ -154,18 +126,8 @@
   color: var(--text);
 }
 
-/* The grid's height is held for one transition when verdicts land and a row
-   disappears, so the controls below slide instead of jumping. */
-.gridHold {
-  transition: height var(--dur) var(--ease-out);
-}
-
-/* One line of note reserved at all times. The captions under the grid come and
-   go as answers arrive; an empty region that suddenly gains a sentence shoves
-   the whole panel, which reads as the flash it is meant to have fixed. */
 .notes {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  min-height: 17px;
 }

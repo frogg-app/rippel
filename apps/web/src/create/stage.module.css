@@ -571,3 +571,56 @@
   .canvas { min-height: 240px; }
   .message { padding: var(--space-6); }
 }
+
+/*
+ * A failed job's next moves, and the machine's own words under a disclosure.
+ *
+ * The steps are the part a person can act on, so they sit in the normal muted
+ * body colour; the raw text keeps `.errorBody`'s monospace because it exists to
+ * be selected and pasted into a bug report, not read as prose.
+ */
+.failureSteps {
+  margin: 10px 0 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-muted);
+  text-align: left;
+}
+
+.failureDetail {
+  margin-top: 12px;
+  text-align: left;
+}
+
+.failureDetail summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.failureDetail summary:hover {
+  color: var(--text);
+}
+
+/*
+ * "This may not fit" — a warning that sits above the canvas while the job runs.
+ *
+ * Amber rather than red on purpose. The verdict comes from a bracket learned
+ * from that machine's own history, and history is not a promise: a job that
+ * OOMed at this size once may have had a browser open at the time. So the job
+ * runs, and this says what to reach for if it does not finish.
+ */
+.fitWarning {
+  margin: 0 0 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--warn, #f6c177);
+  border-radius: 10px;
+  background: var(--warn-tint, rgba(246, 193, 119, 0.1));
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text);
+}

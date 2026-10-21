@@ -6,7 +6,11 @@
  *  - **model** — for one installed model: every template that could serve it,
  *    each with the verdict it would get on the selected backend, which one the
  *    automatic rules pick, and (for an administrator) a radio per capability
- *    to pin one instead. "Use automatic" clears the pin.
+ *    to pin one instead. "Use automatic" clears the pin. An administrator can
+ *    also switch a capability off for the model; its options stay listed,
+ *    dimmed, so what switching back on restores is visible. A verdict that
+ *    names missing files lists them with folder, size and link, because there
+ *    is no longer an install transport to press a button on.
  *  - **browse** — every template the registry ships, optionally narrowed to a
  *    family: label, capability, families, the folder the model loader reads,
  *    companions, and a fallback badge. Reached from the Installed panel's
@@ -32,6 +36,7 @@ import {
 } from './catalogue';
 import { CloseIcon, WorkflowIcon } from './icons';
 import { OfficialWorkflows } from './OfficialWorkflows';
+import { ManualDownloads } from './ManualDownloads';
 import styles from './ModelsPanels.module.css';
 
 export type WorkflowSheetSubject =
@@ -225,6 +230,20 @@ function ModelOptions({
     return () => controller.abort();
   }, [load]);
 
+  async function toggle(capability: JobKind, enabled: boolean) {
+    setBusy(capability);
+    setProblem(null);
+    try {
+      await api.switchCapability(model.id, capability, enabled);
+      await load();
+      onAssigned?.();
+    } catch (cause) {
+      setProblem(cause instanceof ApiRequestError ? cause.message : 'Could not switch that on or off.');
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function assign(capability: JobKind, templateId: string | null) {
     setBusy(capability);
     setProblem(null);
@@ -293,6 +312,7 @@ function ModelOptions({
       {capabilities.map((capability) => {
         const options = byCapability.get(capability)!;
         const pinned = data.assigned[capability] ?? null;
+        const off = (data.switchedOff ?? []).includes(capability);
         return (
           <section
             key={capability}
@@ -302,10 +322,33 @@ function ModelOptions({
             <header className={styles.sheetSectionHead}>
               <h3 className={styles.sheetSectionTitle}>{CAPABILITY_LABEL[capability]}</h3>
               <span className={styles.sheetSectionNote}>
-                {pinned ? 'Pinned by an administrator' : 'Chosen automatically'}
+                {off
+                  ? 'Switched off for this model'
+                  : pinned
+                    ? 'Pinned by an administrator'
+                    : 'Chosen automatically'}
               </span>
+              {isAdmin ? (
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={!off}
+                  aria-label={`${CAPABILITY_LABEL[capability]} for this model`}
+                  className={styles.capSwitch}
+                  disabled={busy !== null}
+                  onClick={() => void toggle(capability, off)}
+                >
+                  {off ? 'Off' : 'On'}
+                </button>
+              ) : null}
             </header>
-            <ul className={styles.sheetOptions} role={isAdmin ? 'radiogroup' : undefined} aria-label={isAdmin ? `${CAPABILITY_LABEL[capability]} template` : undefined}>
+            {off ? (
+              <p className={styles.sheetFoot}>
+                Jobs asking for this are refused for {model.displayName}.
+                {pinned ? ' The pinned template comes back when it is switched on.' : ''}
+              </p>
+            ) : null}
+            <ul className={`${styles.sheetOptions} ${off ? styles.sheetOptionsOff : ''}`} role={isAdmin ? 'radiogroup' : undefined} aria-label={isAdmin ? `${CAPABILITY_LABEL[capability]} template` : undefined}>
               {options.map((option) => {
                 const chosen = pinned ? option.assigned : option.automatic;
                 const tone = RUNNABILITY_TONE[option.verdict.status];
@@ -320,7 +363,7 @@ function ModelOptions({
                         role="radio"
                         aria-checked={option.assigned}
                         className={styles.sheetRadio}
-                        disabled={busy !== null}
+                        disabled={busy !== null || off}
                         aria-label={`Pin ${option.template.label}`}
                         onClick={() => void assign(capability, option.template.id)}
                       >
@@ -351,6 +394,7 @@ function ModelOptions({
                           {option.verdict.detail ?? option.verdict.summary}
                         </span>
                       </p>
+                      <ManualDownloads missing={option.verdict.missing ?? []} />
                     </div>
                   </li>
                 );
@@ -360,7 +404,7 @@ function ModelOptions({
               <button
                 type="button"
                 className={styles.sheetAuto}
-                disabled={busy !== null}
+                disabled={busy !== null || off}
                 onClick={() => void assign(capability, null)}
               >
                 Use automatic

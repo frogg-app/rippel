@@ -23,6 +23,24 @@
  * The stacked state is the part a dropdown handles worst, and is why each
  * chosen style is a card — picture, name, family, its own strength slider in
  * words, and its own remove — rather than a line in a list.
+ *
+ * ## Saying what each one is, without making it up
+ *
+ * Every card used to explain itself with the same sentence, which is the same
+ * as explaining nothing. Each card now carries what `loraDescription.ts` can
+ * honestly say about *that* file — a real description if the server ever sends
+ * one, otherwise only what the filename literally supports, labelled as such —
+ * and says plainly when that is nothing. See that module for the rule.
+ *
+ * ## "Styles", not "steps"
+ *
+ * People read this section as "extra steps". Understandably: Advanced has a
+ * step count, and the most common speed-up LoRAs are named `2step`, `8step`.
+ * They are different things — a style is a file mixed into the model; a step is
+ * one refinement pass of the sampler — and the only point where they meet is a
+ * step-distilled style *requiring* a low step count. So the section says what
+ * it is not, and a card whose filename names a step count points at Advanced →
+ * Detail by its on-screen name rather than leaving the user to connect them.
  */
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -31,7 +49,8 @@ import { useAnchoredPosition, useDismissOnOutside } from '../components/useAncho
 import { PlusIcon } from '../components/icons';
 import { Hint, Slider } from './Controls';
 import { CloseIcon } from './icons';
-import { loraReading } from './form';
+import { describeLora, type LoraDescription } from './loraDescription';
+import { loraWeightReading, WEIGHT_SCALE } from './loraWeight';
 import { familyLabel } from '../models/catalogue';
 import { familyInitials, familyWash } from './modelArt';
 import { type LoraEntry, matchesQuery, partitionLoras } from './loras';
@@ -83,8 +102,8 @@ export function LoraSection({
           <Hint
             text={
               nothingInstalled
-                ? 'Add-on styles you install show up here, on top of whichever model you pick.'
-                : 'Trained looks you can mix on top of the model — a film stock, an illustrator, a subject. Stack as many as you like.'
+                ? 'A LoRA is a small add-on file trained to steer a model towards one thing. Any you install will be listed here.'
+                : 'Small add-on files (LoRAs), each trained to steer the model towards one thing — a look, a subject, or sometimes a speed-up. They are not extra sampling steps: the step count lives in Advanced → Detail.'
             }
           />
         </span>
@@ -136,7 +155,7 @@ export function LoraSection({
               {checkpoint?.baseModel ? familyLabel(checkpoint.baseModel) : 'this model'}.
             </>
           ) : (
-            <>Optional. A style is mixed on top of the model you picked.</>
+            <>Optional. Nothing is added unless you add it here.</>
           )}
         </p>
       ) : null}
@@ -165,10 +184,10 @@ export function LoraSection({
 /**
  * One chosen style, as a card.
  *
- * The weight wording is unchanged — "A hint / Usual / Strong / Overdone" — and
- * so is the fact that a zero weight is dropped from the request rather than
- * sent as a no-op. The slider's "Off" end is therefore honest: it really does
- * remove the style from the job.
+ * A zero weight is dropped from the request rather than sent as a no-op, so
+ * "Off" on this card is honest: it really does remove the style from the job.
+ * The rail's left end is *not* off, though — it is -1, a reversed style — and
+ * it is labelled as such; the old "Off" there described the wrong end.
  */
 function ChosenLora({
   lora,
@@ -181,8 +200,11 @@ function ChosenLora({
   onRemove: () => void;
   onWeight: (weight: number) => void;
 }) {
-  const words = loraReading(lora.weight);
+  const words = loraWeightReading(lora.weight);
   const name = model?.displayName ?? lora.modelId;
+  // A selection whose model row has gone (uninstalled since a Remix) has no
+  // filename to read, so it says nothing rather than reading the id as a name.
+  const about = model ? describeLora(model) : null;
 
   return (
     <div className={styles.card}>
@@ -207,20 +229,71 @@ function ChosenLora({
           <CloseIcon size={11} />
         </button>
       </div>
+      {about ? <About about={about} /> : null}
       <Slider
-        label="How much of it"
+        label="Strength"
         accent
         min={-1}
         max={2}
         step={0.05}
         value={lora.weight}
         reading={words.word}
-        display={lora.weight.toFixed(2)}
-        ends={['Off', 'Overdone']}
-        valueText={`${words.word}, ${lora.weight.toFixed(2)}`}
-        hint={words.hint}
+        display={`${lora.weight.toFixed(2)}×`}
+        ends={['−1 reversed', '2 overdone']}
+        valueText={`${words.word}, ${lora.weight.toFixed(2)} times the trained strength`}
+        hint={`${words.hint} ${WEIGHT_SCALE}`}
         onChange={onWeight}
       />
+    </div>
+  );
+}
+
+/**
+ * What this particular style is, in as many words as we can honestly say.
+ *
+ * The order is trust order. A real description first; then trigger words,
+ * because a style that needs one and does not get it silently does nothing;
+ * then filename readings, under a label that says that is all they are; and
+ * last, when there is no real description, a plain admission — including that
+ * trigger words, if the style has any, are not known to us either.
+ */
+function About({ about }: { about: LoraDescription }) {
+  return (
+    <div className={styles.about}>
+      {about.given ? <p className={styles.aboutGiven}>{about.given}</p> : null}
+
+      {about.triggerWords.length > 0 ? (
+        <p className={styles.aboutTrigger}>
+          Needs a trigger word in your prompt:{' '}
+          {about.triggerWords.map((word, index) => (
+            <span key={word}>
+              {index > 0 ? ', ' : ''}
+              <code className={styles.triggerWord}>{word}</code>
+            </span>
+          ))}
+          . Without one it may do nothing.
+        </p>
+      ) : null}
+
+      {about.derived.length > 0 ? (
+        <>
+          <p className={styles.aboutSource}>Read from the filename, not from the author:</p>
+          <ul className={styles.aboutList}>
+            {about.derived.map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+          </ul>
+        </>
+      ) : null}
+
+      {about.given === null ? (
+        <p className={styles.aboutGap}>
+          {about.unknown
+            ? 'No description is recorded for this style, and the filename does not say what it does. '
+            : 'No written description is recorded for this style. '}
+          Trigger words are not recorded either — if its download page lists one, put it in your prompt.
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -380,6 +453,7 @@ function LoraPickerPopup({
             <span className={styles.rowText}>
               <span className={styles.rowName}>{entry.model.displayName}</span>
               <span className={styles.rowFamily}>{describe(entry, checkpointFamily)}</span>
+              <RowNote entry={entry} />
             </span>
           </li>
         ))}
@@ -419,6 +493,23 @@ function LoraPickerPopup({
   );
 
   return typeof document !== 'undefined' ? createPortal(panel, document.body) : null;
+}
+
+/**
+ * A second line in the picker, only for a style that changes what Advanced
+ * must be set to. Every other row stays one line: the popup is for choosing,
+ * and the full account of a style is on its card once chosen.
+ */
+function RowNote({ entry }: { entry: LoraEntry }) {
+  const about = describeLora(entry.model);
+  if (!about.needsLowSteps) return null;
+  return (
+    <span className={styles.rowNote}>
+      {about.stepTarget !== null
+        ? `Speed-up, named for ${about.stepTarget} step${about.stepTarget === 1 ? '' : 's'} — lower Detail to match`
+        : 'Speed-up — lower Detail to match'}
+    </span>
+  );
 }
 
 /**

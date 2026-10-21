@@ -29,6 +29,17 @@
  * consequence of moving it, and the ends of the rail named so "more" has a
  * direction before you drag it.
  *
+ * Each hint is written to answer a different question, and to say what the
+ * *number* is, not only which way is better. They used to be read as "all
+ * saying the same thing" — more of this is more, less is less — which was fair:
+ * none of them said what a step, a guidance value or a sampler actually was.
+ * The distinct parts are composed here rather than in `form.ts`'s readings,
+ * which stay responsible for the per-band sentence.
+ *
+ * "Steps" gets one extra sentence because of a real confusion: the Extra styles
+ * section sits just above this drawer, and speed-up styles are named `4step`,
+ * `8step`. A step is a pass of the sampler, not a style, and the hint says so.
+ *
  * Sampler and scheduler are different in kind: there is no outcome sentence
  * that is both true and useful to a beginner, and nobody who needs this drawer
  * needs those two. They live behind a second disclosure marked as expert, off
@@ -54,6 +65,32 @@ import {
   stepsReading,
 } from './form';
 import styles from './advanced.module.css';
+
+/**
+ * What each number *is*, appended to the band sentence from `form.ts`.
+ *
+ * Constants rather than inline strings so a reader can see all four side by
+ * side and check they do not repeat each other, which is the failure the user
+ * reported.
+ */
+const GUIDANCE_MEANING =
+  'The number is guidance (often called CFG): how hard each step is pushed towards your words ' +
+  'rather than what the model would draw unprompted. Speed-up styles are usually built for ' +
+  'guidance near 1.';
+
+const STEPS_MEANING =
+  'A step is one pass in which the model clears a little noise from the picture; this is how many ' +
+  'passes it gets. It is nothing to do with Extra styles — except that a speed-up style named ' +
+  'something like "4step" or "lightning" is built for a count that low.';
+
+const SAMPLER_MEANING =
+  'The method for working out each step from the one before. The note after each name says how it ' +
+  'tends to behave; the "SDE" and "ancestral" ones add fresh randomness every step, so adding steps ' +
+  'keeps changing the picture instead of only refining it.';
+
+const SCHEDULER_MEANING =
+  'How the noise removal is shared out across the steps — mostly early, or evenly. It matters most ' +
+  'at low step counts, which is why speed-up models are often paired with SGM uniform.';
 
 export function AdvancedDrawer({
   open,
@@ -186,9 +223,9 @@ export function AdvancedDrawer({
             value={guidance}
             reading={guidanceWords.word}
             display={guidance.toFixed(1)}
-            ends={['Freer', 'More literal']}
+            ends={['1 · barely steered', '20 · forced']}
             valueText={`${guidanceWords.word}, ${guidance.toFixed(1)} of 20`}
-            hint={guidanceWords.hint}
+            hint={`${guidanceWords.hint} ${GUIDANCE_MEANING}`}
             onChange={(next) => set('guidance', Number(next.toFixed(1)))}
           />
 
@@ -204,9 +241,9 @@ export function AdvancedDrawer({
             value={steps}
             reading={stepsWords.word}
             display={`${steps} steps`}
-            ends={['Faster', 'More detail']}
+            ends={['Fewer passes, faster', 'More passes, slower']}
             valueText={`${stepsWords.word}, ${steps} steps, ${stepsWords.hint}`}
-            hint={stepsWords.hint}
+            hint={`${stepsWords.hint} ${STEPS_MEANING}`}
             onChange={(next) => set('steps', next)}
           />
 
@@ -341,8 +378,9 @@ function ExpertSettings({
         <Hint
           text={
             <>
-              The maths used to turn noise into an image. It changes texture,
-              not subject, and the <strong>{QUALITY_LABELS[quality]}</strong>{' '}
+              These two decide <em>how</em> each step is calculated, not how
+              many steps there are. They change grain and fine texture rather
+              than subject, and the <strong>{QUALITY_LABELS[quality]}</strong>{' '}
               preset already picks a pair that works. Nothing here is a mistake
               to leave alone.
             </>
@@ -362,6 +400,7 @@ function ExpertSettings({
             label="Sampler"
             value={sampler}
             options={samplerOptions(sampler)}
+            description={SAMPLER_MEANING}
             onChange={(next) => set('sampler', next)}
           />
 
@@ -375,7 +414,7 @@ function ExpertSettings({
             label="Noise schedule"
             value={scheduler}
             options={schedulerOptions(scheduler)}
-            description="How quickly noise is removed across those steps."
+            description={SCHEDULER_MEANING}
             onChange={(next) => set('scheduler', next)}
           />
         </div>

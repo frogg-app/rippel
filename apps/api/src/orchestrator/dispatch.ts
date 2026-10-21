@@ -17,9 +17,15 @@ import { objectInfoFor } from './preflight.js';
 import type { ResolvedValues } from '../compiler/index.js';
 import { chooseTemplate } from '../models/workflow-choice.js';
 import { queryOne } from '../db.js';
-import { filenamesOn, pickBackend, type Candidate } from './select.js';
+import { filenamesOn, pickBackend, sizesOn, type Candidate } from './select.js';
 import { preflight } from './preflight.js';
 import type { JobRow } from './jobs.js';
+import { setSizeScore } from './jobs.js';
+import { sizeOfJob } from './cost.js';
+import { dimensionsFor } from '../compiler/compile.js';
+import { modelSizes } from './select.js';
+import { withOffload } from '../workflows/offload.js';
+import { memoryProfileForBackend } from './memory.js';
 
 export class DispatchError extends Error {
   constructor(
@@ -117,7 +123,16 @@ export async function dispatch(job: JobRow, clientId: string): Promise<Dispatche
   // compile in are only correct for the backend that reported them.
   const templateId = job.params.workflowId ?? (job.template_id?.startsWith('library-') ? job.template_id : undefined);
   const allowed = templateId ? await readyBackendIds(templateId) : undefined;
-  const backend = await pickBackend(job.params.modelId, allowed, job.params.targetBackendId);
+  //
+  // The ordering wants a size, and a size wants a template, which is the
+  // dependency this comment just described in the other direction. It is broken
+  // with a *family-level* template lookup — the same call without the backend's
+  // file list — used only to rank. That is sound for this purpose: the
+  // folder-aware variants differ from their siblings in which loader reads the
+  // model, not in resolutions or frame grids, so the two produce the same score.
+  // The exact score, from the template actually chosen, is recorded below.
+  const ranking = await rankingScore(job, family, model?.filename ?? null);
+  const backend = await pickBackend(job.params.modelId, allowed, job.params.targetBackendId, ranking);
   const choice = await chooseTemplate({
     modelId: job.params.modelId,
     templateId,
@@ -146,6 +161,30 @@ export async function dispatch(job: JobRow, clientId: string): Promise<Dispatche
     }
     throw err;
   }
+
+  // What this job costs, recorded before it runs so that however it ends there
+  // is an observation to learn from. Best-effort throughout: a score we cannot
+  // compute is a NULL column and one fewer data point, never a failed dispatch.
+  try {
+    const sizes = await sizesOn(backend.id, modelIds);
+    const size = sizeOfJob({
+      manifest: template.manifest,
+      params: job.params,
+      width: compiled.resolved.width,
+      height: compiled.resolved.height,
+      fileBytes: modelIds.map((id) => sizes[id] ?? null),
+    });
+    await setSizeScore(job.id, size.score);
+  } catch (err) {
+    console.warn(`[orchestrator] ${job.id} could not be scored: ${String(err)}`);
+  }
+
+  // Cheapen the graph if this machine has been told to trade speed for memory.
+  // Keyed on the *deployment* that manages this backend, because the profile is
+  // a property of the machine rather than of the ComfyUI registration — and a
+  // backend with no deployment simply gets the default and no rewrite.
+  const profile = await memoryProfileForBackend(backend.id);
+  if (profile) compiled.graph = withOffload(compiled.graph, profile);
 
   // An img2img graph names a file on the *backend's* disk, which only exists
   // once we put it there. This has to happen after compiling (the graph must
@@ -225,4 +264,42 @@ export async function dispatch(job: JobRow, clientId: string): Promise<Dispatche
     ),
     modelLabel: model?.display_name ?? family,
   };
+}
+
+
+/**
+ * A size for choosing between machines, before a machine has been chosen.
+ *
+ * Best-effort by construction: every failure path returns undefined, which
+ * `pickBackend` reads as "rank by load alone" — exactly what it did before any
+ * of this existed. Nothing here may prevent a dispatch.
+ */
+async function rankingScore(
+  job: JobRow,
+  family: string,
+  filename: string | null,
+): Promise<number | undefined> {
+  try {
+    const choice = await chooseTemplate({
+      modelId: job.params.modelId,
+      capability: job.params.kind,
+      family,
+      filename,
+    });
+    if (!choice) return undefined;
+    const { width, height } = dimensionsFor(job.params.aspect, choice.template.manifest);
+    const sizes = await modelSizes([
+      job.params.modelId,
+      ...(job.params.loras ?? []).map((l) => l.modelId),
+    ]);
+    return sizeOfJob({
+      manifest: choice.template.manifest,
+      params: job.params,
+      width,
+      height,
+      fileBytes: sizes,
+    }).score;
+  } catch {
+    return undefined;
+  }
 }

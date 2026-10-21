@@ -27,6 +27,7 @@ function job(overrides: Partial<Job> = {}): Job {
     backendId: null,
     progress: emptyProgress(),
     error: null,
+    failure: null,
     createdAt: '2026-09-06T10:00:00.000Z',
     startedAt: null,
     finishedAt: null,

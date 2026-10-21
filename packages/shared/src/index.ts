@@ -142,6 +142,51 @@ export interface JobProgress {
   phaseLabel?: string | null;
 }
 
+/**
+ * How hard a machine should try to fit a job in graphics memory.
+ *
+ * A closed set rather than raw ComfyUI flags: they change between versions,
+ * several are mutually exclusive, and a typo yields a ComfyUI that will not
+ * start. See `deploy/memory-profile.ts` for what each one launches with.
+ */
+export type MemoryProfile = 'fast' | 'balanced' | 'low-vram' | 'minimal-vram';
+
+/**
+ * Whether a job is likely to fit on the machine that will run it, judged only
+ * from what that machine has already done.
+ *
+ * `unknown` is the normal answer on a machine that has finished nothing yet,
+ * and means "say nothing" rather than "probably fine". See `orchestrator/fit.ts`
+ * for why this is empirical rather than a comparison against reported VRAM.
+ */
+export interface JobFit {
+  verdict: 'fits' | 'unproven' | 'too-big' | 'unknown';
+  /** One sentence, or null when there is nothing worth saying. */
+  note: string | null;
+  /** How many finished jobs this machine has taught us. */
+  observations: number;
+}
+
+/** Why a job failed, sorted into something a person can act on. */
+export type JobFailureKind =
+  | 'out-of-memory'
+  | 'missing-model'
+  | 'missing-node'
+  | 'bad-value'
+  | 'cancelled'
+  | 'backend-unreachable'
+  | 'unknown';
+
+export interface JobFailure {
+  kind: JobFailureKind;
+  /** One sentence about this job. Never the backend's raw text. */
+  summary: string;
+  /** What the person could do about it. Empty when there is nothing honest to say. */
+  steps: string[];
+  /** The backend's own words, kept whole, for a disclosure. */
+  detail: string;
+}
+
 export interface Job {
   id: Uuid;
   userId: Uuid;
@@ -153,6 +198,17 @@ export interface Job {
   backendId: Uuid | null;
   progress: JobProgress;
   error: string | null;
+  /**
+   * `error`, classified. Null unless the job failed.
+   *
+   * Derived when the job is read rather than stored, which is the opposite of
+   * what the fit ledger does with the same classifier — and deliberately. The
+   * ledger freezes its verdict so a learned ceiling cannot move when someone
+   * edits a rule; a *message* has no such requirement, so deriving it means
+   * every improvement to the rules immediately improves what old failed jobs
+   * say.
+   */
+  failure: JobFailure | null;
   createdAt: string;
   startedAt: string | null;
   finishedAt: string | null;
@@ -399,6 +455,12 @@ export interface MissingCompanion {
   purpose: string | null;
   /** The loader node that would look for it, e.g. "CLIPLoader". */
   loader: string;
+  /**
+   * Where a person can get this exact file by hand, when rippel knows. Absent
+   * rather than null on verdicts built before this existed; see
+   * `ModelDownloadSource` at the end of this file.
+   */
+  source?: ModelDownloadSource | null;
 }
 
 export interface ModelRunnability {
@@ -551,6 +613,56 @@ export interface ModelRequirementReport {
 }
 
 /**
+ * What a video template can actually sample, in the numbers a form needs.
+ *
+ * The Create screen asks the user for a length in seconds and a frame rate,
+ * because that is how a person thinks about a clip. A template constrains
+ * neither: it constrains the *frame count* those two multiply out to, and it
+ * does so differently per family — Stable Video Diffusion tops out at 25
+ * frames, LTX-Video at 161. A form carrying one hardcoded range therefore has
+ * to be wrong about every family but the one it was written for, and it was
+ * written for LTX: 6 seconds at 25 fps is 150 frames, so *every* SVD clip
+ * longer than a second was rejected by the compiler after the user had already
+ * pressed Generate.
+ *
+ * So the server sends the frame budget and the client does the arithmetic. The
+ * division of labour is deliberate: `frames` and `fps` are facts about the
+ * model that only the manifest knows, while "what should the duration slider's
+ * maximum be at the rate currently selected" is a question about a control that
+ * only the form knows it has. Sending seconds instead would bake this screen's
+ * two-control layout into the API.
+ *
+ * Every field mirrors a manifest constraint exactly, so a value the form allows
+ * is a value the compiler accepts. Out-of-range values are still rejected
+ * rather than clamped server-side; this makes the form stop producing them.
+ */
+export interface VideoLimits {
+  /**
+   * Frame counts the template's `frameCount` input accepts, as the manifest
+   * constraint states them.
+   */
+  frames: { min: number; max: number };
+  /**
+   * The grid frame counts snap onto, as `quantum * n + 1` — 8 for LTX-Video, 4
+   * for Hunyuan. Null when the family samples any count, which is SVD.
+   *
+   * The compiler rounds *up* onto this grid, so a form that offers a length
+   * whose frame count lands just under `frames.max` can still be pushed over
+   * it. A client computing a maximum duration must snap the same way.
+   */
+  frameQuantum: number | null;
+  /** Rates the template's `fps` input accepts. */
+  fps: { min: number; max: number };
+  /**
+   * The family's motion knob, when it has one — a trained motion bucket on SVD
+   * (1..1023), conditioning-image compression on LTX-Video, nothing at all on
+   * WAN. Null means the template binds no `motion` input and sending one is an
+   * error, which is why this is a presence check and not a range with defaults.
+   */
+  motion: { min: number; max: number } | null;
+}
+
+/**
  * What a given model + capability needs on a given backend, what is there, what
  * is not, and what would fix it.
  *
@@ -566,6 +678,11 @@ export interface BackendReadiness {
   capability: JobKind;
   /** True when the graph is a generic best guess rather than authored. */
   isFallback: boolean;
+  /**
+   * What this template can sample, for a video capability. Null for an image
+   * template, which has no frame budget to report.
+   */
+  videoLimits: VideoLimits | null;
   /** Null when readiness was asked about a template rather than a model. */
   modelId: Uuid | null;
   modelLabel: string | null;
@@ -870,6 +987,11 @@ export interface ModelWorkflows {
   backend: { id: Uuid; name: string } | null;
   /** Pinned template per capability; a capability absent here is automatic. */
   assigned: Partial<Record<JobKind, string>>;
+  /**
+   * Capabilities an administrator has switched off for this model. A job asking
+   * for one is refused as though no workflow existed. See migration 017.
+   */
+  switchedOff: JobKind[];
   options: ModelWorkflowOption[];
 }
 
@@ -965,6 +1087,17 @@ export interface Deployment {
   /** The backend row this deployment's ComfyUI is registered as, if any. */
   backendId: Uuid | null;
   backendName: string | null;
+  /**
+   * How hard this machine should try to fit a job in graphics memory, and
+   * whether the VAE decode runs on the CPU.
+   *
+   * The *intent*, not a reading: it is what rippel last asked for, saved even
+   * when the machine was asleep, so a deployment configured while off applies
+   * it on the next restart. What ComfyUI is actually running with is in the
+   * argv `/system_stats` reports.
+   */
+  memoryProfile?: MemoryProfile;
+  cpuVae?: boolean;
   lastSeenAt: string | null;
   createdAt: string;
   /**
@@ -1070,4 +1203,95 @@ export interface ModelFileOperation {
     { kind: 'download'; request: { path: string; url: string; sha256: string; sizeBytes?: number } })[];
   progress: AgentTask | null;
   error: string | null;
+}
+
+/**
+ * A one-time code that pairs a machine with a deployment.
+ *
+ * Eight characters from an alphabet with no `O`/`0` and no `I`/`1`/`L` in it, so
+ * it survives being read over a phone and typed back. Case-insensitive on
+ * redemption, single use, and good for minutes rather than days — it is a
+ * credential, and the machine redeeming it has no rippel login of its own.
+ *
+ * Issuing a new code for a deployment invalidates any outstanding one, so a code
+ * read aloud in a meeting cannot be used tomorrow.
+ */
+export interface PairingCode {
+  /** The code itself, uppercase and unseparated, e.g. "K7QM4XTB". */
+  code: string;
+  expiresAt: string;
+}
+
+/**
+ * What redeeming a pairing code gives the machine.
+ *
+ * The deployment id comes *back* from redemption and is never asked for: the
+ * only things a person has to get right are the address and the code, and
+ * anything else they would have had to copy correctly is a place setup fails.
+ */
+export interface PairResult {
+  deploymentId: Uuid;
+  /** The deployment's long-lived agent token. A credential — never log it. */
+  token: string;
+  /** The address the agent should check in to, as this rippel sees itself. */
+  serverUrl: string;
+}
+
+// ---------------------------------------------------------------- manual downloads and the workflow library
+//
+// Appended 2026-09-12. The reference backend lost ComfyUI-Manager, and with it
+// the only install transport rippel had, so "what file, which folder, from
+// where" has to be answerable without a catalogue. These types carry that
+// answer, and the ComfyUI workflow library is where most of it comes from.
+
+/**
+ * One file a person can fetch by hand and drop into a ComfyUI model folder.
+ *
+ * `approxBytes` is approximate on purpose: sizes are recorded from HTTP headers
+ * at the time someone checked, and a repackaged repo can replace a file. It is
+ * for "will this fit on the disk", not for verifying a download.
+ */
+export interface ModelDownloadSource {
+  filename: string;
+  /** The ComfyUI folder under `models/`, e.g. "text_encoders". */
+  folder: string;
+  url: string;
+  approxBytes: number | null;
+  /** Where rippel learned this, in words, e.g. "ComfyUI workflow library (video_wan2_2_5B_ti2v)". */
+  origin: string;
+}
+
+/** A model file a library workflow names, and whether a backend has it. */
+export interface LibraryModelFile {
+  filename: string;
+  folder: string;
+  url: string;
+  /** False when the URL is not HTTPS from Hugging Face or Civitai; shown, never fetched. */
+  trustedSource: boolean;
+  /** The editor node ids that load it. */
+  nodeIds: string[];
+  /** 'present' | 'missing', or 'unknown' when the backend's file lists could not be read. */
+  status: 'present' | 'missing' | 'unknown';
+}
+
+/** Something the library converter could not do, in one sentence. */
+export interface LibraryConversionProblem {
+  nodeId: string | null;
+  nodeClass: string | null;
+  message: string;
+}
+
+/** What rippel can say about one library workflow on one backend. */
+export interface LibraryWorkflowReport {
+  name: string;
+  backendId: Uuid;
+  backendName: string;
+  models: LibraryModelFile[];
+  /** Node classes the backend does not have. A download cannot fix these. */
+  missingNodeClasses: string[];
+  /** Editor nodes shipped bypassed or muted, by id and class, e.g. a disabled LoadImage. */
+  inactiveNodes: { nodeId: string; nodeClass: string }[];
+  /** True when the graph converted to API format with no problems. */
+  converts: boolean;
+  problems: LibraryConversionProblem[];
 }

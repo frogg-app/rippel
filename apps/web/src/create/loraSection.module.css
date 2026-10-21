@@ -331,3 +331,67 @@
   border-top: none;
   padding-top: 0;
 }
+
+/*
+ * What a chosen style is. Quiet type, because it is reference rather than a
+ * control — but not hidden behind a "?", because the complaint was precisely
+ * that nobody could tell what these did, and a tooltip is where that
+ * information went to be missed.
+ */
+.about {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--text-3);
+}
+
+.about p {
+  margin: 0;
+}
+
+.aboutGiven {
+  color: var(--text-2, var(--text-3));
+}
+
+/* The one line that can make a style silently do nothing, so it is not muted. */
+.aboutTrigger {
+  color: var(--accent);
+}
+
+.triggerWord {
+  font-family: var(--font-mono, monospace);
+  padding: 0 4px;
+  border-radius: 4px;
+  background: var(--accent-tint);
+}
+
+/* The attribution is the point: a reading of a filename must look like one. */
+.aboutSource {
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.aboutList {
+  margin: 0;
+  padding-left: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.aboutGap {
+  color: var(--text-muted);
+}
+
+/* A picker row's second line, only for a style that obliges a lower step count. */
+.rowNote {
+  font-size: var(--text-xs);
+  color: var(--accent);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

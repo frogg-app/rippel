@@ -1,0 +1,87 @@
+{
+  "_meta": {
+    "source": "http://192.168.1.10:8188/object_info",
+    "comfyVersion": "0.35.0",
+    "capturedAt": "2026-09-12",
+    "note": "Hand-captured during the Wan 2.2 work. Partial by design: only the classes read at the time are here, and `enumComplete: false` marks a list that was truncated when it was printed. Refresh with tools/capture-object-info.mjs against a live backend."
+  },
+  "nodes": {
+    "UNETLoader": {
+      "required": {
+        "unet_name": { "type": "ENUM", "fileList": true },
+        "weight_dtype": { "type": "ENUM", "values": ["default", "fp8_e4m3fn", "fp8_e4m3fn_fast", "fp8_e5m2"], "enumComplete": true }
+      }
+    },
+    "CLIPLoader": {
+      "required": {
+        "clip_name": { "type": "ENUM", "fileList": true },
+        "type": {
+          "type": "ENUM",
+          "values": ["stable_diffusion", "stable_cascade", "sd3", "stable_audio", "mochi", "ltxv", "pixart", "cosmos", "lumina2", "wan", "hidream", "chroma", "ace", "omnigen2", "qwen_image", "hunyuan_image", "flux2", "ovis", "longcat_image", "cogvideox", "lens", "pixeldit", "ideogram4", "boogu", "krea2", "joyimage", "mage", "minimax"],
+          "enumComplete": true
+        }
+      },
+      "optional": {
+        "device": { "type": "ENUM", "values": ["default", "cpu"], "enumComplete": true }
+      }
+    },
+    "VAELoader": {
+      "required": { "vae_name": { "type": "ENUM", "fileList": true } }
+    },
+    "LoadImage": {
+      "required": { "image": { "type": "ENUM", "fileList": true } }
+    },
+    "VAEDecode": {
+      "required": { "samples": { "type": "LATENT" }, "vae": { "type": "VAE" } }
+    },
+    "ModelSamplingSD3": {
+      "required": {
+        "model": { "type": "MODEL" },
+        "shift": { "type": "FLOAT", "min": 0.0, "max": 100.0 }
+      }
+    },
+    "Wan22ImageToVideoLatent": {
+      "required": {
+        "vae": { "type": "VAE" },
+        "width": { "type": "INT", "min": 32, "max": 16384 },
+        "height": { "type": "INT", "min": 32, "max": 16384 },
+        "length": { "type": "INT", "min": 1, "max": 16384 },
+        "batch_size": { "type": "INT", "min": 1, "max": 4096 }
+      },
+      "optional": { "start_image": { "type": "IMAGE" } }
+    },
+    "KSampler": {
+      "required": {
+        "model": { "type": "MODEL" },
+        "seed": { "type": "INT", "min": 0, "max": 18446744073709551615 },
+        "steps": { "type": "INT", "min": 1, "max": 10000 },
+        "cfg": { "type": "FLOAT", "min": 0.0, "max": 100.0 },
+        "sampler_name": { "type": "ENUM", "values": ["euler", "euler_cfg_pp", "euler_ancestral", "euler_ancestral_cfg_pp", "heun", "heunpp2", "uni_pc", "dpmpp_2m", "dpmpp_sde", "ddim"], "enumComplete": false },
+        "scheduler": { "type": "ENUM", "values": ["simple", "sgm_uniform", "karras", "exponential", "ddim_uniform", "beta", "normal", "linear_quadratic", "kl_optimal"], "enumComplete": true },
+        "positive": { "type": "CONDITIONING" },
+        "negative": { "type": "CONDITIONING" },
+        "latent_image": { "type": "LATENT" },
+        "denoise": { "type": "FLOAT", "min": 0.0, "max": 1.0 }
+      }
+    },
+    "CreateVideo": {
+      "required": {
+        "images": { "type": "IMAGE" },
+        "fps": { "type": "FLOAT", "min": 1.0, "max": 120.0 }
+      },
+      "optional": {
+        "audio": { "type": "AUDIO" },
+        "bit_depth": { "type": "COMBO" },
+        "color_space": { "type": "COMBO" }
+      }
+    },
+    "SaveVideo": {
+      "required": {
+        "video": { "type": "VIDEO" },
+        "filename_prefix": { "type": "STRING" },
+        "format": { "type": "COMFY_DYNAMICCOMBO_V3" }
+      },
+      "optional": { "codec": { "type": "COMFY_DYNAMICCOMBO_V3" } }
+    }
+  }
+}

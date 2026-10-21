@@ -19,6 +19,7 @@ import type {
   ModelRemoval,
   ModelRunnability,
   ModelWorkflowOption,
+  LibraryWorkflowReport,
   ModelWorkflows,
   WorkflowTemplateSummary,
 } from '@comfy/shared';
@@ -228,6 +229,8 @@ export interface StubOptions {
   removal?: ModelRemoval;
   /** Thrown by `removeModel`. */
   removeError?: ApiRequestError;
+  /** What `libraryReport` returns; absent throws 404. */
+  libraryReport?: LibraryWorkflowReport;
 }
 
 export interface StubApi extends ModelsApi {
@@ -324,6 +327,19 @@ export function makeStubApi(options: StubOptions = {}): StubApi {
         return found.assigned;
       }
       return templateId ? { [capability]: templateId } : {};
+    },
+    switchCapability: async (modelId, capability, enabled) => {
+      calls.push(`switch:${modelId}:${capability}:${enabled ? 'on' : 'off'}`);
+      const found = options.workflows?.[modelId];
+      const current = found?.switchedOff ?? [];
+      const next = enabled ? current.filter((c) => c !== capability) : [...new Set([...current, capability])];
+      if (found) found.switchedOff = next;
+      return next;
+    },
+    libraryReport: async (backendId, name) => {
+      calls.push(`library:${backendId}:${name}`);
+      if (!options.libraryReport) throw new ApiRequestError(404, 'not_found', 'No such workflow.');
+      return options.libraryReport;
     },
     removeModel: async (modelId) => {
       calls.push(`remove:${modelId}`);

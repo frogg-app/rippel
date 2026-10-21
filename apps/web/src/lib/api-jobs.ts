@@ -19,6 +19,8 @@ import type {
   JobStatus,
   Model,
   Upload,
+  JobFit,
+  VideoLimits,
 } from '@comfy/shared';
 import { ApiRequestError } from './api';
 import { mockEventSource, mockJobs } from '../create/mockJobs';
@@ -304,6 +306,18 @@ export interface ModelReadiness {
   /** "Text to video (LTX-Video)" — what would run, when something would. */
   templateLabel: string | null;
   isFallback: boolean;
+  /**
+   * The frame budget of the template that would run, for a video capability.
+   * Null for an image capability, and null when we could not ask — the form
+   * falls back to its widest bounds, which is what it always used.
+   *
+   * This rides on readiness rather than on a route of its own because readiness
+   * already resolves the *exact* template for this model on this backend, admin
+   * pin and folder-aware lookup included, and the form already fetches it for
+   * every model on every tab flip. A second endpoint keyed by template id would
+   * mean a second resolution the first could drift from, and another request.
+   */
+  videoLimits: VideoLimits | null;
   /** One sentence naming what is wrong, for the tile's tooltip and the note. */
   summary: string | null;
   /** What a person would have to do about it, in the server's own words. */
@@ -314,6 +328,7 @@ const UNKNOWN_READINESS: ModelReadiness = {
   state: 'unknown',
   templateLabel: null,
   isFallback: false,
+  videoLimits: null,
   summary: null,
   steps: [],
 };
@@ -322,6 +337,7 @@ const UNKNOWN_READINESS: ModelReadiness = {
 interface ReadinessPayload {
   templateLabel?: string | null;
   isFallback?: boolean;
+  videoLimits?: VideoLimits | null;
   ready?: boolean;
   requirements?: {
     id: string;
@@ -364,8 +380,12 @@ export const readinessApi = {
 function toReadiness(payload: ReadinessPayload): ModelReadiness {
   const templateLabel = payload.templateLabel ?? null;
   const isFallback = payload.isFallback === true;
+  // Carried for `blocked` too, not just `ready`: the form still draws its
+  // duration control while a companion file is missing, and drawing it with
+  // the wrong family's bounds would be the original bug in a narrower case.
+  const videoLimits = payload.videoLimits ?? null;
   if (payload.ready) {
-    return { state: 'ready', templateLabel, isFallback, summary: null, steps: [] };
+    return { state: 'ready', templateLabel, isFallback, videoLimits, summary: null, steps: [] };
   }
 
   const unmet = (payload.requirements ?? []).filter(
@@ -385,6 +405,7 @@ function toReadiness(payload: ReadinessPayload): ModelReadiness {
     state: 'blocked',
     templateLabel,
     isFallback,
+    videoLimits,
     summary: unmet.length > 0 ? summarise(unmet) : 'the backend is not set up for it yet.',
     steps,
   };
@@ -413,10 +434,10 @@ function summarise(
 
 export const jobsApi = {
   /** `POST /jobs` -> 202. Validates, compiles and persists; does not dispatch. */
-  create: (params: GenerationParams, signal?: AbortSignal): Promise<{ job: Job }> =>
+  create: (params: GenerationParams, signal?: AbortSignal): Promise<{ job: Job; fit?: JobFit }> =>
     MOCK.jobs
       ? mockJobs.create(params)
-      : request<{ job: Job }>('/jobs', { method: 'POST', body: { params }, signal }),
+      : request<{ job: Job; fit?: JobFit }>('/jobs', { method: 'POST', body: { params }, signal }),
 
   /**
    * The reload path. A socket only tells you what happened while you were

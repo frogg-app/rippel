@@ -65,6 +65,7 @@ import { knownCapabilities, templatesFor } from '../workflows/registry.js';
 import { checkpointSlotOf, type CheckpointSlot } from '../workflows/folders.js';
 import { claimFromCatalogueBase, inferFamily } from './family.js';
 import { folderForType } from './installs.js';
+import { knownDownloadFor } from './known-downloads.js';
 
 /**
  * The catalogue's save paths onto ComfyUI folder names.
@@ -291,6 +292,9 @@ export function runnabilityFor(input: RunnabilityInput): ModelRunnability {
           filename: file.filename,
           purpose: purposeOf(file.nodeClass, file.filename),
           loader: file.nodeClass,
+          // With no install catalogue on the machine, the file's name alone
+          // sends a person searching; the known source sends them to the file.
+          source: sourceForMissing(template, file),
         }));
       missingNodeClass = result.missingNodeClasses[0] ?? null;
     }
@@ -486,3 +490,27 @@ function displayFamily(family: string | null, claim: CatalogueBaseClaim): string
 export function isUsable(status: RunnabilityStatus): boolean {
   return status === 'ready' || status === 'generic';
 }
+
+/**
+ * Where to fetch a missing companion by hand.
+ *
+ * The requirement's `preferred` builds are tried before the graph's literal,
+ * because the literal is frequently the build we would *not* recommend: the LTX
+ * graphs name `t5xxl_fp16`, which does not fit beside the transformer on 16 GB,
+ * and the requirement prefers the fp8 one. Any preferred build satisfies the
+ * requirement's pattern, and the resolver rewrites the graph to whichever is
+ * installed, so pointing at it is not pointing at a different workflow.
+ */
+function sourceForMissing(
+  template: WorkflowTemplate,
+  file: { nodeId: string; input: string; filename: string },
+) {
+  const path = `${file.nodeId}.inputs.${file.input}`;
+  const requirement = (template.manifest.requires ?? []).find((r) => r.path === path);
+  for (const candidate of [...(requirement?.preferred ?? []), file.filename]) {
+    const source = knownDownloadFor(candidate);
+    if (source) return source;
+  }
+  return null;
+}
+
