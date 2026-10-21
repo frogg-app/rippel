@@ -16,7 +16,7 @@ import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AgentTask, ComfyState } from '@comfy/shared';
 import { makeDeploymentRoutes, normaliseHost, httpsOrigin, type DeployDb } from './routes.js';
-import { bashInstaller, oneLiner, powershellInstaller } from './scripts.js';
+import { bashInstaller, oneLiner, powershellInstaller, windowsCmdLiner } from './scripts.js';
 import { clearReleaseCache, latestAgentRelease } from './releases.js';
 import { AGENT_BINARIES, availableBinaries, binaryDownloadPath } from './binaries.js';
 import {
@@ -914,6 +914,15 @@ describe('the generated installers', () => {
     expect(line).not.toMatch(/^powershell/);
     expect(line).toContain("Join-Path $env:TEMP 'rippel-agent.exe'");
     expect(line).toContain('Tls12');
+  });
+
+  it('gives Command Prompt its own line, handing PowerShell the statements', () => {
+    const line = windowsCmdLiner(params);
+    expect(line).toMatch(/^powershell -ExecutionPolicy Bypass -Command "& \{ /);
+    // cmd's escape for a quote inside the argument, which PowerShell then reads.
+    expect(line).toContain('\\"$env:TEMP\\rippel-agent.exe\\"');
+    expect(line).toContain(params.code);
+    expect(line.endsWith(' }"')).toBe(true);
   });
 
   it('picks the right macOS binary, because a Mac is genuinely still split', () => {

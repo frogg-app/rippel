@@ -974,10 +974,17 @@ function PairingPanel({
       {/* The one-liner carries this code, so it lives beside it and dies with
           it. Keeping it on the install payload would have meant a polled GET
           handing out a credential every few seconds. */}
-      <CopyField
-        label="Or run this on that machine"
-        value={state.code.commands[platform]}
-      />
+      {platform === 'win32' ? (
+        <>
+          <CopyField label="Or run this in PowerShell" value={state.code.commands.win32} />
+          <CopyField label="Or in Command Prompt" value={state.code.commands.win32Cmd} />
+        </>
+      ) : (
+        <CopyField
+          label="Or run this on that machine"
+          value={state.code.commands[platform]}
+        />
+      )}
     </>
   );
 }

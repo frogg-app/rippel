@@ -262,8 +262,10 @@ func stopService(say func(string, ...any)) {
 		}
 	case "windows":
 		// Nothing to "stop" for a Run key — the entry is not a service. Any
-		// running copy is ended so its file can be replaced.
-		_ = quiet("taskkill", "/IM", serviceName+".exe", "/F")
+		// running copy is ended so its file can be replaced — but not this one:
+		// the installer is usually a downloaded rippel-agent.exe itself, and
+		// ending it here stopped every install right after pairing.
+		_ = quiet("taskkill", "/F", "/IM", serviceName+".exe", "/FI", fmt.Sprintf("PID ne %d", os.Getpid()))
 	default:
 		if _, err := exec.LookPath("systemctl"); err == nil {
 			_ = quiet("systemctl", "--user", "stop", serviceName+".service")

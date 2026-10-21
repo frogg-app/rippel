@@ -141,6 +141,7 @@ function fakeApi(initial: Deployment[] = [online], over: Partial<DeploymentsApi>
         linux: "curl -fsSL -o /tmp/rippel-agent 'https://rippel.test/api/deployments/agent/linux-amd64' && chmod +x /tmp/rippel-agent && /tmp/rippel-agent install --server 'https://rippel.test' --code 'K7M4P2QR'",
         darwin: "curl -fsSL -o /tmp/rippel-agent 'https://rippel.test/api/deployments/agent/macos-arm64' && chmod +x /tmp/rippel-agent && /tmp/rippel-agent install --server 'https://rippel.test' --code 'K7M4P2QR'",
         win32: "$agent = Join-Path $env:TEMP 'rippel-agent.exe'; iwr -UseBasicParsing 'https://rippel.test/api/deployments/agent/windows-amd64' -OutFile $agent; & $agent install --server 'https://rippel.test' --code 'K7M4P2QR'",
+        win32Cmd: "powershell -ExecutionPolicy Bypass -Command \"& { iwr -UseBasicParsing 'https://rippel.test/api/deployments/agent/windows-amd64' -OutFile rippel-agent.exe }\"",
       },
     })),
     releases: vi.fn(async () => instructions.release),
@@ -337,6 +338,8 @@ describe('DeploymentsSection', () => {
     // The Windows tab shows the PowerShell form of the same thing.
     await userEvent.click(screen.getByRole('tab', { name: 'Windows' }));
     expect(await screen.findByText(/Join-Path \$env:TEMP/)).toBeInTheDocument();
+    // And Command Prompt gets its own line beside it, since neither pastes into the other.
+    expect(screen.getByText(/^powershell -ExecutionPolicy Bypass/)).toBeInTheDocument();
   });
 
   /**
@@ -568,6 +571,7 @@ describe('DeploymentsSection', () => {
         linux: "curl -fsSL -o /tmp/rippel-agent 'https://rippel.test/api/deployments/agent/linux-amd64' && chmod +x /tmp/rippel-agent && /tmp/rippel-agent install --server 'https://rippel.test' --code 'K7M4P2QR'",
         darwin: "curl -fsSL -o /tmp/rippel-agent 'https://rippel.test/api/deployments/agent/macos-arm64' && chmod +x /tmp/rippel-agent && /tmp/rippel-agent install --server 'https://rippel.test' --code 'K7M4P2QR'",
         win32: "$agent = Join-Path $env:TEMP 'rippel-agent.exe'; iwr -UseBasicParsing 'https://rippel.test/api/deployments/agent/windows-amd64' -OutFile $agent; & $agent install --server 'https://rippel.test' --code 'K7M4P2QR'",
+        win32Cmd: "powershell -ExecutionPolicy Bypass -Command \"& { iwr -UseBasicParsing 'https://rippel.test/api/deployments/agent/windows-amd64' -OutFile rippel-agent.exe }\"",
       },
         })),
       });

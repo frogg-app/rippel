@@ -191,6 +191,22 @@ export function oneLiner(platform: AgentPlatform, p: ScriptParams): string {
   );
 }
 
+/**
+ * The Windows line for Command Prompt. cmd cannot run PowerShell statements, so
+ * this one hands them to `powershell -Command`; the `\"` escapes are cmd's
+ * convention and are why it must not be pasted into PowerShell, which has its
+ * own line from `oneLiner`.
+ */
+export function windowsCmdLiner(p: ScriptParams): string {
+  const server = p.serverUrl.replace(/\/+$/, '');
+  return (
+    `powershell -ExecutionPolicy Bypass -Command "& { ` +
+    `iwr -UseBasicParsing '${server}/api/deployments/agent/windows-amd64' ` +
+    `-OutFile \\"$env:TEMP\\rippel-agent.exe\\"; ` +
+    `& \\"$env:TEMP\\rippel-agent.exe\\" install --server '${server}' --code '${p.code}' }"`
+  );
+}
+
 export function installerFor(
   platform: AgentPlatform,
   p: ScriptParams,

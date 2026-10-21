@@ -56,7 +56,7 @@ import {
   redeemByIp,
 } from './pairing.js';
 import { latestAgentRelease } from './releases.js';
-import { installerFor, oneLiner } from './scripts.js';
+import { installerFor, oneLiner, windowsCmdLiner } from './scripts.js';
 import { helperFiles } from './sources.js';
 import { getRun, startSshInstall, type SshExec } from './ssh.js';
 
@@ -506,6 +506,7 @@ export function makeDeploymentRoutes(deps: DeployDeps = {}) {
             linux: oneLiner('linux', { serverUrl, code }),
             darwin: oneLiner('darwin', { serverUrl, code }),
             win32: oneLiner('win32', { serverUrl, code }),
+            win32Cmd: windowsCmdLiner({ serverUrl, code }),
           },
         });
       },

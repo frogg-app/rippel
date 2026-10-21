@@ -110,7 +110,8 @@ export interface PairingCode {
    * is alive — and a polled GET must not mint one.
    */
   serverUrl: string;
-  commands: { linux: string; darwin: string; win32: string };
+  /** win32 is for PowerShell; win32Cmd is the same install for Command Prompt. */
+  commands: { linux: string; darwin: string; win32: string; win32Cmd: string };
 }
 
 /**
@@ -146,6 +147,7 @@ function mockCode(): PairingCode {
       linux: `curl -fsSL -o /tmp/rippel-agent '${origin}/api/deployments/agent/linux-amd64' && chmod +x /tmp/rippel-agent && /tmp/rippel-agent install --server '${origin}' --code '${code}'`,
       darwin: `curl -fsSL -o /tmp/rippel-agent '${origin}/api/deployments/agent/macos-arm64' && chmod +x /tmp/rippel-agent && /tmp/rippel-agent install --server '${origin}' --code '${code}'`,
       win32: `$agent = Join-Path $env:TEMP 'rippel-agent.exe'; iwr -UseBasicParsing '${origin}/api/deployments/agent/windows-amd64' -OutFile $agent; & $agent install --server '${origin}' --code '${code}'`,
+      win32Cmd: `powershell -ExecutionPolicy Bypass -Command "& { iwr -UseBasicParsing '${origin}/api/deployments/agent/windows-amd64' -OutFile \\"$env:TEMP\\rippel-agent.exe\\"; & \\"$env:TEMP\\rippel-agent.exe\\" install --server '${origin}' --code '${code}' }"`,
     },
   };
 }
