@@ -76,6 +76,10 @@ button {
   border-radius: var(--radius-pill);
   padding: 2px 8px 1px;
 }
+.brandVersion {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
 .iconButton {
   display: grid;
   place-items: center;
@@ -169,7 +173,8 @@ button {
 .facts {
   margin: 14px 0 0;
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  /* The machine name is short; the server address gets the rest. */
+  grid-template-columns: auto minmax(0, 1fr);
   gap: 1px;
   background: var(--line);
   border: 1px solid var(--line);

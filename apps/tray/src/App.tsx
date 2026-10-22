@@ -50,6 +50,7 @@ export function App() {
         <div className="brand" data-tauri-drag-region>
           <Lockup size={17} />
           <span className="brandSub">agent</span>
+          {status ? <span className="brandVersion mono">v{status.agentVersion}</span> : null}
         </div>
         <button className="iconButton" aria-label="Close" onClick={() => void getCurrentWindow().hide()}>
           <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden>
@@ -143,10 +144,6 @@ function Connection({ status, stale }: { status: AgentStatus; stale: string | nu
         <div>
           <dt>Server</dt>
           <dd className="mono">{host ?? 'not set'}</dd>
-        </div>
-        <div>
-          <dt>Agent</dt>
-          <dd className="mono">v{status.agentVersion}</dd>
         </div>
       </dl>
       {status.server ? (
