@@ -2623,3 +2623,79 @@ button.tagChipOn:hover {
 .cardVersions:hover {
   text-decoration: underline;
 }
+
+/* "Needs prompt reader" as a button that opens the list of missing parts. */
+.verdictChipButton {
+  background: transparent;
+  font-family: inherit;
+  cursor: pointer;
+}
+.verdictChipButton:hover {
+  border-color: currentColor;
+}
+.verdictChipButton:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.verdictChevron,
+.verdictChevronOpen {
+  transition: transform 0.15s ease;
+}
+.verdictChevronOpen {
+  transform: rotate(180deg);
+}
+
+.missingParts {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid var(--line-faint);
+  border-radius: 10px;
+  background: var(--ground-sunken);
+  font-size: 11.5px;
+}
+.missingPart {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 10px;
+  align-items: center;
+}
+.missingPartName {
+  color: var(--text-bright);
+  font-weight: 500;
+}
+.missingPartFile {
+  grid-column: 1;
+  color: var(--text-muted);
+  font-size: 10.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.missingPartActions {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.missingPartFind {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.missingPartFind:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}

@@ -41,19 +41,35 @@ export interface ModelLibraryState {
   remove: (id: Uuid) => void;
 }
 
+interface LibrarySnapshot {
+  backends: Backend[];
+  models: Model[];
+  families: string[];
+  runnability: Record<Uuid, ModelRunnability>;
+  previews: Record<Uuid, ModelCatalogInfo>;
+}
+
+/**
+ * The last answer, kept past the page's unmount, so coming back to Models
+ * paints at once and refreshes underneath instead of starting from a spinner.
+ * Keyed by the api object so tests, which each make their own, never share.
+ */
+const lastLibrary = new WeakMap<ModelsApi, LibrarySnapshot>();
+
 export function useModelLibrary(api: ModelsApi): ModelLibraryState {
-  const [backends, setBackends] = useState<Backend[]>([]);
-  const [models, setModels] = useState<Model[]>([]);
-  const [families, setFamilies] = useState<string[]>([]);
-  const [runnability, setRunnability] = useState<Record<Uuid, ModelRunnability>>({});
-  const [previews, setPreviews] = useState<Record<Uuid, ModelCatalogInfo>>({});
-  const [loading, setLoading] = useState(true);
+  const cached = lastLibrary.get(api);
+  const [backends, setBackends] = useState<Backend[]>(cached?.backends ?? []);
+  const [models, setModels] = useState<Model[]>(cached?.models ?? []);
+  const [families, setFamilies] = useState<string[]>(cached?.families ?? []);
+  const [runnability, setRunnability] = useState<Record<Uuid, ModelRunnability>>(cached?.runnability ?? {});
+  const [previews, setPreviews] = useState<Record<Uuid, ModelCatalogInfo>>(cached?.previews ?? {});
+  const [loading, setLoading] = useState(!cached);
   const [error, setError] = useState<string | null>(null);
   const [nonce, setNonce] = useState(0);
 
   // Names outlive the list they came from: a refresh must not make a chip
   // flicker to a raw uuid while the request is in the air.
-  const names = useRef<Map<Uuid, string>>(new Map());
+  const names = useRef<Map<Uuid, string>>(new Map((cached?.backends ?? []).map((b) => [b.id, b.name])));
 
   useEffect(() => {
     const controller = new AbortController();
@@ -72,6 +88,13 @@ export function useModelLibrary(api: ModelsApi): ModelLibraryState {
         setFamilies(installed.families);
         setRunnability(installed.runnability);
         setPreviews(installed.previews ?? {});
+        lastLibrary.set(api, {
+          backends: backendList,
+          models: installed.models,
+          families: installed.families,
+          runnability: installed.runnability,
+          previews: installed.previews ?? {},
+        });
         setError(null);
       } catch {
         if (!stopped) setError('Could not load your backends and their models.');

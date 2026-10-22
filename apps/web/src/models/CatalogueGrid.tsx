@@ -15,10 +15,11 @@
  * the catalogue is re-read while previews fill in, and a drawer holding a stale
  * copy would show an install button for a file that has since landed.
  */
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import type { ModelCatalogEntry, ModelInstall } from '@comfy/shared';
 import type { LoadVariants } from './VersionPicker';
 import { CatalogueCard } from './CatalogueCard';
+import { FindPartContext, type PartSearch } from './MissingParts';
 import { CatalogueDrawer } from './CatalogueDrawer';
 import type { TagKey } from './discover';
 import { KIND_HEADINGS, basename, splitByKind } from './catalogue';
@@ -96,8 +97,16 @@ export function CatalogueGrid({
   const remaining = ordered.length - shown.length;
   const sections = splitByKind(shown, (entry) => entry.type);
 
+  // "Find" on a missing part runs a new search, and the drawer it was clicked
+  // in would otherwise sit over the results.
+  const findPart = useContext(FindPartContext);
+  const findAndClose = useMemo(
+    () => (findPart ? (search: PartSearch) => { closeDrawer(); findPart(search); } : null),
+    [findPart, closeDrawer],
+  );
+
   return (
-    <>
+    <FindPartContext.Provider value={findAndClose}>
       {sections.map((section) => {
         const heading = KIND_HEADINGS[section.kind];
         return (
@@ -166,6 +175,6 @@ export function CatalogueGrid({
           now={now}
         />
       ) : null}
-    </>
+    </FindPartContext.Provider>
   );
 }

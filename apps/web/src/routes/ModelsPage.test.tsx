@@ -100,7 +100,9 @@ function LocationProbe() {
   );
 }
 
-function renderPage(api: ModelsApi, user: User = admin, url = '/models', storageApi?: StorageApi) {
+// Most of these tests are about the Installed tab, so they start there;
+// Discover, the default, is reached through openTab as a person would.
+function renderPage(api: ModelsApi, user: User = admin, url = '/models?tab=installed', storageApi?: StorageApi) {
   return render(
     <MemoryRouter initialEntries={[url]}>
       {withAuth(user, (
@@ -655,6 +657,15 @@ describe('ModelsPage', () => {
       expect(within(cards[0]!).getByText('Recommended')).toBeInTheDocument();
       expect(within(cards[1]!).queryByText('Recommended')).not.toBeInTheDocument();
       expect(within(cards[1]!).getByText('Needs prompt reader and image decoder')).toBeInTheDocument();
+
+      // The badge opens the parts, and Find searches for one, its type chosen.
+      const user = userEvent.setup();
+      await user.click(within(cards[1]!).getByRole('button', { name: /Needs prompt reader and image decoder/ }));
+      const parts = within(cards[1]!).getByRole('list', { name: 'What this model needs' });
+      expect(within(parts).getByText('t5xxl_fp16.safetensors')).toBeInTheDocument();
+      await user.click(within(parts).getAllByRole('button', { name: 'Find' })[0]!);
+      expect(screen.getByRole('combobox', { name: 'Search the catalogue' })).toHaveValue('t5xxl');
+      expect(new URLSearchParams(search()!).get('type')).toBe('clip');
     });
 
     /** The badge says what the file is for, to a pointer and to a keyboard. */
@@ -692,45 +703,62 @@ describe('ModelsPage', () => {
 
     it('puts the tab in the URL when you switch, and takes it out again', async () => {
       const api = makeStubApi();
-      renderPage(api);
+      renderPage(api, admin, '/models');
       await ready();
+      // Discover is the default, spelled by the absence of the parameter.
+      expect(await screen.findByLabelText('Search the catalogue')).toBeInTheDocument();
       expect(search()).toBe('');
 
-      const user = await openTab(/Discover/);
-      await waitFor(() => expect(search()).toBe('?tab=discover'));
-
-      // Scoped to the tab strip: Discover has a "Downloads" sort button too.
+      const user = userEvent.setup();
       const tabs = screen.getByRole('navigation', { name: 'Models sections' });
+      await user.click(within(tabs).getByRole('button', { name: /Installed/ }));
+      await waitFor(() => expect(search()).toBe('?tab=installed'));
+      // Scoped to the tab strip: Discover has a "Downloads" sort button too.
       await user.click(within(tabs).getByRole('button', { name: /Downloads/ }));
       await waitFor(() => expect(search()).toBe('?tab=downloads'));
-
-      // Installed is the default, and is spelled by the absence of the
-      // parameter — `/models` stays a clean URL.
-      await user.click(screen.getByRole('button', { name: /Installed/ }));
+      await user.click(within(tabs).getByRole('button', { name: /Discover/ }));
       await waitFor(() => expect(search()).toBe(''));
+    });
+
+    it('lists Discover first', async () => {
+      renderPage(makeStubApi());
+      await ready();
+      const tabs = within(screen.getByRole('navigation', { name: 'Models sections' })).getAllByRole('button');
+      expect(tabs[0]).toHaveTextContent('Discover');
     });
 
     it('steps back through the tabs with the browser Back button', async () => {
       const api = makeStubApi();
-      renderPage(api);
+      renderPage(api, admin, '/models');
       await ready();
 
-      const user = await openTab(/Discover/);
-      await waitFor(() => expect(search()).toBe('?tab=discover'));
+      const user = userEvent.setup();
+      await user.click(within(screen.getByRole('navigation', { name: 'Models sections' })).getByRole('button', { name: /Installed/ }));
+      await waitFor(() => expect(search()).toBe('?tab=installed'));
 
       await user.click(screen.getByRole('button', { name: 'Go back' }));
       await waitFor(() => expect(search()).toBe(''));
       // And the screen followed the URL, not the other way round.
-      expect(screen.queryByLabelText('Search the catalogue')).not.toBeInTheDocument();
+      expect(await screen.findByLabelText('Search the catalogue')).toBeInTheDocument();
     });
 
-    it('falls back to Installed for a tab nobody has ever heard of', async () => {
+    it('falls back to Discover for a tab nobody has ever heard of', async () => {
       const api = makeStubApi();
       renderPage(api, admin, '/models?tab=nonsense');
       await ready();
 
-      expect(screen.queryByLabelText('Search the catalogue')).not.toBeInTheDocument();
-      expect(await screen.findByLabelText('Search installed models')).toBeInTheDocument();
+      expect(await screen.findByLabelText('Search the catalogue')).toBeInTheDocument();
+    });
+
+    it('comes back to the tab and search it was left on', async () => {
+      const api = makeStubApi();
+      const first = renderPage(api, admin, '/models?tab=installed&q=film');
+      await ready();
+      first.unmount();
+
+      // The sidebar's link is a bare /models.
+      renderPage(api, admin, '/models');
+      await waitFor(() => expect(search()).toBe('?tab=installed&q=film'));
     });
   });
 

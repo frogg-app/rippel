@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ModelCatalogEntry } from '@comfy/shared';
 import { compareBest, inScope, sortCatalogue } from './discover';
+import { partSearch } from './MissingParts';
 import { companionName, intentsOf, verdictLabel, worksHere } from './intents';
 import { isRecommendedHere, recommendationFor } from './recommended';
 import { makeEntry, makeInfo, makeRunnability } from './testing';
@@ -146,5 +147,14 @@ describe('missing parts', () => {
       }),
     ).toBe('Needs prompt reader and image decoder');
     expect(verdictLabel({ status: 'ready' })).toBe('Will run');
+  });
+});
+
+describe('partSearch', () => {
+  it('searches for the part, not one build of it, with its type', () => {
+    expect(partSearch({ filename: 't5xxl_fp16.safetensors', purpose: 'T5 text encoder', loader: 'CLIPLoader' })).toEqual({ q: 't5xxl', type: 'clip' });
+    expect(partSearch({ filename: 'umt5_xxl_fp8_e4m3fn_scaled.safetensors', purpose: null, loader: 'CLIPLoader' })).toEqual({ q: 'umt5_xxl', type: 'clip' });
+    expect(partSearch({ filename: 'ae.safetensors', purpose: 'VAE', loader: 'VAELoader' })).toEqual({ q: 'ae', type: 'vae' });
+    expect(partSearch({ filename: 'motion/mm_sd15_v3.ckpt', purpose: 'Motion module', loader: 'ADE_LoadAnimateDiffModel' })).toEqual({ q: 'mm_sd15_v3', type: null });
   });
 });

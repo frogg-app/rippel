@@ -48,7 +48,7 @@
  *   failed      the error, and the button back, labelled as a retry
  *   installed   no button at all: a re-install is answered with a 409
  */
-import { useState, type CSSProperties, type ReactNode } from 'react';
+import { useId, useState, type CSSProperties, type ReactNode } from 'react';
 import type { ModelCatalogEntry, ModelInstall } from '@comfy/shared';
 import {
   RUNNABILITY_TONE,
@@ -60,8 +60,9 @@ import {
 } from './catalogue';
 import { cardTags, ownerOf, tagKey, type TagKey } from './discover';
 import { verdictLabel } from './intents';
+import { MissingParts } from './MissingParts';
 import { isRecommendedHere, recommendationFor } from './recommended';
-import { CheckIcon, DownloadCountIcon, HeartIcon, InstallIcon, WorkflowIcon } from './icons';
+import { CheckIcon, ChevronIcon, DownloadCountIcon, HeartIcon, InstallIcon, WorkflowIcon } from './icons';
 import { InstallProgress } from './InstallProgress';
 import { TagChip } from './TagChip';
 import { TypeBadge } from './TypeBadge';
@@ -138,6 +139,8 @@ export function CardVerdict({
   children?: ReactNode;
 }) {
   const verdict = entry.runnability;
+  const [partsOpen, setPartsOpen] = useState(false);
+  const partsId = useId();
   // Recommended only where it will work: see recommended.ts. It is on the
   // verdict rather than the art so the card and the drawer both carry it.
   const recommended = isRecommendedHere(entry) ? (
@@ -167,6 +170,7 @@ export function CardVerdict({
     );
   }
   if (!verdict) return null;
+  const needsParts = verdict.status === 'needs-companion' && verdict.missing.length > 0;
   return (
     <>
       {recommended}
@@ -179,11 +183,29 @@ export function CardVerdict({
       >
         {/* A model found in a ComfyUI workflow has a graph waiting for it, so
           "no workflow" would be wrong: it needs that workflow set up. */}
-        <span className={styles.verdictChip}>
-          {entry.sourceWorkflow && verdict.status === 'no-workflow'
-            ? 'Workflow setup needed'
-            : verdictLabel(verdict)}
-        </span>
+        {needsParts ? (
+          // A badge that names what is missing opens the list of it, with a
+          // way to find each part, rather than leaving the filename in a tooltip.
+          <button
+            type="button"
+            className={`${styles.verdictChip} ${styles.verdictChipButton}`}
+            aria-expanded={partsOpen}
+            aria-controls={partsId}
+            onClick={(event) => {
+              event.stopPropagation();
+              setPartsOpen((open) => !open);
+            }}
+          >
+            {verdictLabel(verdict)}
+            <ChevronIcon size={10} className={partsOpen ? styles.verdictChevronOpen : styles.verdictChevron} />
+          </button>
+        ) : (
+          <span className={styles.verdictChip}>
+            {entry.sourceWorkflow && verdict.status === 'no-workflow'
+              ? 'Workflow setup needed'
+              : verdictLabel(verdict)}
+          </span>
+        )}
         <span className={styles.verdictText}>
           {entry.sourceWorkflow && verdict.status === 'no-workflow'
             ? `${entry.sourceWorkflow.title} is available in the workflow library.`
@@ -201,6 +223,7 @@ export function CardVerdict({
           </button>
         ) : null}
       </p>
+      {needsParts && partsOpen ? <MissingParts missing={verdict.missing} id={partsId} /> : null}
     </>
   );
 }

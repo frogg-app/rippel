@@ -62,6 +62,9 @@ export interface UseCatalogueOptions {
   enabled: boolean;
 }
 
+/** Each backend's last catalogue, past unmount; see `shown` below. Per api, as in useModelLibrary. */
+const lastCatalogue = new WeakMap<object, Map<Uuid, ModelCatalogEntry[]>>();
+
 export function useCatalogue({
   api,
   backendId,
@@ -81,7 +84,14 @@ export function useCatalogue({
    * something finish, so a reload of the same backend keeps painting what it
    * already had until the new answer lands.
    */
-  const shown = useRef<{ backendId: Uuid; entries: ModelCatalogEntry[] } | null>(null);
+  // Kept at module level too, so returning to the page paints the last list
+  // immediately and refreshes it underneath.
+  const shown = useRef<{ backendId: Uuid; entries: ModelCatalogEntry[] } | null>(
+    (() => {
+      const entries = backendId ? lastCatalogue.get(api)?.get(backendId) : undefined;
+      return backendId && entries ? { backendId, entries } : null;
+    })(),
+  );
 
   /**
    * How many fill-in polls this backend has had. Bounded: the sweep takes about
@@ -115,17 +125,17 @@ export function useCatalogue({
 
     const controller = new AbortController();
     let stopped = false;
-    setState(
-      shown.current?.backendId === backendId
-        ? { kind: 'ready', entries: shown.current.entries, pending: 0 }
-        : { kind: 'loading' },
-    );
+    const known =
+      shown.current?.backendId === backendId ? shown.current.entries : lastCatalogue.get(api)?.get(backendId);
+    setState(known ? { kind: 'ready', entries: known, pending: 0 } : { kind: 'loading' });
 
     api
       .catalogue(backendId, controller.signal)
       .then(({ entries, pending }) => {
         if (stopped) return;
         shown.current = { backendId, entries };
+        if (!lastCatalogue.has(api)) lastCatalogue.set(api, new Map());
+        lastCatalogue.get(api)!.set(backendId, entries);
         setState({ kind: 'ready', entries, pending });
       })
       .catch((cause: unknown) => {

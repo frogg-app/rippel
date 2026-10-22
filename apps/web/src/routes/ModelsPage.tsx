@@ -40,6 +40,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { setTargetBackend, useTargetBackend } from '../shell/useTargetBackend';
+import { FindPartContext, type PartSearch } from '../models/MissingParts';
 import type { Model, ModelCatalogEntry, ModelType, Uuid } from '@comfy/shared';
 import { useAuth } from '../auth/context';
 import { modelsApi, type ModelsApi } from '../lib/api-models';
@@ -95,7 +96,7 @@ type Tab = 'installed' | 'discover' | 'downloads' | 'storage';
 const TABS: readonly Tab[] = ['installed', 'discover', 'downloads', 'storage'];
 
 /** The default, and the one spelling that is left out of the URL entirely. */
-const DEFAULT_TAB: Tab = 'installed';
+const DEFAULT_TAB: Tab = 'discover';
 
 /**
  * Which type both tabs open on.
@@ -119,6 +120,9 @@ export interface ModelsPageProps {
   storageApi?: StorageApi;
 }
 
+/** The Models URL last left, per api; see `restoring` in ModelsPage. */
+const lastSearch = new WeakMap<ModelsApi, string>();
+
 export function ModelsPage({ api = modelsApi, storageApi: storage = storageApi }: ModelsPageProps = {}) {
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
@@ -126,13 +130,27 @@ export function ModelsPage({ api = modelsApi, storageApi: storage = storageApi }
   const library = useModelLibrary(api);
 
   const [params, setParams] = useSearchParams();
+
+  // Coming back to Models from elsewhere lands on the tab, search and filters
+  // left behind, not a fresh page: the sidebar link is a bare /models, so a
+  // bare URL with a remembered one is restored. Per api, as the data caches are.
+  const restoring = useRef(params.toString() === '' && Boolean(lastSearch.get(api)));
+  useEffect(() => {
+    if (restoring.current) {
+      restoring.current = false;
+      setParams(new URLSearchParams(lastSearch.get(api)!), { replace: true });
+      return;
+    }
+    lastSearch.set(api, params.toString());
+  }, [api, params, setParams]);
+
   const tab = tabFromParams(params);
   const setTab = useCallback(
     (next: Tab) => {
       setParams(
         (current) => {
           const updated = new URLSearchParams(current);
-          // Installed is the default, so it is expressed by the absence of the
+          // Discover is the default, so it is expressed by the absence of the
           // parameter: `/models` and `/models?tab=installed` are the same page,
           // and the plain URL is the one worth having in the address bar.
           if (next === DEFAULT_TAB) updated.delete('tab');
@@ -293,6 +311,29 @@ export function ModelsPage({ api = modelsApi, storageApi: storage = storageApi }
     [setParams],
   );
 
+  // "Find" on a missing part: a search for it, with its type chosen, since
+  // Discover leaves parts out otherwise. Tags and intent are cleared because a
+  // filter for SDXL models would hide the very text encoder being looked for.
+  const findPart = useCallback(
+    (search: PartSearch) => {
+      // One URL write: two setParams in one tick each start from the same
+      // URL, so the second would undo the first.
+      setParams((current) => {
+        const next = writeDiscover(current, {
+          ...readDiscover(current),
+          q: search.q,
+          type: search.type,
+          intent: 'all',
+          include: [],
+          exclude: [],
+        });
+        next.delete('tab'); // Discover is the default tab.
+        return next;
+      });
+    },
+    [setParams],
+  );
+
   // Filters are per backend: "SDXL" may not be a family the next machine's
   // catalogue even has, and a stale tag would silently show nothing. The
   // verdict is per backend too — a model that runs on one machine may be
@@ -429,6 +470,7 @@ export function ModelsPage({ api = modelsApi, storageApi: storage = storageApi }
         <h1 className={`display ${styles.title}`}>Models</h1>
 
         <nav className={styles.tabs} aria-label="Models sections">
+          <TabButton id="discover" active={tab} onSelect={setTab} label="Discover" />
           <TabButton
             id="installed"
             active={tab}
@@ -436,7 +478,6 @@ export function ModelsPage({ api = modelsApi, storageApi: storage = storageApi }
             label="Installed"
             count={library.models.length}
           />
-          <TabButton id="discover" active={tab} onSelect={setTab} label="Discover" />
           <TabButton
             id="downloads"
             active={tab}
@@ -454,6 +495,7 @@ export function ModelsPage({ api = modelsApi, storageApi: storage = storageApi }
 
       </header>
 
+      <FindPartContext.Provider value={findPart}>
       <div className={styles.body}>
         {library.loading ? (
           <div className={styles.loading} role="status">
@@ -729,6 +771,7 @@ export function ModelsPage({ api = modelsApi, storageApi: storage = storageApi }
           </div>
         )}
       </div>
+      </FindPartContext.Provider>
 
       {isAdmin ? <HostApproval installs={installs.live} api={api} /> : null}
       {sheet ? (
