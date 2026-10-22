@@ -59,12 +59,12 @@ export function BackendPill({
     );
   }
 
-  const status = backend.enabled ? backend.status : 'offline';
+  const status = pillStatus(backend);
   const memory = memoryReading(backend);
   if (backends && onSelect) return (
     <Dropdown value={backend.id} onChange={onSelect} aria-label="Target backend"
       className={styles.pill} menuWidth={280} align="end"
-      options={backends.map(item => ({ value: item.id, label: `${item.name}${!item.enabled ? ' · disabled' : item.status !== 'online' ? ' · offline' : ''}`, disabled: !item.enabled || item.status !== 'online' }))}
+      options={backends.map(item => ({ value: item.id, label: `${item.name}${!item.enabled ? ' · disabled' : item.status !== 'online' ? ` · ${pillStatus(item) === 'stopped' ? 'engine stopped' : 'offline'}` : ''}`, disabled: !item.enabled || item.status !== 'online' }))}
       leading={<span className={styles.dot} data-status={status} />}>
       {memory && status === 'online' ? <span className={`mono ${styles.memory}`}>{memory.text} {memory.isOperatorBudget ? 'budget' : 'reported'}</span> : null}
     </Dropdown>
@@ -78,7 +78,9 @@ export function BackendPill({
       title={
         status === 'online'
           ? memory?.title ?? `${backend.name} is online.`
-          : `${backend.name} is ${backend.enabled ? 'not answering' : 'disabled'}. Jobs are never dispatched to it.`
+          : status === 'stopped'
+            ? `${backend.name} is on, but its engine (ComfyUI) is stopped. Start it from the rippel agent on that machine, or in Settings → Backends.`
+            : `${backend.name} is ${backend.enabled ? 'not answering' : 'disabled'}. Jobs are never dispatched to it.`
       }
     >
       <span className={styles.dot} data-status={status} />
@@ -93,9 +95,20 @@ export function BackendPill({
           </span>
         </span>
       ) : (
-        <span className={styles.memory}>{backend.enabled ? 'offline' : 'disabled'}</span>
+        <span className={styles.memory}>{!backend.enabled ? 'disabled' : status === 'stopped' ? 'engine stopped' : 'offline'}</span>
       )}
       {extraCount > 0 ? <span className={styles.extra}>+{extraCount}</span> : null}
     </div>
   );
+}
+
+/**
+ * 'stopped' when the machine's agent is checking in but ComfyUI is not
+ * answering — the usual state of a PC whose owner has not pressed Start, and
+ * a very different thing from a machine that is off.
+ */
+function pillStatus(backend: Backend): Backend['status'] | 'stopped' {
+  if (!backend.enabled) return 'offline';
+  if (backend.status !== 'online' && backend.agentOnline) return 'stopped';
+  return backend.status;
 }

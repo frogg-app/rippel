@@ -60,6 +60,12 @@ export interface Backend {
   lastSeenAt: string | null;
   /** How many of our jobs this backend is currently running or holding. */
   queueDepth: number;
+  /**
+   * Whether the rippel agent on that machine is checking in, when one manages
+   * it (null when none does). Online here with the backend offline means the
+   * machine is up and its engine is stopped, not that the machine is gone.
+   */
+  agentOnline?: boolean | null;
 }
 
 // ---------------------------------------------------------------- models

@@ -344,8 +344,41 @@ export function makeDeploymentRoutes(deps: DeployDeps = {}) {
           body.comfy ? JSON.stringify(body.comfy) : null,
         ],
       );
+      if (body.comfy?.installed && !body.comfy.helperInstalled) void ensureHelper(row.id);
       return { ok: true, deploymentId: updated?.id ?? row.id };
     });
+
+    /**
+     * File access is part of a working machine, not an extra, so the helper goes
+     * on by itself once ComfyUI is there — after an engine install, or on a
+     * machine set up before this existed. At most one try per machine every few
+     * minutes, and never by restarting a ComfyUI that is busy generating.
+     */
+    const helperTried = new Map<string, number>();
+    async function ensureHelper(id: string) {
+      if (!env.comfyStorageToken) return;
+      const last = helperTried.get(id) ?? 0;
+      if (Date.now() - last < 10 * 60_000) return;
+      helperTried.set(id, Date.now());
+      try {
+        const row = await load(id);
+        if (!row) return;
+        if (row.comfy?.running && row.backend_id) {
+          const busy = await db.query(
+            `SELECT 1 FROM jobs WHERE backend_id = $1 AND status IN ('dispatched','running','uploading') LIMIT 1`,
+            [row.backend_id],
+          );
+          if (busy.length) {
+            helperTried.delete(id);
+            return;
+          }
+        }
+        await agent.installHelper(targetOf(row), await helperFiles(), env.comfyStorageToken);
+        app.log.info({ deployment: id }, 'installing the storage helper automatically');
+      } catch (cause) {
+        app.log.warn({ deployment: id, err: cause }, 'automatic storage helper install failed');
+      }
+    }
 
     // ------------------------------------------------------------ pairing
 

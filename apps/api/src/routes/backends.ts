@@ -16,6 +16,7 @@ interface BackendRow {
   vram_limit_mb: number | null;
   last_seen_at: Date | null;
   queue_depth: string;
+  agent_online: boolean | null;
 }
 
 export default async function backendRoutes(app: FastifyInstance) {
@@ -31,7 +32,8 @@ export default async function backendRoutes(app: FastifyInstance) {
               b.vram_limit_mb, b.last_seen_at,
               count(j.id) FILTER (
                 WHERE j.status IN ('queued', 'dispatched', 'running', 'uploading')
-              ) AS queue_depth
+              ) AS queue_depth,
+              (SELECT bool_or(d.status = 'online') FROM deployments d WHERE d.backend_id = b.id) AS agent_online
          FROM backends b
          LEFT JOIN jobs j ON j.backend_id = b.id
         GROUP BY b.id
@@ -53,6 +55,7 @@ export default async function backendRoutes(app: FastifyInstance) {
       vramLimitMb: row.vram_limit_mb,
       lastSeenAt: row.last_seen_at?.toISOString() ?? null,
       queueDepth: Number(row.queue_depth),
+      agentOnline: row.agent_online,
     }));
 
     return { backends };

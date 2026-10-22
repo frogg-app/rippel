@@ -105,3 +105,8 @@
 }
 
 button.pill { color: var(--text-2); cursor: pointer; font-size: var(--text-sm); }
+
+/* The machine is up and its engine is not: a thing to start, not a thing lost. */
+.dot[data-status='stopped'] {
+  background: var(--warn);
+}

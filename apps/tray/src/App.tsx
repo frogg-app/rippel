@@ -437,7 +437,7 @@ function Logs({ onBack }: { onBack: () => void }) {
   const [logs, setLogs] = useState<AgentLogs | null>(null);
   const [which, setWhich] = useState<'engine' | 'agent'>('engine');
   const [error, setError] = useState<string | null>(null);
-  const end = useRef<HTMLDivElement>(null);
+  const box = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     let live = true;
@@ -453,7 +453,11 @@ function Logs({ onBack }: { onBack: () => void }) {
     };
   }, []);
 
-  useEffect(() => end.current?.scrollIntoView({ block: 'end' }), [logs, which]);
+  // Scroll the log box alone. scrollIntoView would also scroll the window,
+  // which in a fixed-size panel pushes the header and Back off screen.
+  useEffect(() => {
+    if (box.current) box.current.scrollTop = box.current.scrollHeight;
+  }, [logs, which]);
   const lines = logs?.[which] ?? [];
 
   return (
@@ -470,7 +474,7 @@ function Logs({ onBack }: { onBack: () => void }) {
           ))}
         </div>
       </div>
-      <div className="logBox mono">
+      <div className="logBox mono" ref={box}>
         {error ? <p className="muted">{error}</p> : null}
         {lines.length === 0 && !error ? <p className="muted">Nothing logged yet.</p> : null}
         {lines.map((line, i) => (
@@ -478,7 +482,6 @@ function Logs({ onBack }: { onBack: () => void }) {
             {line}
           </div>
         ))}
-        <div ref={end} />
       </div>
     </main>
   );

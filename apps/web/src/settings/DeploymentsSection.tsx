@@ -575,7 +575,7 @@ function DeploymentCard({
           </ReasonedButton>
         )}
 
-        {comfy?.installed && !comfy.helperReady ? (
+        {comfy?.installed && (!comfy.helperInstalled || (comfy.running && !comfy.helperReady)) ? (
           <ReasonedButton
             className={shared.action}
             reason={busyReason ?? offlineReason}
@@ -724,12 +724,14 @@ function ComfySummary({ deployment }: { deployment: Deployment }) {
       <div>
         <dt>File access</dt>
         <dd>
-          <span data-state={comfy.helperReady ? 'on' : comfy.helperInstalled ? 'warn' : 'off'} className={styles.pip} />
+          {/* The helper lives inside ComfyUI, so it can only answer while the
+              engine runs: installed and stopped is fine, not a fault. */}
+          <span data-state={comfy.helperReady || (comfy.helperInstalled && !comfy.running) ? 'on' : comfy.helperInstalled ? 'warn' : 'off'} className={styles.pip} />
           {comfy.helperReady
             ? 'ready'
             : comfy.helperInstalled
-              ? 'restart engine to enable'
-              : 'not installed'}
+              ? comfy.running ? 'restart engine to enable' : 'ready when the engine starts'
+              : 'setting up…'}
         </dd>
       </div>
       <div>
