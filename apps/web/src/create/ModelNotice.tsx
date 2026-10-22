@@ -34,7 +34,7 @@ import { NOT_SUPPORTED, absentParts, joinParts } from './modelReasons';
 import { WorkflowSuggestions } from '../models/WorkflowSuggestions';
 import { modeOfKind } from './form';
 import { invalidateReadiness } from './useReadiness';
-import { Button } from '../components/Button';
+import { Button, buttonClass } from '../components/Button';
 import { DeleteButton } from '../components/ConfirmDelete';
 import styles from './modelPicker.module.css';
 
@@ -238,11 +238,11 @@ function PartRow({
         ) : state.kind === 'message' ? (
           <span role={state.error ? 'alert' : undefined}>{state.text}</span>
         ) : part.offer && isAdmin ? (
-          <button type="button" className={styles.getIt} disabled={state.kind === 'starting'} onClick={install}>
+          <Button variant="primary" busy={state.kind === 'starting'} onClick={install}>
             {state.kind === 'starting' ? 'Starting…' : `Install ${part.offer.name}${part.offer.size ? ` (${part.offer.size})` : ''}`}
-          </button>
+          </Button>
         ) : null}
-        <a className={styles.link} href={findPartHref(search)}>
+        <a className={buttonClass('quiet')} href={findPartHref(search)}>
           Find on Models
         </a>
       </span>
@@ -423,7 +423,7 @@ export function ProblemFix({
     );
   } else {
     action = (
-      <a className={styles.link} href={pickHref} title={problem.detail}>
+      <a className={buttonClass('secondary')} href={pickHref} title={problem.detail}>
         Pick another model
       </a>
     );

@@ -291,7 +291,7 @@ describe('CreatePage', () => {
     expect(screen.getByText(/1 model hidden/i)).toBeInTheDocument();
 
     // ...and it can still be brought back, blocked, to answer for itself.
-    await user.click(screen.getByRole('button', { name: /show anyway/i }));
+    await user.click(screen.getByRole('button', { name: /show hidden/i }));
     const blocked = screen.getByRole('radio', { name: /Mystery Mix/i });
     expect(blocked).toHaveAttribute('aria-disabled', 'true');
     await user.click(blocked);
@@ -1058,7 +1058,7 @@ describe('extra styles', () => {
     // Hidden, but counted honestly and reachable. (The model grid has a
     // reveal of its own, hence scoping this to the picker.)
     const picker = screen.getByRole('dialog', { name: /add an extra style/i });
-    await user.click(within(picker).getByRole('button', { name: /show anyway/i }));
+    await user.click(within(picker).getByRole('button', { name: /show hidden/i }));
     expect(within(list).getByText('Hyper SD15 1step LoRA')).toBeInTheDocument();
   });
 

@@ -57,6 +57,7 @@ import { type LoraEntry, matchesQuery, partitionLoras } from './loras';
 import { VOCABULARY } from '../models/vocabulary';
 import { findStylesHref } from './discoverLinks';
 import { familyWords } from './families';
+import { Button } from '../components/Button';
 import styles from './loraSection.module.css';
 
 const DEFAULT_LORA_WEIGHT = 0.7;
@@ -530,15 +531,10 @@ function LoraPickerPopup({
           installed is fine, not saying so is not. */}
       {partition.hidden.length > 0 ? (
         <p className={styles.popupFoot}>
-          {partition.hidden.length} trained for another model.{' '}
-          <button
-            type="button"
-            className={styles.link}
-            aria-expanded={revealed}
-            onClick={() => setRevealed((current) => !current)}
-          >
-            {revealed ? 'Hide again' : 'Show anyway'}
-          </button>
+          <span>{partition.hidden.length} trained for another model</span>
+          <Button variant="quiet" aria-label={revealed ? 'Hide the hidden styles' : 'Show hidden styles'} aria-expanded={revealed} onClick={() => setRevealed((current) => !current)}>
+            {revealed ? 'Hide' : 'Show'}
+          </Button>
         </p>
       ) : null}
     </div>

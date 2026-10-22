@@ -319,6 +319,10 @@
    read as an aside rather than as a cramped last row. */
 .popupFoot {
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gap-xs);
   margin: 0;
   padding: 8px var(--dropdown-option-pad) 4px;
   border-top: 1px solid var(--line);
