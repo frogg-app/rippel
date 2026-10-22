@@ -29,6 +29,7 @@ import modelInstallRoutes from './models/routes.js';
 import modelWorkflowRoutes from './models/workflow-routes.js';
 import fixRoutes from './models/fix-routes.js';
 import workflowLibraryRoutes from './library/workflows/routes.js';
+import addedWorkflowRoutes from './models/added-workflows.js';
 import workflowCapabilityRoutes from './workflows/routes.js';
 import jobRoutes from './orchestrator/routes.js';
 import libraryRoutes from './library/routes.js';
@@ -66,6 +67,7 @@ await app.register(
     await api.register(modelWorkflowRoutes);
     await api.register(fixRoutes);
     await api.register(workflowLibraryRoutes);
+    await api.register(addedWorkflowRoutes);
     await api.register(workflowCapabilityRoutes);
     await api.register(jobRoutes);
     await api.register(libraryRoutes);

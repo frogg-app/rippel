@@ -4,7 +4,7 @@
  */
 import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
-import { classifyWeightKeys, readSafetensorsKeys } from './weights-layout.js';
+import { classifyWeightKeys, familyFromWeightKeys, readSafetensorsKeys } from './weights-layout.js';
 
 const fixture = (name: string) =>
   (JSON.parse(readFileSync(new URL(`./__fixtures__/${name}`, import.meta.url), 'utf8')) as { keys: string[] }).keys;
@@ -66,5 +66,25 @@ describe('readSafetensorsKeys', () => {
     const fetchImpl = served({});
     expect(await readSafetensorsKeys('https://hf.co/x/model.ckpt', fetchImpl)).toBeNull();
     expect(fetchImpl).not.toHaveBeenCalled();
+  });
+});
+
+describe('familyFromWeightKeys', () => {
+  it('reads LTX-Video off the official single-file build', () => {
+    expect(familyFromWeightKeys(fixture('ltxv-single-file-keys.json'))).toBe('ltx-video');
+  });
+  it('reads the families ComfyUI detects from their own block names', () => {
+    expect(familyFromWeightKeys(['double_blocks.0.img_attn.qkv.weight', 'single_blocks.0.linear1.weight', 'img_in.weight', 'guidance_in.in_layer.weight'])).toBe('flux.1');
+    expect(familyFromWeightKeys(['model.diffusion_model.double_blocks.0.x', 'model.diffusion_model.single_blocks.0.x', 'model.diffusion_model.img_in.weight', 'model.diffusion_model.txt_in.individual_token_refiner.blocks.0.x'])).toBe('hunyuan-video');
+    expect(familyFromWeightKeys(['patch_embedding.weight', 'head.modulation', 'blocks.0.self_attn.q.weight'])).toBe('wan');
+    expect(familyFromWeightKeys(['transformer_blocks.0.img_mod.1.weight', 'txt_norm.weight', 'img_in.weight'])).toBe('qwen-image');
+    expect(familyFromWeightKeys(['conditioner.embedders.1.model.ln_final.weight', 'model.diffusion_model.input_blocks.0.0.weight'])).toBe('sdxl');
+    expect(familyFromWeightKeys(['joint_blocks.0.x_block.attn.qkv.weight', 'x_embedder.proj.weight'])).toBe('sd3');
+  });
+  it('says nothing when the names could be two things', () => {
+    expect(familyFromWeightKeys(['double_blocks.0.x', 'single_blocks.0.x', 'img_in.weight', 'double_stream_modulation_img.lin.weight'])).toBeNull();
+    expect(familyFromWeightKeys(['model.diffusion_model.input_blocks.0.0.weight', 'model.diffusion_model.label_emb.0.0.weight', 'model.diffusion_model.input_blocks.1.0.time_stack.0.weight'])).toBeNull();
+    expect(familyFromWeightKeys(['some.unknown.weight'])).toBeNull();
+    expect(familyFromWeightKeys([])).toBeNull();
   });
 });

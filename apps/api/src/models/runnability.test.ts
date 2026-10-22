@@ -388,13 +388,27 @@ describe('runnabilityFor', () => {
     const verdict = runnabilityFor({
       ...base,
       installed: true,
-      filename: 'minimax_h3_ref2va_pruned_int8_convrot.safetensors',
+      filename: 'mystery_dit_pruned_int8.safetensors',
       type: 'checkpoint',
       catalogueBase: null,
       folder: 'diffusion_models',
     });
     expect(verdict.status).toBe('no-workflow');
     expect(verdict.detail).toContain('in the right folder');
+  });
+
+  it('names a MiniMax file by its family rather than calling it unrecognised', () => {
+    const verdict = runnabilityFor({
+      ...base,
+      installed: true,
+      filename: 'minimax_h3_ref2va_pruned_int8_convrot.safetensors',
+      type: 'checkpoint',
+      catalogueBase: null,
+      folder: 'diffusion_models',
+    });
+    expect(verdict.family).toBe('minimax');
+    expect(verdict.status).toBe('no-workflow');
+    expect(verdict.detail).toContain('MiniMax');
   });
 
   it('does not accuse the backend of hiding a file it lists under a subfolder', () => {

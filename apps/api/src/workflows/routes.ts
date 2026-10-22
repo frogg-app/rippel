@@ -112,19 +112,54 @@ const PAYLOAD: WorkflowCapabilities = buildWorkflowCapabilities();
 const BODY = JSON.stringify(PAYLOAD);
 const ETAG = `"${createHash('sha256').update(BODY).digest('base64url').slice(0, 27)}"`;
 
+/**
+ * Families only a tested library import runs (a workflow added for a MiniMax
+ * file), merged into the registry's map. Without them the Create screen hides
+ * such a model before its readiness check has even answered.
+ */
+export async function withLibraryFamilies(
+  payload: WorkflowCapabilities,
+  ready: () => Promise<{ family: string; capability: WorkflowCapabilityOffer['capability']; id: string; title: string }[]>,
+): Promise<WorkflowCapabilities> {
+  let rows: Awaited<ReturnType<typeof ready>> = [];
+  try {
+    rows = await ready();
+  } catch {
+    return payload;
+  }
+  if (rows.length === 0) return payload;
+  const families = payload.families.map((entry) => ({ ...entry, offers: [...entry.offers] }));
+  for (const row of rows) {
+    const family = normalizeBaseModel(row.family);
+    if (!family) continue;
+    let entry = families.find((candidate) => candidate.family === family);
+    if (!entry) {
+      entry = { family, label: row.family, offers: [] };
+      families.push(entry);
+    }
+    if (entry.offers.some((offer) => offer.capability === row.capability)) continue;
+    entry.offers.push({ capability: row.capability, templateId: `library-${row.id}`, templateLabel: row.title, isFallback: false });
+  }
+  return { ...payload, families: families.sort((a, b) => a.family.localeCompare(b.family)) };
+}
+
 export default async function workflowCapabilityRoutes(app: FastifyInstance) {
   app.get('/workflows', { onRequest: [app.requireAuth] }, async (req, reply) => {
+    const { listReadyImports } = await import('../library/workflows/store.js');
+    const payload = await withLibraryFamilies(PAYLOAD, listReadyImports);
+    const body = payload === PAYLOAD ? BODY : JSON.stringify(payload);
+    const etag = payload === PAYLOAD ? ETAG : `"${createHash('sha256').update(body).digest('base64url').slice(0, 27)}"`;
     reply.header('cache-control', 'private, max-age=300, must-revalidate');
-    reply.header('etag', ETAG);
+    reply.header('etag', etag);
 
-    // A conditional request costs nothing to answer and the body never changes
-    // while the process lives, so this is the common case after first load.
+    // A conditional request costs nothing to answer, and is the common case
+    // after first load.
     const inm = req.headers['if-none-match'];
-    if (inm && inm.split(',').some((tag) => tag.trim() === ETAG)) {
+    if (inm && inm.split(',').some((tag) => tag.trim() === etag)) {
       return reply.code(304).send();
     }
 
     reply.header('content-type', 'application/json; charset=utf-8');
-    return reply.send(BODY);
+    return reply.send(body);
   });
 }

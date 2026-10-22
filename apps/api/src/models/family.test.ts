@@ -247,3 +247,14 @@ describe('next generations under an old name', () => {
     expect(familyFromFilename('flux1-dev.safetensors')).toBe('flux.1');
   });
 });
+
+describe('families with no built-in graph', () => {
+  it('names MiniMax, Qwen-Image and HiDream files', () => {
+    expect(familyFromFilename('minimax_h3_ref2va_pruned_int8_convrot.safetensors')).toBe('minimax');
+    expect(familyFromFilename('qwen_image_fp8_e4m3fn.safetensors')).toBe('qwen-image');
+    expect(familyFromFilename('hidream_i1_full_fp8.safetensors')).toBe('hidream');
+  });
+  it('leaves the Qwen text encoder alone', () => {
+    expect(familyFromFilename('qwen_2.5_vl_7b_fp8_scaled.safetensors')).toBeNull();
+  });
+});

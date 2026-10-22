@@ -24,6 +24,7 @@
  * The header is the first 8 + N bytes of the file, so two small range requests
  * answer the question for a 7.7 GB download without downloading it.
  */
+import { FAMILIES, type ModelFamily } from './family.js';
 
 /**
  *  - `bundled`: diffusion weights and a VAE in one file — what
@@ -115,3 +116,38 @@ export const LAYOUT_WORDS = {
       'Move it to the diffusion_models folder; it also needs an image decoder.',
   },
 } as const;
+
+/**
+ * Which family the tensor names belong to, when they say so unambiguously.
+ *
+ * Only names are read, never shapes, so a family whose sizes share one set of
+ * names (Wan 2.2 5B and 14B, SD 2.0 and 2.1) is answered at the level the names
+ * can settle, and anything that could be two things is null. A wrong family
+ * routes a file to a graph that runs and makes noise; null only says "unknown".
+ * The markers are the ones ComfyUI's own `model_detection.py` keys on.
+ */
+export function familyFromWeightKeys(keys: readonly string[]): ModelFamily | null {
+  if (keys.length === 0) return null;
+  const has = (prefix: string) => keys.some((key) => key.startsWith(prefix) || key.startsWith(`model.diffusion_model.${prefix}`));
+  // A whole checkpoint names its text encoder, which separates the SD lines.
+  if (keys.some((key) => key.startsWith('conditioner.embedders.1.'))) return FAMILIES.sdxl;
+  if (keys.some((key) => key.startsWith('cond_stage_model.transformer.'))) return FAMILIES.sd15;
+  if (keys.some((key) => key.startsWith('cond_stage_model.model.'))) return FAMILIES.sd2;
+
+  // Audio-video LTX-2 shares LTX-Video's names and adds its own.
+  if (has('adaln_single.') && has('patchify_proj.')) return has('audio_') || has('av_') ? null : FAMILIES.ltxVideo;
+  if (has('joint_blocks.') && has('x_embedder.')) return FAMILIES.sd3;
+  if (has('double_stream_blocks.')) return FAMILIES.hidream;
+  if (has('transformer_blocks.0.img_mod.') && has('txt_norm.')) return FAMILIES.qwenImage;
+  if (has('patch_embedding.') && has('head.modulation') && has('blocks.0.self_attn.')) return FAMILIES.wan;
+  if (has('double_blocks.') && has('single_blocks.')) {
+    // HunyuanVideo has FLUX's block names plus a token refiner; FLUX.2 and
+    // Chroma add their own modulation layers; HunyuanImage adds a ByT5 input.
+    if (has('double_stream_modulation_img') || has('distilled_guidance_layer.') || has('byt5_in.')) return null;
+    if (has('txt_in.individual_token_refiner.')) return FAMILIES.hunyuanVideo;
+    return has('img_in.') ? FAMILIES.flux : null;
+  }
+  // A UNet: SDXL's has a class embedding (label_emb); SVD's adds temporal layers.
+  if (has('input_blocks.') && has('label_emb.')) return keys.some((key) => key.includes('time_stack.') || key.includes('time_mixer')) ? null : FAMILIES.sdxl;
+  return null;
+}

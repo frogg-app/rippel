@@ -553,6 +553,9 @@ const FAMILY_NAMES: Record<string, string> = {
   'ltx-video': 'LTX-Video',
   svd: 'Stable Video Diffusion',
   wan: 'WAN',
+  'qwen-image': 'Qwen-Image',
+  minimax: 'MiniMax',
+  hidream: 'HiDream',
 };
 
 export function familyName(family: string): string {

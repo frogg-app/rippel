@@ -74,6 +74,15 @@ export const FAMILIES = {
    * is the honest outcome.
    */
   wan22Ti2v5b: 'wan2.2-ti2v-5b',
+  /**
+   * Families rippel ships no graph for. Naming them is still worth it: the
+   * panel can say "MiniMax" instead of "Unclassified", and the workflow
+   * suggestions search the library by the family's own words. They resolve to
+   * no built-in template, which is the honest outcome until one is added.
+   */
+  qwenImage: 'qwen-image',
+  minimax: 'minimax',
+  hidream: 'hidream',
 } as const;
 
 export type ModelFamily = (typeof FAMILIES)[keyof typeof FAMILIES];
@@ -183,6 +192,12 @@ const RULES: readonly Rule[] = [
     pattern: /\bti2v\b(?=.*\b5b\b)|\b5b\b(?=.*\bti2v\b)/,
     strength: 'strong',
   },
+
+  // ---------------------------------------------------------------- no built-in graph
+  // "qwen" alone is the text encoder (qwen_2.5_vl_7b); only "qwen image" is the model.
+  { family: FAMILIES.qwenImage, pattern: /\bqwen image\b|\bqwenimage\b/, strength: 'strong' },
+  { family: FAMILIES.minimax, pattern: /\bminimax\b|\bhailuo\b/, strength: 'strong' },
+  { family: FAMILIES.hidream, pattern: /\bhidream\b/, strength: 'strong' },
 ];
 
 /**
@@ -227,6 +242,11 @@ const CATALOGUE_BASES: Record<string, ModelFamily | null> = {
   wan22: FAMILIES.wan,
   wan22ti2v5b: FAMILIES.wan22Ti2v5b,
   wanvideo: FAMILIES.wan,
+  qwenimage: FAMILIES.qwenImage,
+  minimax: FAMILIES.minimax,
+  minimaxh3: FAMILIES.minimax,
+  hailuo: FAMILIES.minimax,
+  hidream: FAMILIES.hidream,
   // Not families. Present so they resolve to "no family" instead of falling
   // through to a guess made from a filename like `4x-UltraSharp`.
   upscale: null,

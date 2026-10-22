@@ -15,7 +15,7 @@ import type { Uuid } from '@comfy/shared';
 import { query } from '../db.js';
 import { knownLayouts } from './url-layout.js';
 import { UNLOADABLE_REASON } from './install-guard.js';
-import { classifyWeightKeys, readSafetensorsKeys, WEIGHTS_LAYOUTS, type WeightsLayout } from './weights-layout.js';
+import { classifyWeightKeys, familyFromWeightKeys, readSafetensorsKeys, WEIGHTS_LAYOUTS, type WeightsLayout } from './weights-layout.js';
 
 const FAILED_PROBE_TTL_MS = 10 * 60_000;
 const failedAt = new Map<Uuid, number>();
@@ -101,6 +101,13 @@ async function learn(id: Uuid, url: string): Promise<WeightsLayout> {
   }
   const layout = classifyWeightKeys(keys);
   await remember(id, layout);
+  // The same header names the family more surely than any filename. Fills a
+  // gap only, like every other family source: a family already on the row came
+  // from an install record or a person.
+  const family = familyFromWeightKeys(keys);
+  if (family) {
+    await query('UPDATE models SET base_model = $2 WHERE id = $1 AND base_model IS NULL', [id, family]).catch(() => undefined);
+  }
   return layout;
 }
 

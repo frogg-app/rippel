@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { addedVerdicts } from '../models/added-workflows.js';
 import { z } from 'zod';
 import { query } from '../db.js';
 import { folderOfInstalled, foldersOfInstalled } from '../workflows/folders.js';
@@ -284,11 +285,16 @@ async function verdicts(models: Model[]): Promise<Record<Uuid, ModelRunnability>
     models.filter((model) => model.type === 'checkpoint').map((model) => model.id),
   ).catch(() => new Map());
 
+  // A workflow added for the model, and tested on that machine, runs it
+  // whatever the built-in registry says.
+  const added = await addedVerdicts(models.map((model) => model.id))
+    .catch(() => new Map<Uuid, Map<Uuid, ModelRunnability>>());
+
   const out: Record<Uuid, ModelRunnability> = {};
   for (const model of models) {
     for (const backend of backends) {
       if (!model.backendIds.includes(backend.id)) continue;
-      const verdict = runnabilityFor({
+      const measured = runnabilityFor({
         filename: model.filename,
         type: model.type,
         // `base_model` is our own canonical spelling by this point, which the
@@ -307,6 +313,8 @@ async function verdicts(models: Model[]): Promise<Record<Uuid, ModelRunnability>
         installed: true,
         layout: layouts.get(model.id) ?? null,
       });
+      const viaAdded = added.get(model.id)?.get(backend.id);
+      const verdict = viaAdded && STATUS_RANK[viaAdded.status] < STATUS_RANK[measured.status] ? viaAdded : measured;
       const held = out[model.id];
       if (!held || STATUS_RANK[verdict.status] < STATUS_RANK[held.status]) out[model.id] = verdict;
     }

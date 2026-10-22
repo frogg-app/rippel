@@ -13,6 +13,7 @@ import { verifiedFile } from '../../models/download-metadata.js';
 import { planOperation } from '../../models/operations.js';
 import { startWorkflowTest } from './tests.js';
 import { assessWorkflow } from './status.js';
+import { rebindCheckpoint } from './rebind.js';
 
 const selection = z.object({
   backendId: z.string().uuid(), name: z.string().min(1), version: z.string().min(1),
@@ -23,7 +24,8 @@ const selection = z.object({
 async function backend(id: string) {
   return queryOne<{ id: string; base_url: string }>('SELECT id, base_url FROM backends WHERE id = $1', [id]);
 }
-async function prepare(input: z.infer<typeof selection>) {
+/** `checkpoint`: load this installed file instead of the workflow's own model. */
+export async function prepare(input: z.infer<typeof selection> & { checkpoint?: string }) {
   const host = await backend(input.backendId);
   if (!host) throw new Error('No such backend.');
   const catalogue = await workflowLibrary.catalogue(host.id, host.base_url);
@@ -40,6 +42,9 @@ async function prepare(input: z.infer<typeof selection>) {
   const specs = await objectInfoFor(host.base_url) as ConversionSpecs;
   const converted = convertWorkflow(source, specs);
   const mapping = mapManifest(converted, specs, entry, { id: 'preview', capability: input.capability, family: input.family });
+  if (input.checkpoint && !rebindCheckpoint(converted.graph, mapping, input.checkpoint)) {
+    throw new Error('This workflow has no single model input to use the file with.');
+  }
   const stats = await new ComfyClient(host.base_url).systemStats();
   const memoryBytes = stats.system?.ram_total === undefined ? undefined : stats.system.ram_total + Math.max(0, ...(stats.devices ?? []).map((device) => device.vram_total ?? 0));
   const assessment = assessWorkflow({ openSource: entry.openSource, graph: converted.graph,
