@@ -1732,6 +1732,11 @@
   cursor: help;
   font-family: inherit;
   text-align: left;
+  /* The wrap does the positioning. Absolute here as well left the wrap
+     zero-width, so "STYLE ADD-ON" broke over three lines into a circle. */
+  position: static;
+  display: block;
+  white-space: nowrap;
 }
 
 .cardType:focus-visible {
