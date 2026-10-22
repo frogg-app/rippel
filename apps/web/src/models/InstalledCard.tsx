@@ -34,22 +34,20 @@ import { FixModel } from './FixModel';
 import { useState, type CSSProperties } from 'react';
 import type { Model, ModelCatalogInfo, ModelRunnability, Uuid } from '@comfy/shared';
 import {
-  RUNNABILITY_TONE,
   SUPPORT_ROLES,
-  basename,
   familyHue,
   familyLabel,
-  formatBytes,
   formatCount,
   generates,
 
 } from './catalogue';
-import { CloseIcon, DownloadCountIcon, ExpandIcon, LinkIcon, WorkflowIcon } from './icons';
+import { CloseIcon, DownloadCountIcon, ExpandIcon, WorkflowIcon } from './icons';
 import { PreviewLightbox } from './PreviewLightbox';
 import { TypeBadge } from './TypeBadge';
 import { Mark } from '../components/Mark';
-import { ManualDownloads } from './ManualDownloads';
-import { verdictLabel } from './intents';
+import { FitPill } from './CatalogueCard';
+import { modelFit } from './cardFacts';
+import { NeedsPills } from './MissingParts';
 import styles from './ModelsPanels.module.css';
 
 export interface InstalledCardProps {
@@ -65,6 +63,10 @@ export interface InstalledCardProps {
   onFixed?: () => void;
   /** Position in the grid, for the staggered entrance. */
   index?: number;
+  /** The selected backend's graphics memory, for the fit pill. */
+  memoryBytes?: number | null;
+  /** Opens the side panel. */
+  onOpen?: (model: Model) => void;
 }
 
 export function InstalledCard({
@@ -77,7 +79,12 @@ export function InstalledCard({
   onRemove,
   onFixed,
   index = 0,
+  memoryBytes = null,
+  onOpen,
 }: InstalledCardProps) {
+  const fit = modelFit(model, isSupportType(model) ? null : verdict, memoryBytes, SUPPORT_ROLES[model.type].noun);
+  // The model page's owner, when the file was matched to a catalogue row.
+  const author = info?.referenceUrl ? /huggingface\.co\/([^/]+)\//i.exec(info.referenceUrl)?.[1] ?? null : null;
   const [imageBroken, setImageBroken] = useState(false);
   const [enlarged, setEnlarged] = useState(false);
 
@@ -88,7 +95,6 @@ export function InstalledCard({
   const full = preview ? info?.previewFullUrl ?? null : null;
 
   const isSupport = !generates(model.type);
-  const role = SUPPORT_ROLES[model.type];
   const hue = familyHue(model.baseModel ?? model.type);
   const hosts = backendOrder.filter((backend) => model.backendIds.includes(backend.id));
 
@@ -134,7 +140,19 @@ export function InstalledCard({
       aria-label={model.displayName}
     >
       <div className={styles.cardArtHolder}>
-        {full ? (
+        {onOpen ? (
+          // The side panel, as on Discover; the large preview is one more
+          // click, from the panel's own art.
+          <button
+            type="button"
+            className={`${artClass} ${styles.cardArtButton} ${styles.cardArtOpen}`}
+            style={artStyle}
+            onClick={() => onOpen(model)}
+            aria-label={`Details of ${model.displayName}`}
+          >
+            {art}
+          </button>
+        ) : full ? (
           <button
             type="button"
             className={`${artClass} ${styles.cardArtButton}`}
@@ -155,62 +173,33 @@ export function InstalledCard({
 
       <div className={styles.cardBody}>
         <div className={styles.cardHead}>
-          <h3 className={styles.cardName} title={model.displayName}>
+          {/* The short name; the whole path, which may carry a Windows
+              subfolder, is the hover. */}
+          <h3 className={styles.cardTitle} title={model.filename}>
             {model.displayName}
           </h3>
-          <p className={styles.cardMeta}>
-            {familyLabel(model.baseModel ?? 'unclassified')}
-            {model.sizeBytes ? (
-              <>
-                {' '}
-                &middot; <span className="mono">{formatBytes(model.sizeBytes)}</span>
-              </>
-            ) : null}
-            {info?.downloads ? (
-              <>
-                {' '}
-                &middot;{' '}
-                <span
-                  className={styles.cardDownloads}
-                  title={`${info.downloads.toLocaleString()} downloads at the source`}
-                >
-                  <DownloadCountIcon size={11} />
-                  <span className="mono">{formatCount(info.downloads)}</span>
-                </span>
-              </>
-            ) : null}
-          </p>
-          {/* The basename, because a filename may carry a subfolder — including
-              a Windows one, e.g. "SDXL\\sd_xl_base_1.0". The whole path is the
-              tooltip, as it was in the list. */}
-          <p className={`mono ${styles.cardFile}`} title={model.filename}>
-            {basename(model.filename)}
-          </p>
+          {author ? <p className={styles.cardAuthor}>{author}</p> : null}
         </div>
 
-        {isSupport ? (
-          // The chip only. The section this card sits in already carries the
-          // sentence once, and the badge on the artwork explains itself on
-          // focus — printing "a style you add on top of a model" four times
-          // down one row is noise, not emphasis.
-          <p className={`${styles.verdict} ${styles.verdict_muted}`}>
-            <span className={styles.verdictChip}>{role.noun}</span>
-          </p>
-        ) : verdict ? (
-          // Both halves, unlike the old list, which showed only bad news. A
-          // card has the room, and "Will run" is the thing somebody scanning
-          // for something to generate with is actually looking for — the same
-          // judgement Discover's cards already make.
-          <p className={`${styles.verdict} ${styles[`verdict_${RUNNABILITY_TONE[verdict.status]}`]}`}>
-            <span className={styles.verdictChip}>{verdictLabel(verdict)}</span>
-            <span className={styles.verdictText}>{verdict.detail ?? verdict.summary}</span>
-          </p>
-        ) : null}
-        {!isSupport && verdict?.status === 'needs-companion' && verdict.missing.some((m) => m.source) ? (
-          // Only when there is somewhere to send them. A bare filename is
-          // already in the sentence above; repeating it adds nothing.
-          <ManualDownloads missing={verdict.missing} />
-        ) : null}
+        <div className={styles.cardFacts}>
+          <FitPill fit={fit} />
+          {verdict && !isSupport ? <NeedsPills verdict={verdict} /> : null}
+        </div>
+
+        <div className={styles.cardChips}>
+          <span className={`${styles.tagChip} ${styles.familyChip}`}>
+            {familyLabel(model.baseModel ?? 'unclassified')}
+          </span>
+          {info?.downloads ? (
+            <p className={styles.cardStats}>
+              <span title={`${info.downloads.toLocaleString()} downloads at the source`}>
+                <DownloadCountIcon size={11} />
+                <span className="mono">{formatCount(info.downloads)}</span>
+              </span>
+            </p>
+          ) : null}
+        </div>
+
 
         <ul className={styles.hosts} aria-label="Backends holding this model">
           {hosts.map((backend) => (
@@ -230,21 +219,7 @@ export function InstalledCard({
           ) : null}
         </ul>
 
-        {info?.license || info?.referenceUrl ? (
-          <p className={styles.cardSource}>
-            {info.license ? <span className={styles.licence}>{info.license}</span> : null}
-            {info.referenceUrl ? (
-              <a
-                className={styles.sourceLink}
-                href={info.referenceUrl}
-                target="_blank"
-                rel="noreferrer noopener"
-              >
-                Model page <LinkIcon size={10} />
-              </a>
-            ) : null}
-          </p>
-        ) : null}
+        {/* Licence and the model page are the side panel's now. */}
 
         {verdict && (verdict.status === 'wrong-folder' || (verdict.status === 'needs-companion' && verdict.missing.length > 0)) && verdict.backendId ? (
           onRemove ? <FixModel modelId={model.id} backendId={verdict.backendId} onDone={onFixed} /> : <p>Ask an admin to fix this.</p>
@@ -289,7 +264,7 @@ export function InstalledCard({
  * "Remove from rippel?" with a confirm, so a slip of the pointer over a card
  * cannot drop a model, and no browser dialog interrupts the page.
  */
-function RemoveButton({ model, onRemove }: { model: Model; onRemove: (model: Model) => void }) {
+export function RemoveButton({ model, onRemove }: { model: Model; onRemove: (model: Model) => void }) {
   const [armed, setArmed] = useState(false);
   if (!armed) {
     return (
@@ -322,4 +297,8 @@ function RemoveButton({ model, onRemove }: { model: Model; onRemove: (model: Mod
       </button>
     </span>
   );
+}
+
+function isSupportType(model: Model): boolean {
+  return !generates(model.type);
 }

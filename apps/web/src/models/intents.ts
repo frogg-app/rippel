@@ -174,3 +174,19 @@ export function verdictLabel(verdict: { status: RunnabilityStatus; missing?: Mis
   const list = names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : names[0];
   return `Needs ${list}`;
 }
+
+/**
+ * One pill per missing part, for a model that needs more than one: "Needs
+ * image decoder" and "Needs prompt reader" side by side, each opening its own
+ * files, rather than one sentence-long pill that wraps. Parts with the same
+ * name (CLIP-L and T5 are both the prompt reader) share a pill.
+ */
+export function neededParts(verdict: { status: RunnabilityStatus; missing?: MissingCompanion[] }): { label: string; missing: MissingCompanion[] }[] {
+  if (verdict.status !== 'needs-companion') return [];
+  const byName = new Map<string, MissingCompanion[]>();
+  for (const part of verdict.missing ?? []) {
+    const name = companionName(part).toLowerCase();
+    byName.set(name, [...(byName.get(name) ?? []), part]);
+  }
+  return [...byName].map(([name, missing]) => ({ label: `Needs ${name}`, missing }));
+}

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { ModelCatalogEntry } from '@comfy/shared';
 import { compareBest, inScope, sortCatalogue } from './discover';
 import { partSearch } from './MissingParts';
-import { companionName, intentsOf, verdictLabel, worksHere } from './intents';
+import { companionName, intentsOf, neededParts, verdictLabel, worksHere } from './intents';
 import { isRecommendedHere, recommendationFor } from './recommended';
 import { makeEntry, makeInfo, makeRunnability } from './testing';
 
@@ -147,6 +147,20 @@ describe('missing parts', () => {
       }),
     ).toBe('Needs prompt reader and image decoder');
     expect(verdictLabel({ status: 'ready' })).toBe('Will run');
+  });
+
+  it('gives each missing part its own pill, sharing one per name', () => {
+    const pills = neededParts({
+      status: 'needs-companion',
+      missing: [
+        { filename: 'clip_l.safetensors', purpose: null, loader: 'DualCLIPLoader' },
+        { filename: 'ae.safetensors', purpose: null, loader: 'VAELoader' },
+        { filename: 't5xxl.safetensors', purpose: null, loader: 'DualCLIPLoader' },
+      ],
+    });
+    expect(pills.map((pill) => pill.label)).toEqual(['Needs prompt reader', 'Needs image decoder']);
+    expect(pills[0]!.missing.map((part) => part.filename)).toEqual(['clip_l.safetensors', 't5xxl.safetensors']);
+    expect(neededParts({ status: 'ready' })).toEqual([]);
   });
 });
 

@@ -24,20 +24,21 @@
  * button on open and back to whatever opened it on close, the scrim and Escape
  * close, and the page behind does not scroll.
  */
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import type { ModelCatalogEntry } from '@comfy/shared';
-import { SUPPORT_ROLES, formatCount, generates } from './catalogue';
+import { SUPPORT_ROLES, basename, formatBytes, generates } from './catalogue';
+import { authorOf, fitOf, fullId, huggingFaceUrl, shortName, sizeBytesOf } from './cardFacts';
 import { expertFor } from './vocabulary';
 import { DRAWER_TAG_ORDER, entryTags, tagKey, type TagKey } from './discover';
 import {
   CardVerdict,
   InstallControls,
-  OwnedName,
+  FitPill,
   artGradient,
   type InstallControlsProps,
 } from './CatalogueCard';
-import { CloseIcon, ExpandIcon, HeartIcon, LinkIcon } from './icons';
+import { CloseIcon, ExpandIcon, HeartIcon } from './icons';
 import { PreviewLightbox } from './PreviewLightbox';
 import { useVariants, VersionPicker, type LoadVariants } from './VersionPicker';
 import { TagChip } from './TagChip';
@@ -53,6 +54,22 @@ export interface CatalogueDrawerProps extends InstallControlsProps {
   backendName: string | null;
   /** Reads a Hugging Face model's versions; without it the picker shows names only. */
   loadVariants?: LoadVariants;
+  /** Every file from the same repo, this one included; a picker when more than one. */
+  siblings?: ModelCatalogEntry[];
+  onPick?: (entry: ModelCatalogEntry) => void;
+  /** The backend's graphics memory, for the fit. */
+  memoryBytes?: number | null;
+}
+
+/** One cell of the facts grid; absent facts are left out, never invented. */
+function Fact({ label, value, title }: { label: string; value: ReactNode; title?: string }) {
+  if (value === null || value === undefined || value === '') return null;
+  return (
+    <div className={styles.fact} title={title}>
+      <dt>{label}</dt>
+      <dd>{value}</dd>
+    </div>
+  );
 }
 
 export function CatalogueDrawer({
@@ -63,8 +80,16 @@ export function CatalogueDrawer({
   onWorkflows,
   backendName,
   loadVariants,
+  siblings = [],
+  onPick,
+  memoryBytes = null,
   ...install
 }: CatalogueDrawerProps) {
+  const title = shortName(entry);
+  const author = authorOf(entry);
+  const hfUrl = huggingFaceUrl(entry);
+  const bytes = sizeBytesOf(entry);
+  const fit = fitOf(entry, bytes, memoryBytes, SUPPORT_ROLES[entry.type].noun);
   const versions = useVariants(entry, loadVariants);
   const closeRef = useRef<HTMLButtonElement>(null);
   const restoreTo = useRef<Element | null>(null);
@@ -158,19 +183,123 @@ export function CatalogueDrawer({
         )}
 
         <div className={styles.drawerBody}>
-          <div className={styles.drawerTitle}>
-            <h2 className={styles.drawerName}>
-              <OwnedName entry={entry} />
-            </h2>
-            {info?.likes ? (
-              <span className={styles.drawerLikes} title={`${info.likes.toLocaleString()} likes at the source`}>
-                <span>
-                  <HeartIcon size={12} /> Likes
-                </span>
-                <span className="mono">{formatCount(info.likes)}</span>
-              </span>
-            ) : null}
+          <header className={styles.drawerHead}>
+            <div className={styles.drawerTitle}>
+              <h2 className={styles.drawerName} title={fullId(entry)}>
+                {title}
+              </h2>
+              {hfUrl ? (
+                <a className={styles.hfLink} href={hfUrl} target="_blank" rel="noreferrer noopener">
+                  View on Hugging Face <span aria-hidden>↗</span>
+                </a>
+              ) : null}
+            </div>
+            {author ? <p className={styles.drawerAuthor}>{author}</p> : null}
+          </header>
+
+          <dl className={styles.factsGrid}>
+            <Fact label="Size" value={bytes ? formatBytes(bytes) : null} />
+            {isSupport ? null : <Fact label="Fit" value={<FitPill fit={fit} />} />}
+            <Fact label="Memory here" value={memoryBytes ? formatBytes(memoryBytes) : null} />
+            <Fact label="Licence" value={info?.license ?? null} />
+            <Fact label="Downloads" value={info?.downloads ? info.downloads.toLocaleString() : null} />
+            <Fact
+              label="Likes"
+              value={
+                info?.likes ? (
+                  <>
+                    <HeartIcon size={11} /> {info.likes.toLocaleString()}
+                  </>
+                ) : null
+              }
+            />
+            <Fact label="Type" value={role.noun} title={expertFor(entry.type, entry.filename)} />
+            <Fact label="Family" value={entry.base} />
+          </dl>
+
+          {siblings.length > 1 ? (
+            <div className={styles.versions}>
+              <div className={styles.versionsHead}>
+                <span className={styles.versionsTitle}>File</span>
+                <span className={styles.versionsMemory}>{siblings.length} files from this repo</span>
+              </div>
+              <div className={styles.versionList} role="radiogroup" aria-label="File">
+                {siblings.map((sibling) => {
+                  const on = sibling.ref === entry.ref;
+                  const size = sizeBytesOf(sibling);
+                  return (
+                    <button
+                      key={sibling.ref}
+                      type="button"
+                      role="radio"
+                      aria-checked={on}
+                      className={`${styles.versionRow} ${on ? styles.versionRowOn : ''}`}
+                      onClick={() => onPick?.(sibling)}
+                      title={sibling.name}
+                    >
+                      <span className={styles.versionLabel}>
+                        {basename(sibling.filename)}
+                        {sibling.installed ? <span className={styles.versionBadge}>Installed</span> : null}
+                      </span>
+                      <span className={`mono ${styles.versionFile}`}>{sibling.savePath || (sibling.ref.startsWith('hugging-face:') ? 'Hugging Face repo' : '—')}</span>
+                      <span className={`mono ${styles.versionSize}`}>{size ? formatBytes(size) : ''}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
+
+          {versions.variants.length > 0 && !entry.installBlockedReason ? (
+            <VersionPicker
+              variants={versions.variants}
+              memoryBytes={versions.memoryBytes}
+              loading={versions.loading}
+              chosen={versions.chosen}
+              onChoose={versions.choose}
+              backendName={backendName}
+            />
+          ) : null}
+
+          <CardVerdict entry={entry} onWorkflows={onWorkflows}>
+            {isSupport ? <span className={styles.verdictWhere}> {role.where}</span> : null}
+          </CardVerdict>
+          {!isSupport && entry.runnability && backendName ? (
+            <p className={styles.drawerOn}>Judged against {backendName}.</p>
+          ) : null}
+          {entry.sourceWorkflow ? (
+            <p className={styles.drawerNote}>Used by the workflow “{entry.sourceWorkflow.title}”.</p>
+          ) : null}
+
+          <div className={styles.drawerActions}>
+            <InstallControls
+              entry={entry}
+              {...install}
+              onInstall={(chosen) => install.onInstall(chosen, versions.chosen ?? undefined)}
+            />
           </div>
+
+          {info?.description || entry.description ? (
+            <p className={styles.drawerDescription}>{info?.description || entry.description}</p>
+          ) : null}
+          {info?.baseModels?.length ? (
+            <p className={styles.drawerNote}>Built on {info.baseModels.join(', ')}.</p>
+          ) : null}
+
+          <dl className={`${styles.drawerFacts} ${styles.drawerFactsQuiet}`}>
+            <dt>File</dt>
+            <dd className="mono" title={entry.filename}>
+              {entry.filename}
+            </dd>
+            <dt>Installs to</dt>
+            <dd className="mono">{entry.savePath || '—'}</dd>
+            {info?.previewBorrowedFrom && preview ? (
+              <>
+                <dt>Picture</dt>
+                <dd className={styles.borrowed}>sample from {info.previewBorrowedFrom}</dd>
+              </>
+            ) : null}
+          </dl>
 
           {DRAWER_TAG_ORDER.some((group) => tags[group].length > 0) ? (
             <div className={styles.drawerTags} role="group" aria-label="Tags">
@@ -200,95 +329,6 @@ export function CatalogueDrawer({
                 : 'Still reading its model page; tags appear when that finishes.'}
             </p>
           )}
-
-          <CardVerdict entry={entry} onWorkflows={onWorkflows}>
-            {isSupport ? <span className={styles.verdictWhere}> {role.where}</span> : null}
-          </CardVerdict>
-          {!isSupport && entry.runnability && backendName ? (
-            <p className={styles.drawerOn}>Judged against {backendName}.</p>
-          ) : null}
-
-          <dl className={styles.drawerFacts}>
-            <dt>Type</dt>
-            <dd>{`${role.noun} (${expertFor(entry.type, entry.filename)})`}</dd>
-            <dt>Family</dt>
-            <dd>{entry.base}</dd>
-            <dt>File</dt>
-            <dd className="mono" title={entry.filename}>
-              {entry.filename}
-            </dd>
-            {entry.size ? (
-              <>
-                <dt>Size</dt>
-                <dd className="mono">{entry.size}</dd>
-              </>
-            ) : null}
-            <dt>Installs to</dt>
-            <dd className="mono">{entry.savePath}</dd>
-            {info?.downloads ? (
-              <>
-                <dt>Downloads</dt>
-                <dd className="mono">{info.downloads.toLocaleString()}</dd>
-              </>
-            ) : null}
-            {info?.referenceUrl ? (
-              <>
-                <dt>Source</dt>
-                <dd>
-                  <a
-                    className={styles.sourceLink}
-                    href={info.referenceUrl}
-                    target="_blank"
-                    rel="noreferrer noopener"
-                  >
-                    {info.referenceUrl.replace(/^https?:\/\//, '')} <LinkIcon size={10} />
-                  </a>
-                </dd>
-              </>
-            ) : null}
-            {/* Whose picture this is, when it is not this model's own. A GGUF
-                quantisation has no samples of its own; showing the original's
-                is useful, and pretending it was rendered by this file is not. */}
-            {info?.previewBorrowedFrom && preview ? (
-              <>
-                <dt>Picture</dt>
-                <dd className={styles.borrowed}>sample from {info.previewBorrowedFrom}</dd>
-              </>
-            ) : null}
-          </dl>
-
-          {/* The publisher's own words, from the model card, when we have them;
-              the catalogue's one-liner otherwise. */}
-          {info?.description || entry.description ? (
-            <p className={styles.drawerDescription}>{info?.description || entry.description}</p>
-          ) : null}
-          {info?.baseModels?.length ? (
-            <p className={styles.drawerNote}>Built on {info.baseModels.join(', ')}.</p>
-          ) : null}
-          {entry.sourceWorkflow ? (
-            <p className={styles.drawerNote}>Used by the workflow “{entry.sourceWorkflow.title}”.</p>
-          ) : null}
-
-          {/* Only worth a choice when there is one; a single build still
-              shows its size. */}
-          {versions.variants.length > 0 && !entry.installBlockedReason ? (
-            <VersionPicker
-              variants={versions.variants}
-              memoryBytes={versions.memoryBytes}
-              loading={versions.loading}
-              chosen={versions.chosen}
-              onChoose={versions.choose}
-              backendName={backendName}
-            />
-          ) : null}
-
-          <div className={styles.drawerActions}>
-            <InstallControls
-              entry={entry}
-              {...install}
-              onInstall={(chosen) => install.onInstall(chosen, versions.chosen ?? undefined)}
-            />
-          </div>
         </div>
       </aside>
 

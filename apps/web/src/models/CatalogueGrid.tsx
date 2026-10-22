@@ -23,6 +23,7 @@ import { FindPartContext, type PartSearch } from './MissingParts';
 import { CatalogueDrawer } from './CatalogueDrawer';
 import type { TagKey } from './discover';
 import { KIND_HEADINGS, basename, splitByKind } from './catalogue';
+import { groupEntries } from './cardFacts';
 import styles from './ModelsPanels.module.css';
 
 /** Two viewports of a four-column grid, so the first scroll is already there. */
@@ -45,6 +46,8 @@ export interface CatalogueGridProps {
   activeTags?: ReadonlySet<TagKey>;
   /** Named in the drawer beside the verdict. */
   backendName?: string | null;
+  /** The backend's graphics memory, for each card's fit pill. */
+  memoryBytes?: number | null;
 }
 
 const NO_TAGS: ReadonlySet<TagKey> = new Set();
@@ -78,6 +81,7 @@ export function CatalogueGrid({
   onTag,
   activeTags = NO_TAGS,
   backendName = null,
+  memoryBytes = null,
 }: CatalogueGridProps) {
   const [limit, setLimit] = useState(PAGE_SIZE);
   const [openRef, setOpenRef] = useState<string | null>(null);
@@ -92,10 +96,13 @@ export function CatalogueGrid({
   // Ordered by kind *before* the slice, so the first page is the things you can
   // actually generate with and the paging still means what it says. The split
   // happens after it, so a section's cards are exactly the ones on screen.
-  const ordered = splitByKind(entries, (entry) => entry.type).flatMap((section) => section.items);
+  //
+  // Files from one repo are one card (see cardFacts.ts), so paging counts cards.
+  const ordered = groupEntries(splitByKind(entries, (entry) => entry.type).flatMap((section) => section.items));
   const shown = ordered.slice(0, limit);
   const remaining = ordered.length - shown.length;
-  const sections = splitByKind(shown, (entry) => entry.type);
+  const sections = splitByKind(shown, (group) => group.primary.type);
+  const openGroup = open ? ordered.find((group) => group.entries.includes(open)) ?? null : null;
 
   // "Find" on a missing part runs a new search, and the drawer it was clicked
   // in would otherwise sit over the results.
@@ -121,9 +128,11 @@ export function CatalogueGrid({
               <p className={styles.bandBlurb}>{heading.blurb}</p>
             </header>
             <div className={styles.grid}>
-              {section.items.map((entry, index) => (
+              {section.items.map(({ primary: entry, ...group }, index) => (
                 <CatalogueCard
-                  key={entry.ref}
+                  key={group.key}
+                  group={{ primary: entry, ...group }}
+                  memoryBytes={memoryBytes}
                   index={Math.min(index, 14)}
                   entry={entry}
                   onWorkflows={onWorkflows}
@@ -153,7 +162,7 @@ export function CatalogueGrid({
             Show {Math.min(PAGE_SIZE, remaining)} more
           </button>
           <span className={`mono ${styles.moreCount}`}>
-            {shown.length} of {entries.length}
+            {shown.length} of {ordered.length}
           </span>
         </div>
       ) : null}
@@ -171,6 +180,9 @@ export function CatalogueGrid({
           canInstall={canInstall}
           onInstall={onInstall}
           loadVariants={loadVariants}
+          siblings={openGroup?.entries ?? []}
+          onPick={openDrawer}
+          memoryBytes={memoryBytes}
           failure={failure?.ref === open.ref ? failure.message : null}
           now={now}
         />

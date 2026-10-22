@@ -47,6 +47,13 @@ export function useVariants(entry: ModelCatalogEntry, load: LoadVariants | undef
     loading: Boolean(load && (entry.variants?.length ?? 0) > 0),
   }));
   const [chosen, setChosen] = useState<string | null>(entry.variants?.[0]?.path ?? null);
+  // The drawer's file picker swaps the entry in place; start again from its own list.
+  const [forRef, setForRef] = useState(entry.ref);
+  if (forRef !== entry.ref) {
+    setForRef(entry.ref);
+    setState({ variants: entry.variants ?? [], memoryBytes: null, loading: Boolean(load && (entry.variants?.length ?? 0) > 0) });
+    setChosen(entry.variants?.[0]?.path ?? null);
+  }
 
   useEffect(() => {
     if (!load || !(entry.variants?.length ?? 0)) return;

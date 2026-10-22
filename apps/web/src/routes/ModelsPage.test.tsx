@@ -314,15 +314,18 @@ describe('ModelsPage', () => {
       // whole point of caching these server-side.
       const image = within(sdxl).getByRole('presentation', { hidden: true });
       expect(image).toHaveAttribute('src', '/api/model-previews/2f2a1b0c9d8e7f6a5b4c');
-      expect(within(sdxl).getByText('Will run')).toBeInTheDocument();
+      // One pill: the size against this machine's memory. The workflow
+      // sentence is the drawer's now.
+      expect(within(sdxl).getByText(/· fits$/)).toBeInTheDocument();
       expect(
-        within(sdxl).getByText('An SDXL model, with a workflow written for it.'),
-      ).toBeInTheDocument();
+        within(sdxl).queryByText('An SDXL model, with a workflow written for it.'),
+      ).not.toBeInTheDocument();
       // 1,767,210 downloads and 8,113 likes, in the width a card has for them.
       expect(within(sdxl).getByText('1.8M')).toBeInTheDocument();
       expect(within(sdxl).getByText('8.1k')).toBeInTheDocument();
-      // The owner, from the model page, in front of the name.
-      expect(within(sdxl).getByRole('heading')).toHaveTextContent('stabilityai/SDXL Base 1.0');
+      // The repo's short name as the title, the owner on a line of its own.
+      expect(within(sdxl).getByRole('heading')).toHaveTextContent(/^stable-diffusion-xl-base-1\.0$/);
+      expect(within(sdxl).getByText('stabilityai')).toBeInTheDocument();
       // The licence is a drawer fact now, not card furniture.
       expect(within(sdxl).queryByText('openrail++')).not.toBeInTheDocument();
 
@@ -477,8 +480,8 @@ describe('ModelsPage', () => {
       await ready();
 
       expect(await screen.findByText('LTX-Video 2B')).toBeInTheDocument();
-      expect(screen.getByText('Needs prompt reader')).toBeInTheDocument();
-      // The API's own sentence, naming the file to go and get.
+      // The pill names the part, and opens the file to go and get.
+      await userEvent.setup().click(screen.getByRole('button', { name: /Needs prompt reader/ }));
       expect(screen.getByText(/t5xxl_fp16\.safetensors/)).toBeInTheDocument();
     });
 
@@ -654,13 +657,15 @@ describe('ModelsPage', () => {
       const cards = await screen.findAllByRole('article');
       // SDXL base: fewer downloads, but recommended and ready.
       expect(cards.map((card) => card.getAttribute('aria-label'))).toEqual(['SDXL Base 1.0', 'FLUX.1 dev']);
-      expect(within(cards[0]!).getByText('Recommended')).toBeInTheDocument();
-      expect(within(cards[1]!).queryByText('Recommended')).not.toBeInTheDocument();
-      expect(within(cards[1]!).getByText('Needs prompt reader and image decoder')).toBeInTheDocument();
+      expect(within(cards[0]!).getByRole('img', { name: /^Recommended/ })).toBeInTheDocument();
+      expect(within(cards[1]!).queryByRole('img', { name: /^Recommended/ })).not.toBeInTheDocument();
+      // One pill per missing part, never one sentence that wraps.
+      expect(within(cards[1]!).getByRole('button', { name: /^Needs prompt reader/ })).toBeInTheDocument();
+      expect(within(cards[1]!).getByRole('button', { name: /^Needs image decoder/ })).toBeInTheDocument();
 
-      // The badge opens the parts, and Find searches for one, its type chosen.
+      // Each pill opens its own parts, and Find searches for one, its type chosen.
       const user = userEvent.setup();
-      await user.click(within(cards[1]!).getByRole('button', { name: /Needs prompt reader and image decoder/ }));
+      await user.click(within(cards[1]!).getByRole('button', { name: /^Needs prompt reader/ }));
       const parts = within(cards[1]!).getByRole('list', { name: 'What this model needs' });
       expect(within(parts).getByText('t5xxl_fp16.safetensors')).toBeInTheDocument();
       await user.click(within(parts).getAllByRole('button', { name: 'Find' })[0]!);
@@ -1245,16 +1250,10 @@ describe('ModelsPage', () => {
       const user = await openTab(/Discover/);
       await user.click(screen.getByRole('button', { name: /^Everything/ }));
 
-      // Card chips: task, then base, then free tags.
+      // Card chips: the task and the family; every other tag is the drawer's.
       const cinematic = await screen.findByRole('article', { name: 'Cinematic Film Look' });
-      // The glyph is decoration; the chip is named by its value alone. Five
-      // fit; the other four (library, format, licence, a last free tag) are
-      // behind "+4", which opens the drawer.
-      expect(within(cinematic).getByRole('button', { name: 'film' })).toBeInTheDocument();
+      expect(within(cinematic).queryByRole('button', { name: 'film' })).not.toBeInTheDocument();
       expect(within(cinematic).queryByRole('button', { name: 'photorealistic' })).not.toBeInTheDocument();
-      expect(
-        within(cinematic).getByRole('button', { name: '4 more tags on Cinematic Film Look' }),
-      ).toHaveTextContent('+4');
       await user.click(within(cinematic).getByRole('button', { name: /text-to-image/ }));
       await waitFor(() => expect(resultCount()).toBe('2 of 100 models'));
 

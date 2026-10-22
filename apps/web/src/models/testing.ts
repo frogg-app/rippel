@@ -242,6 +242,9 @@ export function makeCatalogue(): ModelCatalogEntry[] {
         size: '96MB',
         description: null,
         url: `https://example.invalid/filler-${index}.safetensors`,
+        // Each its own model: sharing makeEntry's SDXL page would group them into one card.
+        reference: `https://example.invalid/filler-${index}`,
+        info: null,
         savePath: 'loras',
       }),
     );

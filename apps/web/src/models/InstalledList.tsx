@@ -23,7 +23,7 @@
  * `/api/models` returns `backendIds` per model, and splitting them would make a
  * shared file look like two different files.
  */
-import type { Model, ModelCatalogInfo, ModelRunnability, Uuid } from '@comfy/shared';
+import type { Model, ModelCatalogInfo, ModelInstall, ModelRunnability, Uuid } from '@comfy/shared';
 import {
   KIND_HEADINGS,
   SUPPORT_ROLES,
@@ -34,6 +34,11 @@ import {
   splitByKind,
 } from './catalogue';
 import { InstalledCard } from './InstalledCard';
+import { InstalledDrawer } from './InstalledDrawer';
+import { installedSource } from './cardFacts';
+import { useCallback, useState } from 'react';
+
+const NO_INSTALLS: readonly ModelInstall[] = [];
 import styles from './ModelsPanels.module.css';
 
 export interface InstalledListProps {
@@ -55,6 +60,10 @@ export interface InstalledListProps {
   /** Present for an administrator: the card offers a two-step Remove. */
   onRemove?: (model: Model) => void;
   onFixed?: () => void;
+  /** The selected backend's graphics memory, for the fit pill. */
+  memoryBytes?: number | null;
+  /** Installs on record, so a file rippel installed maps to its repo exactly. */
+  installs?: readonly ModelInstall[];
 }
 
 export function InstalledList({
@@ -66,7 +75,13 @@ export function InstalledList({
   onWorkflows,
   onRemove,
   onFixed,
+  memoryBytes = null,
+  installs = NO_INSTALLS,
 }: InstalledListProps) {
+  const [openId, setOpenId] = useState<Uuid | null>(null);
+  const open = openId ? models.find((model) => model.id === openId) ?? null : null;
+  const openDrawer = useCallback((model: Model) => setOpenId(model.id), []);
+  const closeDrawer = useCallback(() => setOpenId(null), []);
   const bands = splitByKind(groupInstalledByType(models), (group) => group.type);
 
   return (
@@ -134,6 +149,8 @@ export function InstalledList({
                           onWorkflows={onWorkflows}
                           onRemove={onRemove}
                           onFixed={onFixed}
+                          memoryBytes={memoryBytes}
+                          onOpen={openDrawer}
                         />
                       ))}
                     </div>
@@ -144,6 +161,21 @@ export function InstalledList({
           </section>
         );
       })}
+      {open ? (
+        <InstalledDrawer
+          model={open}
+          verdict={runnability[open.id] ?? null}
+          info={previews[open.id] ?? null}
+          source={installedSource(open, previews[open.id] ?? null, installs)}
+          backendOrder={backendOrder}
+          selectedBackendId={selectedBackendId}
+          memoryBytes={memoryBytes}
+          onClose={closeDrawer}
+          onWorkflows={onWorkflows ? (model) => { closeDrawer(); onWorkflows(model); } : undefined}
+          onRemove={onRemove ? (model) => { closeDrawer(); onRemove(model); } : undefined}
+          onFixed={onFixed}
+        />
+      ) : null}
     </div>
   );
 }

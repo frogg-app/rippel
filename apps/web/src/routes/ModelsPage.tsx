@@ -49,6 +49,7 @@ import { StoragePanel } from '../models/StoragePanel';
 import { CatalogueGrid, type LoadVariants } from '../models/CatalogueGrid';
 import { FilterBar } from '../models/FilterBar';
 import { InstalledList } from '../models/InstalledList';
+import { backendMemory } from '../models/cardFacts';
 import { InstallsList } from '../models/InstallsList';
 import { WorkflowSheet, type WorkflowSheetSubject } from '../models/WorkflowSheet';
 import { ApiRequestError } from '../lib/api';
@@ -593,6 +594,8 @@ export function ModelsPage({ api = modelsApi, storageApi: storage = storageApi }
                   models={installedFiltered}
                   backendOrder={backendOrder}
                   selectedBackendId={backendId}
+                  memoryBytes={backendMemory(backend)}
+                  installs={installs.installs}
                   runnability={library.runnability}
                   previews={library.previews}
                   onWorkflows={openModelWorkflows}
@@ -738,6 +741,7 @@ export function ModelsPage({ api = modelsApi, storageApi: storage = storageApi }
                 onTag={toggleTag}
                 activeTags={activeTags}
                 backendName={backend?.name ?? null}
+                memoryBytes={backendMemory(backend)}
               />
             </div>
           </div>
@@ -848,6 +852,7 @@ function CatalogueBody({
   onTag,
   activeTags,
   backendName,
+  memoryBytes,
   hiddenByRuns,
   onShowEverything,
   intentLabel,
@@ -867,6 +872,7 @@ function CatalogueBody({
   onTag: (key: TagKey) => void;
   activeTags: ReadonlySet<TagKey>;
   backendName: string | null;
+  memoryBytes?: number | null;
   /** How many results Works on this machine is hiding right now. */
   hiddenByRuns: number;
   onShowEverything: () => void;
@@ -977,6 +983,7 @@ function CatalogueBody({
             onTag={onTag}
             activeTags={activeTags}
             backendName={backendName}
+            memoryBytes={memoryBytes}
           />
         </>
       );

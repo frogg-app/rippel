@@ -8,10 +8,10 @@
  * The stem without its precision suffix finds it, and the type filter is set
  * too, because Discover leaves parts out unless their type is chosen.
  */
-import { createContext, useContext } from 'react';
-import type { MissingCompanion, ModelType } from '@comfy/shared';
-import { companionName } from './intents';
-import { LinkIcon, SearchIcon } from './icons';
+import { createContext, useContext, useId, useState } from 'react';
+import type { MissingCompanion, ModelType, RunnabilityStatus } from '@comfy/shared';
+import { companionName, neededParts } from './intents';
+import { ChevronIcon, LinkIcon, SearchIcon } from './icons';
 import styles from './ModelsPanels.module.css';
 
 export interface PartSearch {
@@ -74,5 +74,48 @@ export function MissingParts({ missing, id }: { missing: readonly MissingCompani
         </li>
       ))}
     </ul>
+  );
+}
+
+/**
+ * "Needs image decoder", "Needs prompt reader": one pill per part, each on one
+ * line, each opening its own list of files with Find and Download.
+ */
+export function NeedsPills({ verdict }: { verdict: { status: RunnabilityStatus; missing?: MissingCompanion[] } }) {
+  const pills = neededParts(verdict);
+  if (pills.length === 0) return null;
+  return (
+    <div className={styles.needsRow}>
+      {pills.map((pill) => (
+        <NeedsPill key={pill.label} label={pill.label} missing={pill.missing} />
+      ))}
+    </div>
+  );
+}
+
+function NeedsPill({ label, missing }: { label: string; missing: MissingCompanion[] }) {
+  const [open, setOpen] = useState(false);
+  const id = useId();
+  return (
+    <span className={styles.needsPillWrap}>
+      <button
+        type="button"
+        className={styles.needsPill}
+        aria-expanded={open}
+        aria-controls={id}
+        onClick={(event) => {
+          event.stopPropagation();
+          setOpen((now) => !now);
+        }}
+      >
+        {label}
+        <ChevronIcon size={10} className={open ? styles.verdictChevronOpen : styles.verdictChevron} />
+      </button>
+      {open ? (
+        <div className={styles.needsPopover}>
+          <MissingParts missing={missing} id={id} />
+        </div>
+      ) : null}
+    </span>
   );
 }

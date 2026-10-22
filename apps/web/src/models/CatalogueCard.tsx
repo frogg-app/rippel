@@ -48,21 +48,23 @@
  *   failed      the error, and the button back, labelled as a retry
  *   installed   no button at all: a re-install is answered with a 409
  */
-import { useId, useState, type CSSProperties, type ReactNode } from 'react';
+import { useState, type CSSProperties, type ReactNode } from 'react';
 import type { ModelCatalogEntry, ModelInstall } from '@comfy/shared';
 import {
   RUNNABILITY_TONE,
   SUPPORT_ROLES,
   familyHue,
+  familyLabel,
   formatCount,
   generates,
   isLive,
 } from './catalogue';
 import { cardTags, ownerOf, tagKey, type TagKey } from './discover';
+import { authorOf, filesLabel, fitOf, fullId, shortName, sizeBytesOf, type EntryGroup, type Fit } from './cardFacts';
 import { verdictLabel } from './intents';
-import { MissingParts } from './MissingParts';
+import { NeedsPills } from './MissingParts';
 import { isRecommendedHere, recommendationFor } from './recommended';
-import { CheckIcon, ChevronIcon, DownloadCountIcon, HeartIcon, InstallIcon, WorkflowIcon } from './icons';
+import { CheckIcon, DownloadCountIcon, HeartIcon, InstallIcon, WorkflowIcon } from './icons';
 import { InstallProgress } from './InstallProgress';
 import { TagChip } from './TagChip';
 import { TypeBadge } from './TypeBadge';
@@ -93,6 +95,10 @@ export interface CatalogueCardProps extends InstallControlsProps {
   onTag?: (key: TagKey) => void;
   /** Tag keys currently filtered on, so their chips read as pressed. */
   activeTags?: ReadonlySet<TagKey>;
+  /** Every catalogue file from the same repo; the card shows `entry`. */
+  group?: EntryGroup;
+  /** The backend's graphics memory, for the fit pill. */
+  memoryBytes?: number | null;
 }
 
 /** Installed, or complete even before the catalogue's own flag catches up. */
@@ -139,18 +145,10 @@ export function CardVerdict({
   children?: ReactNode;
 }) {
   const verdict = entry.runnability;
-  const [partsOpen, setPartsOpen] = useState(false);
-  const partsId = useId();
   // Recommended only where it will work: see recommended.ts. It is on the
   // verdict rather than the art so the card and the drawer both carry it.
-  const recommended = isRecommendedHere(entry) ? (
-    <span
-      className={styles.recommendedBadge}
-      title={`On rippel's short list: ${recommendationFor(entry)!.label}`}
-    >
-      Recommended
-    </span>
-  ) : null;
+  // Recommended is a star on the art now (RecommendedStar), not a row here.
+  const recommended = null;
   // Derived from the type, not from the verdict: the verdict is per backend and
   // is absent when one is offline, and "what this file is for" is not a fact
   // about a backend.
@@ -184,21 +182,7 @@ export function CardVerdict({
         {/* A model found in a ComfyUI workflow has a graph waiting for it, so
           "no workflow" would be wrong: it needs that workflow set up. */}
         {needsParts ? (
-          // A badge that names what is missing opens the list of it, with a
-          // way to find each part, rather than leaving the filename in a tooltip.
-          <button
-            type="button"
-            className={`${styles.verdictChip} ${styles.verdictChipButton}`}
-            aria-expanded={partsOpen}
-            aria-controls={partsId}
-            onClick={(event) => {
-              event.stopPropagation();
-              setPartsOpen((open) => !open);
-            }}
-          >
-            {verdictLabel(verdict)}
-            <ChevronIcon size={10} className={partsOpen ? styles.verdictChevronOpen : styles.verdictChevron} />
-          </button>
+          <NeedsPills verdict={verdict} />
         ) : (
           <span className={styles.verdictChip}>
             {entry.sourceWorkflow && verdict.status === 'no-workflow'
@@ -223,7 +207,6 @@ export function CardVerdict({
           </button>
         ) : null}
       </p>
-      {needsParts && partsOpen ? <MissingParts missing={verdict.missing} id={partsId} /> : null}
     </>
   );
 }
@@ -272,6 +255,26 @@ export function InstallControls({
   );
 }
 
+/** The merged "size · fit" pill, shared by both tabs and the drawer. */
+export function FitPill({ fit, className = '' }: { fit: Fit; className?: string }) {
+  return (
+    <span className={`${styles.fitPill} ${styles[`fit_${fit.tone}`]} ${className}`} title={fit.detail}>
+      {fit.label}
+    </span>
+  );
+}
+
+/** Recommended, as a star in the art's corner rather than a row of its own. */
+export function RecommendedStar({ entry }: { entry: ModelCatalogEntry }) {
+  if (!isRecommendedHere(entry)) return null;
+  const label = `Recommended: ${recommendationFor(entry)!.label}`;
+  return (
+    <span className={styles.recommendedStar} title={label} aria-label={label} role="img">
+      ★
+    </span>
+  );
+}
+
 export function CatalogueCard({
   entry,
   install,
@@ -281,20 +284,33 @@ export function CatalogueCard({
   failure,
   now,
   index = 0,
-  onWorkflows,
   onOpen,
   onTag,
   activeTags,
+  group,
+  memoryBytes = null,
 }: CatalogueCardProps) {
   const live = install !== null && isLive(install);
-  const done = isDone(entry, install);
+  const members = group?.entries ?? [entry];
+  const done = members.some((member) => isDone(member, member === entry ? install : null));
 
   // A cached preview can still 404 — the row was written before someone
   // cleared the table, say. One failure per card, then the gradient.
   const [imageBroken, setImageBroken] = useState(false);
-  const preview = imageBroken ? null : entry.info?.previewUrl ?? null;
-  const info = entry.info;
-  const tags = cardTags(entry);
+  const preview = imageBroken ? null : (members.find((m) => m.info?.previewUrl)?.info?.previewUrl ?? null);
+  const info = entry.info ?? members.find((m) => m.info)?.info ?? null;
+  const title = shortName(entry);
+  const author = authorOf(entry);
+  const fit = fitOf(entry, sizeBytesOf(entry), memoryBytes, SUPPORT_ROLES[entry.type].noun);
+  const files = group ? filesLabel(group) : (entry.variants?.length ?? 0) > 1 ? `${entry.variants!.length} versions` : null;
+  // Task and family only; every other tag is the drawer's.
+  const task = cardTags(entry).shown.find((tag) => tag.group === 'task');
+  // Hugging Face discovery writes "Hugging Face" when it cannot tell, and a
+  // base model's repo id ("Qwen/Qwen-Image-2.1") when it can.
+  const family =
+    entry.base && !['Unknown', 'Hugging Face'].includes(entry.base)
+      ? familyLabel(entry.base.slice(entry.base.lastIndexOf('/') + 1))
+      : null;
 
   const art = (
     <>
@@ -302,16 +318,13 @@ export function CatalogueCard({
         <img
           className={styles.cardImage}
           src={preview}
-          // Decorative: the model's name is right underneath it, and a
-          // description of somebody's sample render helps nobody.
+          // Decorative: the model's name is right underneath it.
           alt=""
           loading="lazy"
           decoding="async"
           onError={() => setImageBroken(true)}
         />
       ) : (
-        // No sample render: the mark on the card's own hue, so every card in
-        // the grid is the same shape whether or not a picture was found.
         <span className={styles.cardPlaceholder} aria-hidden>
           <Mark size={34} />
         </span>
@@ -331,6 +344,7 @@ export function CatalogueCard({
     <article
       className={`${styles.card} ${live ? styles.cardBusy : ''}`}
       style={{ '--i': index } as CSSProperties}
+      // The full id: unique where two short names are not.
       aria-label={entry.name}
     >
       <div className={styles.cardArtHolder}>
@@ -349,16 +363,47 @@ export function CatalogueCard({
             {art}
           </div>
         )}
-        {/* The badge sits beside the art rather than inside it: it explains
-            itself on focus, and a button cannot be nested in a button. */}
         <TypeBadge type={entry.type} className={styles.cardTypeSlot} />
+        <RecommendedStar entry={entry} />
       </div>
 
       <div className={styles.cardBody}>
         <div className={styles.cardHead}>
-          <h3 className={styles.cardName} title={entry.name}>
-            <OwnedName entry={entry} />
+          <h3 className={styles.cardTitle} title={fullId(entry)}>
+            {title}
           </h3>
+          {author ? <p className={styles.cardAuthor}>{author}</p> : null}
+        </div>
+
+        <div className={styles.cardFacts}>
+          <FitPill fit={fit} />
+          {entry.runnability ? <NeedsPills verdict={entry.runnability} /> : null}
+          {files ? (
+            onOpen ? (
+              <button
+                type="button"
+                className={styles.cardVersions}
+                onClick={() => onOpen(entry)}
+                title="Choose which file to install"
+              >
+                {files}
+              </button>
+            ) : (
+              <span className={styles.cardVersions}>{files}</span>
+            )
+          ) : null}
+        </div>
+
+        <div className={styles.cardChips}>
+          {task ? (
+            <TagChip
+              group="task"
+              value={task.value}
+              on={activeTags?.has(tagKey('task', task.value)) ?? false}
+              onClick={onTag ? () => onTag(tagKey('task', task.value)) : undefined}
+            />
+          ) : null}
+          {family ? <span className={`${styles.tagChip} ${styles.familyChip}`}>{family}</span> : null}
           <p className={styles.cardStats}>
             {info?.likes ? (
               <span title={`${info.likes.toLocaleString()} likes at the source`}>
@@ -372,52 +417,8 @@ export function CatalogueCard({
                 <span className="mono">{formatCount(info.downloads)}</span>
               </span>
             ) : null}
-            {entry.size ? <span className="mono">{entry.size}</span> : null}
-            {(entry.variants?.length ?? 0) > 1 && !entry.installBlockedReason ? (
-              onOpen ? (
-                <button
-                  type="button"
-                  className={styles.cardVersions}
-                  onClick={() => onOpen(entry)}
-                  title="Choose which version to install"
-                >
-                  {entry.variants!.length} versions
-                </button>
-              ) : (
-                <span>{entry.variants!.length} versions</span>
-              )
-            ) : null}
           </p>
         </div>
-
-        {tags.shown.length > 0 ? (
-          <div className={styles.cardTags}>
-            {tags.shown.map(({ group, value }) => {
-              const key = tagKey(group, value);
-              return (
-                <TagChip
-                  key={key}
-                  group={group}
-                  value={value}
-                  on={activeTags?.has(key) ?? false}
-                  onClick={onTag ? () => onTag(key) : undefined}
-                />
-              );
-            })}
-            {tags.more > 0 && onOpen ? (
-              <button
-                type="button"
-                className={`${styles.tagChip} ${styles.tagChipGhost}`}
-                onClick={() => onOpen(entry)}
-                aria-label={`${tags.more} more tags on ${entry.name}`}
-              >
-                +{tags.more}
-              </button>
-            ) : null}
-          </div>
-        ) : null}
-
-        <CardVerdict entry={entry} onWorkflows={onWorkflows} />
 
         <InstallControls
           entry={entry}
