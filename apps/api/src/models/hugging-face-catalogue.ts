@@ -22,16 +22,18 @@ export function huggingFaceEntry(value: unknown): ModelCatalogEntry | null {
   const baseModels = declaredBaseModels(model.cardData?.base_model);
   // The files a person can actually install, best first; the first one is what
   // the card offers until somebody picks another version.
-  const repositoryPath = huggingFaceSavePath(type, model.id, tags, baseModels);
-  const variants = weightVariants((model.siblings ?? []).map(sibling => sibling.rfilename), type)
-    .map(variant => ({ ...variant, savePath: variantSavePath(variant, repositoryPath) }));
+  const files = weightVariants((model.siblings ?? []).map(sibling => sibling.rfilename), type);
+  const familyBase = huggingFaceFamilyBase(model.id, baseModels, files[0]?.filename ?? null);
+  const repositoryPath = familyBase && CHECKPOINT_FAMILY_BASES.has(familyBase) && !tags.includes('gguf')
+    ? ''
+    : huggingFaceSavePath(type, model.id, tags, baseModels);
+  const variants = files.map(variant => ({ ...variant, savePath: variantSavePath(variant, repositoryPath) }));
   const chosen = variants[0] ?? null;
   const blocked = model.gated && model.gated !== 'false'
     ? 'Access required on Hugging Face. Authenticated downloads are not supported yet.'
     : !chosen
       ? 'No single file ComfyUI can load: this repository is in Diffusers folders, or only in formats no stock loader reads.'
       : undefined;
-  const familyBase = huggingFaceFamilyBase(model.id, baseModels, chosen?.filename ?? null);
   return { ref: `hugging-face:${model.id}`, name: model.id, filename: chosen?.filename ?? model.id.split('/')[1]!,
     type, base: familyBase ?? (baseModels.length === 1 ? baseModels[0]! : 'Hugging Face'), description: model.cardData?.description?.slice(0,600) ?? null,
     size: null, url: chosen ? huggingFaceFileUrl(model.id, chosen.path) : `https://huggingface.co/${model.id}`, reference: `https://huggingface.co/${model.id}`,
@@ -110,7 +112,11 @@ export function huggingFaceSavePath(type: string, id: string, tags: readonly str
   return DIFFUSION_MODEL_FAMILIES.test(names) ? 'diffusion_models' : '';
 }
 
-const DIFFUSION_MODEL_FAMILIES = /flux|qwen[-_]?image|\bwan[-_]?2|hunyuan|z[-_]?image|hidream|cosmos|ltx[-_]?2|chroma|lumina|omnigen/;
+// Whole words only: "zavychromaxl" is an SDXL fine-tune, not Chroma.
+const DIFFUSION_MODEL_FAMILIES = /(^|[^a-z0-9])(flux|qwen[-_]?image|wan[-_]?2|hunyuan|z[-_]?image|hidream|cosmos|ltx[-_]?2|chroma|lumina|omnigen)/;
+
+/** Families whose files are whole checkpoints, whatever the repository's name says. */
+const CHECKPOINT_FAMILY_BASES = new Set(['SDXL', 'SDXL Turbo', 'Pony', 'Illustrious', 'SD1.5', 'SD2.x', 'SVD']);
 
 export async function cachedHuggingFaceModels(): Promise<ModelCatalogEntry[]> {
   const row = await queryOne<{ entries: ModelCatalogEntry[] }>("SELECT entries FROM external_model_catalogues WHERE source='hugging-face'");

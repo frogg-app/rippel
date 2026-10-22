@@ -209,10 +209,15 @@ describe('inferred families resolve against the real registry', () => {
 
   it('finds no template for families that need a graph we have not written', () => {
     // Not a failure: a null lookup is the readable "no workflow for this yet"
-    // error. FLUX needs a diffusion-model loader and dual CLIP, so it is on the
-    // generic fallback's exclusion list and stays unanswered until someone
-    // writes it a template of its own.
-    expect(findTemplate('txt2img', familyFromFilename('flux1-dev.safetensors'))).toBeUndefined();
+    // error. SD3 needs a triple CLIP loader, so it is on the generic fallback's
+    // exclusion list and stays unanswered until someone writes it a template.
+    expect(findTemplate('txt2img', familyFromFilename('sd3_medium.safetensors'))).toBeUndefined();
+  });
+
+  it('routes a FLUX file, GGUF builds included, to the FLUX template', () => {
+    for (const filename of ['flux1-dev.safetensors', 'flux1-schnell-Q4_K_S.gguf']) {
+      expect(findTemplate('txt2img', familyFromFilename(filename))?.manifest.id, filename).toBe('txt2img-flux');
+    }
   });
 
   it('routes an SD 1.5 checkpoint to the generic SD template', () => {

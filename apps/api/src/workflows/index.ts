@@ -142,6 +142,7 @@ export {
   txt2vidHunyuanManifest,
   txt2vidHunyuanTemplate,
 } from './txt2vid-hunyuan.js';
+export { FLUX_BASE_MODELS, FLUX_REQUIREMENTS, txt2imgFluxManifest, txt2imgFluxTemplate } from './txt2img-flux.js';
 export {
   FOLDER_READ_BY,
   checkpointSlotOf,

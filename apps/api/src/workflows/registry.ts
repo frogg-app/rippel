@@ -28,6 +28,7 @@ import { img2vidLtxvTemplate } from './img2vid-ltxv.js';
 import { img2vidLtxvDmTemplate } from './img2vid-ltxv-dm.js';
 import { img2vidSvdTemplate } from './img2vid-svd.js';
 import { txt2imgSdxlTemplate } from './txt2img-sdxl.js';
+import { txt2imgFluxTemplate } from './txt2img-flux.js';
 import { txt2vidHunyuanTemplate } from './txt2vid-hunyuan.js';
 import { txt2vidLtxvTemplate } from './txt2vid-ltxv.js';
 import { txt2vidLtxvDmTemplate } from './txt2vid-ltxv-dm.js';
@@ -52,6 +53,7 @@ export const TEMPLATES: readonly WorkflowTemplate[] = [
   img2vidSvdTemplate,
   img2vidWan22Template,
   txt2vidHunyuanTemplate,
+  txt2imgFluxTemplate,
   ...SD_GENERIC_TEMPLATES,
 ];
 

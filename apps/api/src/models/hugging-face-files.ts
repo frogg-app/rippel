@@ -154,9 +154,13 @@ const FAMILY_BASE: Record<ModelFamily, string> = {
  * the entry then keeps the Hub's own base model as its label.
  */
 export function huggingFaceFamilyBase(id: string, baseModels: readonly string[], filename: string | null): string | null {
-  for (const evidence of [...baseModels, id, filename ?? '']) {
-    if (!evidence) continue;
-    const family = familyFromFilename(evidence.replace(/\//g, ' '));
+  const evidence = [...baseModels, id, filename ?? ''];
+  // FLUX.2 is a different model with its own encoders; the FLUX.1 graph would
+  // load it and fail. Named here so it is not read as FLUX.1 below.
+  if (evidence.some((text) => /flux[-_. ]?2/i.test(text))) return null;
+  for (const text of evidence) {
+    if (!text) continue;
+    const family = familyFromFilename(text.replace(/\//g, ' '));
     if (family) return FAMILY_BASE[family];
   }
   return null;

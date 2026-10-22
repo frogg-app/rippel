@@ -395,3 +395,23 @@ export const SVD_QUALITY_PRESETS: PresetTable = {
   balanced: { steps: 20, cfg: 2.5, sampler: 'euler', scheduler: 'karras' },
   high: { steps: 30, cfg: 3.0, sampler: 'euler', scheduler: 'karras' },
 };
+
+/**
+ * FLUX.1 was trained around one megapixel, the same buckets SDXL uses, so it
+ * shares that table. The integrators and schedules are the ones its reference
+ * graphs use; "simple" and "beta" are the schedules that suit a flow model.
+ */
+export const FLUX_SAMPLERS = ['euler', 'dpmpp_2m', 'deis', 'uni_pc'] as const;
+export const FLUX_SCHEDULERS = ['simple', 'beta', 'normal', 'sgm_uniform'] as const;
+
+/**
+ * Quality presets for FLUX.1. As with Hunyuan, `cfg` is the FluxGuidance scale,
+ * not classifier-free guidance (the sampler's own cfg stays at 1), and 3.5 is
+ * the reference value. Twenty steps is the dev model's reference; the distilled
+ * schnell model is done in four, so Fast suits it.
+ */
+export const FLUX_QUALITY_PRESETS: PresetTable = {
+  fast: { steps: 8, cfg: 3.5, sampler: 'euler', scheduler: 'simple' },
+  balanced: { steps: 20, cfg: 3.5, sampler: 'euler', scheduler: 'simple' },
+  high: { steps: 30, cfg: 3.5, sampler: 'euler', scheduler: 'beta' },
+};

@@ -87,3 +87,21 @@ it('blocks a Diffusers-only repository with the reason', () => {
   expect(entry.installBlockedReason).toContain('Diffusers');
   expect(entry.variants).toBeUndefined();
 });
+
+it('keeps an SDXL fine-tune whose name contains another family in checkpoints', () => {
+  const entry = huggingFaceEntry({
+    id: 'misri/zavychromaxl_v80', pipeline_tag: 'text-to-image',
+    cardData: { base_model: 'stabilityai/stable-diffusion-xl-base-1.0' },
+    siblings: files('zavychromaxl_v80.safetensors'),
+  })!;
+  expect(entry.base).toBe('SDXL');
+  expect(entry.savePath).toBe('');
+});
+
+it('does not take FLUX.2 for FLUX.1', () => {
+  const entry = huggingFaceEntry({
+    id: 'leejet/FLUX.2-klein-4B-GGUF', pipeline_tag: 'text-to-image',
+    siblings: files('flux-2-klein-4b-Q8_0.gguf'),
+  })!;
+  expect(entry.base).not.toBe('FLUX.1');
+});

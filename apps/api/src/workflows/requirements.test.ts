@@ -76,9 +76,14 @@ describe('manifest requirements', () => {
 
   it('the SD/SDXL templates declare none — their checkpoints carry everything', () => {
     for (const template of TEMPLATES) {
-      if (template.manifest.capability.endsWith('vid')) continue;
+      if (template.manifest.capability.endsWith('vid') || template.manifest.id === 'txt2img-flux') continue;
       expect(template.manifest.requires ?? []).toHaveLength(0);
     }
+  });
+
+  it('FLUX declares its two prompt readers and its decoder', () => {
+    const flux = TEMPLATES.find((template) => template.manifest.id === 'txt2img-flux')!;
+    expect(flux.manifest.requires!.map((r) => r.id)).toEqual(['clip-l', 't5', 'vae']);
   });
 });
 

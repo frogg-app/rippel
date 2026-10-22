@@ -1,7 +1,7 @@
 import Fastify from 'fastify';
 import { afterEach, expect, it, vi } from 'vitest';
 vi.mock('./metadata.js', () => ({ withCatalogueInfo: vi.fn(), previewBytes: vi.fn() }));
-vi.mock('../orchestrator/preflight.js', () => ({ objectInfoFor: vi.fn() }));
+vi.mock('../orchestrator/preflight.js', async (importOriginal) => ({ ...(await importOriginal<object>()), objectInfoFor: vi.fn() }));
 vi.mock('../db.js', () => ({ query: vi.fn(), queryOne: vi.fn(), transaction: vi.fn() }));
 vi.mock('./installs.js', async () => ({ ...await vi.importActual('./installs.js'), requireTransport: vi.fn(), startInstall: vi.fn() }));
 import { queryOne } from '../db.js';

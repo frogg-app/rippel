@@ -351,7 +351,7 @@ describe('registry', () => {
   });
 
   it('returns undefined for a family that needs a graph we do not have', () => {
-    expect(findTemplate('txt2img', 'flux.1')).toBeUndefined();
+    expect(findTemplate('txt2img', 'sd3')).toBeUndefined();
     expect(findTemplate('img2img', 'flux.1')).toBeUndefined();
     expect(findTemplate('img2vid', 'sdxl')).toBeUndefined();
   });
@@ -375,7 +375,9 @@ describe('registry', () => {
 
   it('reports capabilities per family', () => {
     expect([...capabilitiesFor('SDXL 1.0')].sort()).toEqual(['img2img', 'txt2img']);
-    expect(capabilitiesFor('flux.1')).toEqual([]);
+    // FLUX has its own text-to-image graph and nothing else yet.
+    expect(capabilitiesFor('flux.1')).toEqual(['txt2img']);
+    expect(capabilitiesFor('sd3')).toEqual([]);
     // A model with no inferred family is now offered the generic still-image
     // capabilities rather than nothing at all.
     expect([...capabilitiesFor(null)].sort()).toEqual(['img2img', 'txt2img']);
@@ -1111,12 +1113,14 @@ describe('generic SD fallback: what it must never touch', () => {
     expect(capabilitiesFor('wan')).toEqual([]);
   });
 
-  it('gives FLUX and SD3 nothing, because they need a different loader', () => {
+  it('never offers FLUX or SD3 the generic graph, because they need a different loader', () => {
     // FLUX wants UNETLoader + DualCLIPLoader and has no cfg or negative
-    // conditioning; SD3 wants a triple CLIP loader. Neither is this graph.
-    for (const family of ['flux.1', 'flux1', 'sd3']) {
-      expect(capabilitiesFor(family), family).toEqual([]);
+    // conditioning; SD3 wants a triple CLIP loader. Neither is this graph:
+    // FLUX's text-to-image comes from its own template, SD3 gets nothing.
+    for (const family of ['flux.1', 'flux1']) {
+      expect(capabilityOffersFor(family), family).toEqual([{ capability: 'txt2img', templateId: 'txt2img-flux', isFallback: false }]);
     }
+    expect(capabilitiesFor('sd3')).toEqual([]);
   });
 
   it('gives SDXL Turbo nothing, because the presets would burn the image', () => {
@@ -1234,7 +1238,7 @@ describe('capabilitiesFor, which is what the user actually sees', () => {
       isFallback: true,
     });
 
-    expect(capabilityOffersFor('flux.1')).toEqual([]);
+    expect(capabilityOffersFor('sd3')).toEqual([]);
   });
 
   it('agrees with findTemplate for every family and capability it reports', () => {

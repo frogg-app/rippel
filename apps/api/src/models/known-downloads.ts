@@ -35,6 +35,7 @@ import type { ModelDownloadSource } from '@comfy/shared';
 
 const WAN22_5B_LIBRARY = 'ComfyUI workflow library (video_wan2_2_5B_ti2v)';
 const PLAN = 'MODELS_PLAN.md install list, sizes checked 2026-09-12';
+const FLUX_REFERENCE = "ComfyUI's FLUX example workflow; URLs opened 2026-10-22";
 
 const gb = (value: number) => Math.round(value * 1_000_000_000);
 
@@ -73,6 +74,23 @@ export const KNOWN_DOWNLOADS: readonly ModelDownloadSource[] = [
     url: 'https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/t5xxl_fp8_e4m3fn_scaled.safetensors',
     approxBytes: gb(5.16),
     origin: PLAN,
+  },
+  // FLUX.1's other two companions, from ungated repositories (the official
+  // FLUX repos need a Hugging Face login, even for the decoder). Sizes from
+  // the live headers, 2026-10-22.
+  {
+    filename: 'clip_l.safetensors',
+    folder: 'text_encoders',
+    url: 'https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/clip_l.safetensors',
+    approxBytes: gb(0.246),
+    origin: FLUX_REFERENCE,
+  },
+  {
+    filename: 'ae.safetensors',
+    folder: 'vae',
+    url: 'https://huggingface.co/Comfy-Org/Lumina_Image_2.0_Repackaged/resolve/main/split_files/vae/ae.safetensors',
+    approxBytes: gb(0.335),
+    origin: FLUX_REFERENCE,
   },
 ];
 

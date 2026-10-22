@@ -83,7 +83,10 @@ describe('GET /workflows', () => {
     // generic fallback — it needs a different loader and dual CLIP — so its
     // absence is a property of the design rather than a gap someone will close
     // by accident.
-    expect(listed.has('flux1')).toBe(false);
+    // SD3 needs a triple CLIP loader and is excluded from the generic fallback,
+    // so its absence is a property of the design. (FLUX was the example until
+    // it gained its own template.)
+    expect(listed.has('sd3')).toBe(false);
   });
 
   it('sends no part of a node graph', async () => {
