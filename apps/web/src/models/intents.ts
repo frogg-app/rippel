@@ -162,7 +162,6 @@ export function companionName(missing: MissingCompanion): string {
   return missing.purpose ?? missing.filename;
 }
 
-/** "Needs: Prompt reader, Image decoder", or null when nothing is missing. */
 /**
  * The badge for a verdict. For a model missing parts, the badge names them —
  * "Needs prompt reader" — rather than counting them, since what is missing is
