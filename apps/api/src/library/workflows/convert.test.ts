@@ -81,6 +81,22 @@ describe('editor conversion', () => {
     expect(result.issues).toContain('3.text: missing link 99.');
   });
 
+  it('replaces a fixed switch with its branch and drops what no output reads', () => {
+    const result = convertWorkflow({ nodes: [
+      { id: 1, type: 'Text', widgets_values: ['off'] }, { id: 2, type: 'Text', widgets_values: ['on'] },
+      { id: 3, type: 'PrimitiveBoolean', widgets_values: [false] },
+      { id: 4, type: 'ComfySwitchNode', inputs: [{ name: 'switch', link: 1 }, { name: 'on_false', link: 2 }, { name: 'on_true', link: 3 }] },
+      { id: 5, type: 'Save', inputs: [{ name: 'text', link: 4 }] },
+      { id: 6, type: 'Text', widgets_values: [], inputs: [{ name: 'text', link: null }] },
+    ], links: [[1, 3, 0, 4, 0, 'BOOLEAN'], [2, 1, 0, 4, 1, '*'], [3, 2, 0, 4, 2, '*'], [4, 4, 0, 5, 0, '*']] }, { ...specs,
+      PrimitiveBoolean: { input: { required: { value: ['BOOLEAN', {}] } }, output: ['BOOLEAN'] },
+      ComfySwitchNode: { input: { required: { switch: ['BOOLEAN', {}] }, optional: { on_false: ['*', {}], on_true: ['*', {}] } }, output: ['*'] },
+    });
+    expect(result.graph['5']!.inputs.text).toEqual(['1', 0]);
+    expect(Object.keys(result.graph).sort()).toEqual(['1', '5']);
+    expect(result.issues).toEqual([]);
+  });
+
   it('flattens two instances independently and transfers exposed widgets', () => {
     const result = convertWorkflow({ nodes: [
       { id: 10, type: 'sub', widgets_values: ['first'] },
@@ -93,8 +109,9 @@ describe('editor conversion', () => {
         { id: 2, origin_id: 1, origin_slot: 0, target_id: -20, target_slot: 0 }],
     }] } }, specs);
     expect(result.issues).toEqual([]);
-    expect(result.graph['10_1']!.inputs.text).toBe('first');
     expect(result.graph['20_1']!.inputs.text).toBe('second');
+    // Nothing reads the first instance, so ComfyUI would not run it either.
+    expect(result.graph['10_1']).toBeUndefined();
     expect(result.graph['30']!.inputs.text).toEqual(['20_1', 0]);
   });
 

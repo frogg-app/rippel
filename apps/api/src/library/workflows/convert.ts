@@ -189,6 +189,8 @@ export function convertWorkflow(value: unknown, specs: ConversionSpecs): Convers
     } };
   }
   scope(root, '', new Map(), []);
+  collapseConstantSwitches(result.graph);
+  pruneUnreachable(result, specs);
   result.missingNodes = [...missing].sort();
   for (const [id, node] of Object.entries(result.graph)) {
     for (const val of Object.values(node.inputs)) {
@@ -209,4 +211,63 @@ export function convertWorkflow(value: unknown, specs: ConversionSpecs): Convers
   }
   Object.keys(result.graph).forEach(visit);
   return result;
+}
+
+/** Nodes that pass one of two inputs on, chosen by a boolean. */
+const SWITCHES: Record<string, { switch: string; onTrue: string; onFalse: string }> = {
+  ComfySwitchNode: { switch: 'switch', onTrue: 'on_true', onFalse: 'on_false' },
+};
+/** A literal, or the literal value of the primitive node a link points at. */
+export function constantOf(graph: Record<string, ComfyApiNode>, value: NodeInputValue | undefined): NodeInputValue | undefined {
+  if (!Array.isArray(value)) return value;
+  const node = graph[value[0]];
+  if (node && /^Primitive/.test(node.class_type) && !Array.isArray(node.inputs.value)) return node.inputs.value;
+  return undefined;
+}
+
+/**
+ * A switch set to a fixed value in the official file (the MiniMax H3 "turbo
+ * LoRA" toggle) is replaced by the branch it picks, so the branch it does not
+ * pick is neither validated nor downloaded.
+ */
+export function collapseConstantSwitches(graph: Record<string, ComfyApiNode>) {
+  for (let changed = true; changed;) {
+    changed = false;
+    for (const [id, node] of Object.entries(graph)) {
+      const names = SWITCHES[node.class_type];
+      if (!names) continue;
+      const on = constantOf(graph, node.inputs[names.switch]);
+      if (typeof on !== 'boolean') continue;
+      const chosen = node.inputs[on ? names.onTrue : names.onFalse];
+      if (chosen === undefined) continue;
+      for (const other of Object.values(graph)) {
+        for (const [name, value] of Object.entries(other.inputs)) {
+          if (Array.isArray(value) && value[0] === id) (other.inputs as Record<string, NodeInputValue>)[name] = chosen;
+        }
+      }
+      delete graph[id];
+      changed = true;
+    }
+  }
+}
+
+/**
+ * ComfyUI runs, and validates, only what an output node depends on. Nodes left
+ * lying beside the graph (an unwired resize in MiniMax H3's image-to-video, a
+ * switch branch not taken) are dropped with whatever they reported.
+ */
+export function pruneUnreachable(result: Pick<ConversionResult, 'graph' | 'nodes' | 'issues'>, specs: ConversionSpecs) {
+  const outputs = Object.keys(result.graph).filter((id) => specs[result.graph[id]!.class_type]?.output_node === true);
+  if (!outputs.length) return;
+  const keep = new Set<string>();
+  const visit = (id: string) => {
+    if (keep.has(id) || !result.graph[id]) return;
+    keep.add(id);
+    for (const value of Object.values(result.graph[id]!.inputs)) if (Array.isArray(value)) visit(value[0]);
+  };
+  outputs.forEach(visit);
+  const dropped = Object.keys(result.graph).filter((id) => !keep.has(id));
+  for (const id of dropped) { delete result.graph[id]; delete result.nodes[id]; }
+  const gone = new Set(dropped);
+  result.issues = result.issues.filter((issue) => !gone.has(/^([A-Za-z0-9_-]+)[.:]/.exec(issue)?.[1] ?? ''));
 }

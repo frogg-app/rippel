@@ -29,3 +29,14 @@ npm run snapshot:nodes -w @comfy/api -- http://192.168.1.10:8188 src/library/wor
 
 Record the backend/version here after refresh. Runnability tests copy this
 snapshot and replace only installed-file lists for each scenario.
+
+## MiniMax H3
+
+`video_minimax_h3_{t2v,i2v,r2v}.json`, `minimax-h3-index.json` and
+`minimax-h3-object-info.json` were taken on 2026-10-23 from steve-pc (ComfyUI
+0.42.0, workflow library 0.11.93) through its rippel agent. They are trimmed:
+the workflows lose only their MarkdownNote nodes, the index keeps only the
+MiniMax H3 entries, and the object info keeps only the node types those three
+workflows use. They exercise prompts and sizes on nodes other than
+CLIPTextEncode and an empty latent, a resolution picker, constant switches and
+primitive-node values.

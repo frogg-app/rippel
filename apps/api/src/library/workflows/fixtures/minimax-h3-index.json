@@ -1,0 +1,674 @@
+[
+ {
+  "moduleName": "default",
+  "category": "Foundation",
+  "title": "Video",
+  "icon": "icon-[lucide--film]",
+  "type": "video",
+  "templates": [
+   {
+    "name": "video_minimax_h3_i2v",
+    "title": "MiniMax H3: Image to Video",
+    "description": "Turn a starting image into a short, high-quality video clip with MiniMax H3, a unified multimodal model that generates visuals and synchronized audio in a single pass. The workflow takes 1 input image and produces 1 video output, with optional text or reference media to steer motion, style, or sound. Ideal for rapid concept visualization, character-driven animation tests, and creating shareable social media clips with built-in sound design.",
+    "mediaType": "image",
+    "mediaSubtype": "webp",
+    "tags": [
+     "Image to Video",
+     "Int8",
+     "Video"
+    ],
+    "models": [
+     "MiniMax H3"
+    ],
+    "date": "2026-08-02",
+    "openSource": true,
+    "size": 44452911514,
+    "usage": 21648,
+    "searchRank": 1000000,
+    "username": "ComfyUI",
+    "io": {
+     "inputs": [
+      {
+       "nodeId": 114,
+       "nodeType": "LoadImage",
+       "file": "transparent_rgb_gaming_mouse.png",
+       "mediaType": "image",
+       "sourceRevision": "d0e41fe5423f93db5b5872cf273d7b1af8aa68bc"
+      }
+     ],
+     "outputs": [
+      {
+       "nodeId": 92,
+       "nodeType": "SaveVideo",
+       "file": "video_minimax_h3_i2v.mp4",
+       "mediaType": "video"
+      }
+     ]
+    },
+    "thumbnail": [
+     "output/video_minimax_h3_i2v.mp4"
+    ],
+    "minComfyUIVersion": "0.30.0"
+   },
+   {
+    "name": "video_minimax_h3_r2v",
+    "title": "MiniMax H3: Reference to Video",
+    "description": "Generate a new video by feeding MiniMax H3 a reference image, up to nine images, three videos, and three audio clips alongside a text prompt, letting the model match character identity, motion, camera, voice, or style from those sources while producing native stereo audio in a single pass. Output is a single MP4 video at up to 2K resolution and 24fps for roughly 15 seconds. Ideal for character-consistent animation, style-transfer video generation, and audio-synced content creation.",
+    "mediaType": "image",
+    "mediaSubtype": "webp",
+    "tags": [
+     "Reference to Video",
+     "Int8",
+     "Video"
+    ],
+    "models": [
+     "MiniMax H3"
+    ],
+    "date": "2026-08-02",
+    "openSource": true,
+    "size": 44452911514,
+    "usage": 8616,
+    "searchRank": 1000000,
+    "username": "ComfyUI",
+    "io": {
+     "inputs": [
+      {
+       "nodeId": 137,
+       "nodeType": "LoadImage",
+       "file": "red_superboy_on_city_roof.png",
+       "mediaType": "image",
+       "sourceRevision": "d0e41fe5423f93db5b5872cf273d7b1af8aa68bc"
+      },
+      {
+       "nodeId": 139,
+       "nodeType": "LoadImage",
+       "file": "mecha_dragon_lightning.png",
+       "mediaType": "image",
+       "sourceRevision": "d0e41fe5423f93db5b5872cf273d7b1af8aa68bc"
+      }
+     ],
+     "outputs": [
+      {
+       "nodeId": 92,
+       "nodeType": "SaveVideo",
+       "file": "video_minimax_h3_r2v.mp4",
+       "mediaType": "video"
+      }
+     ]
+    },
+    "thumbnail": [
+     "output/video_minimax_h3_r2v.mp4"
+    ],
+    "minComfyUIVersion": "0.30.0"
+   },
+   {
+    "name": "video_minimax_h3_t2v",
+    "title": "MiniMax H3: Text to Video",
+    "description": "Generate video with native stereo audio directly from a text prompt using MiniMax H3, an omni-modal model that synthesizes voice, sound effects, and music in a single pass. Output is up to 2K resolution, 24fps, and roughly 15 seconds long, with no file inputs required \u2014 just a prompt to one video output. Ideal for rapid concept visualization, social media content creation, and audio-synced storytelling.",
+    "mediaType": "image",
+    "mediaSubtype": "webp",
+    "tags": [
+     "Text to Video",
+     "Int8",
+     "Video"
+    ],
+    "models": [
+     "MiniMax H3"
+    ],
+    "date": "2026-08-02",
+    "openSource": true,
+    "size": 56908316672,
+    "usage": 4189,
+    "searchRank": 1000000,
+    "username": "ComfyUI",
+    "io": {
+     "outputs": [
+      {
+       "nodeId": 92,
+       "nodeType": "SaveVideo",
+       "file": "video_minimax_h3_t2v.mp4",
+       "mediaType": "video"
+      }
+     ]
+    },
+    "thumbnail": [
+     "output/video_minimax_h3_t2v.mp4"
+    ],
+    "minComfyUIVersion": "0.30.0"
+   },
+   {
+    "name": "api_minimax_h3_max_r2v",
+    "title": "MiniMax H3 Max: Reference to Video",
+    "description": "Generate video from an image reference using MiniMax H3 Max, which animates your still frame while preserving its composition, visual identity, and aspect ratio. The model generates faster than real time with strong prompt adherence and polished cinematic motion. Ideal for bringing character art to life, animating product shots, and creating video from concept images.",
+    "mediaType": "image",
+    "mediaSubtype": "webp",
+    "tags": [
+     "API",
+     "Reference to Video"
+    ],
+    "models": [
+     "MiniMax H3"
+    ],
+    "logos": [
+     {
+      "provider": "MiniMax"
+     }
+    ],
+    "date": "2026-09-02",
+    "openSource": false,
+    "size": 0,
+    "usage": 502,
+    "searchRank": 0,
+    "username": "ComfyUI",
+    "io": {
+     "inputs": [
+      {
+       "nodeId": 6,
+       "nodeType": "LoadImage",
+       "file": "burdened_warrior_in_dreamscape.png",
+       "mediaType": "image",
+       "sourceRevision": "d0e41fe5423f93db5b5872cf273d7b1af8aa68bc"
+      }
+     ],
+     "outputs": [
+      {
+       "nodeId": 11,
+       "nodeType": "SaveVideo",
+       "file": "api_minimax_h3_max_r2v.mp4",
+       "mediaType": "video"
+      }
+     ]
+    },
+    "minComfyUIVersion": "0.34.2",
+    "thumbnail": [
+     "output/api_minimax_h3_max_r2v.mp4"
+    ]
+   },
+   {
+    "name": "video_minimax_h3_multiframe_reference",
+    "title": "MiniMax H3: Multiframe Reference",
+    "description": "Generate video from multiple still images with MiniMax H3, anchoring up to four reference frames anywhere along the timeline to control motion and composition. Ideal for creating video continuations from existing clips, forcing narrative beats at specific moments, and producing footage with synchronized native audio for cinematic or social media content.",
+    "mediaType": "image",
+    "mediaSubtype": "webp",
+    "tags": [
+     "Reference to Video",
+     "Int8"
+    ],
+    "models": [
+     "MiniMax H3"
+    ],
+    "date": "2026-09-04",
+    "openSource": true,
+    "size": 44452911514,
+    "usage": 297,
+    "searchRank": 0,
+    "username": "ComfyUI",
+    "io": {
+     "inputs": [
+      {
+       "nodeId": 157,
+       "nodeType": "LoadImage",
+       "file": "h3_frame_ref_2.png",
+       "mediaType": "image",
+       "sourceRevision": "d0e41fe5423f93db5b5872cf273d7b1af8aa68bc"
+      },
+      {
+       "nodeId": 159,
+       "nodeType": "LoadImage",
+       "file": "h3_frame_ref_3.png",
+       "mediaType": "image",
+       "sourceRevision": "d0e41fe5423f93db5b5872cf273d7b1af8aa68bc"
+      },
+      {
+       "nodeId": 164,
+       "nodeType": "LoadImage",
+       "file": "h3_frame_ref_1.png",
+       "mediaType": "image",
+       "sourceRevision": "d0e41fe5423f93db5b5872cf273d7b1af8aa68bc"
+      },
+      {
+       "nodeId": 167,
+       "nodeType": "LoadImage",
+       "file": "h3_frame_ref_4.png",
+       "mediaType": "image",
+       "sourceRevision": "d0e41fe5423f93db5b5872cf273d7b1af8aa68bc"
+      }
+     ]
+    },
+    "minComfyUIVersion": "0.34.0"
+   },
+   {
+    "name": "api_minimax_h3_max_turbo_i2v",
+    "title": "MiniMax H3 Max Turbo: Image to Video",
+    "description": "Generate video sequences from a starting image using MiniMax H3 Max Turbo, producing two video outputs from a single input frame. This rapid image-to-video workflow generates short clips in seconds, with optional prompt enhancement and 2K upscaling stages. Ideal for animating still photographs, creating quick motion previews for storyboards, and fast visual effects iteration.",
+    "mediaType": "image",
+    "mediaSubtype": "webp",
+    "tags": [
+     "API",
+     "Reference to Video"
+    ],
+    "models": [
+     "MiniMax H3"
+    ],
+    "logos": [
+     {
+      "provider": "MiniMax"
+     }
+    ],
+    "date": "2026-09-04",
+    "openSource": false,
+    "size": 107374182,
+    "usage": 101,
+    "searchRank": 0,
+    "username": "ComfyUI",
+    "io": {
+     "inputs": [
+      {
+       "nodeId": 25,
+       "nodeType": "LoadImage",
+       "file": "teal_hypercar_seaside.png",
+       "mediaType": "image",
+       "sourceRevision": "d0e41fe5423f93db5b5872cf273d7b1af8aa68bc"
+      }
+     ],
+     "outputs": [
+      {
+       "nodeId": 11,
+       "nodeType": "SaveVideo",
+       "file": "api_minimax_h3_max_turbo_i2v.mp4",
+       "mediaType": "video"
+      }
+     ]
+    },
+    "minComfyUIVersion": "0.34.4",
+    "thumbnail": [
+     "output/api_minimax_h3_max_turbo_i2v.mp4"
+    ]
+   },
+   {
+    "name": "api_minimax_h3_max_i2v",
+    "title": "MiniMax H3 Max: Image to Video",
+    "description": "Generate video from a source image using MiniMax H3 Max, animating your still frame while preserving its composition, visual identity, and aspect ratio. The model delivers faster-than-real-time generation with strong prompt adherence and polished cinematic aesthetics. Ideal for bringing character art to life, animating product shots, and creating motion from concept images.",
+    "mediaType": "image",
+    "mediaSubtype": "webp",
+    "tags": [
+     "API",
+     "Image to Video"
+    ],
+    "models": [
+     "MiniMax H3"
+    ],
+    "logos": [
+     {
+      "provider": "MiniMax"
+     }
+    ],
+    "date": "2026-09-01",
+    "openSource": false,
+    "size": 0,
+    "usage": 176,
+    "searchRank": 0,
+    "username": "ComfyUI",
+    "io": {
+     "inputs": [
+      {
+       "nodeId": 25,
+       "nodeType": "LoadImage",
+       "file": "sneaker_black.png",
+       "mediaType": "image",
+       "sourceRevision": "d0e41fe5423f93db5b5872cf273d7b1af8aa68bc"
+      }
+     ]
+    },
+    "thumbnail": [
+     "output/api_minimax_h3_max_i2v.mp4"
+    ],
+    "minComfyUIVersion": "0.34.3"
+   },
+   {
+    "name": "video_minimax_h3_fun_controlnet_union",
+    "title": "MiniMax H3 Fun ControlNet Union",
+    "description": "Generate videos from a pose reference video using MiniMax-H3 with a ControlNet-Union checkpoint, preserving the input's motion and structure while applying your prompt. Ideal for character animation, motion transfer, and choreography visualization projects. This workflow is for pose control only",
+    "mediaType": "image",
+    "mediaSubtype": "webp",
+    "thumbnailVariant": "compareSlider",
+    "tags": [
+     "ControlNet",
+     "Int8"
+    ],
+    "models": [
+     "MiniMax H3"
+    ],
+    "minComfyUIVersion": "0.35.0",
+    "date": "2026-09-07",
+    "openSource": true,
+    "size": 48747878810,
+    "usage": 152,
+    "searchRank": 0,
+    "username": "ComfyUI",
+    "io": {
+     "inputs": [
+      {
+       "nodeId": 174,
+       "nodeType": "LoadVideo",
+       "file": "dancer_field_pose.mp4",
+       "mediaType": "video",
+       "sourceRevision": "d0e41fe5423f93db5b5872cf273d7b1af8aa68bc"
+      }
+     ]
+    },
+    "thumbnail": [
+     "input/dancer_field_pose.mp4"
+    ]
+   },
+   {
+    "name": "api_minimax_h3_r2v",
+    "title": "MiniMax H3: Reference to Video",
+    "description": "Generate video from a reference image or set of multimodal inputs using MiniMax H3, which interprets text, images, video, and audio together to produce coherent 5\u201315 second clips with native stereo audio. Input up to 2 images for first/last frame control, or up to 9 images, 3 video clips, and 3 audio clips in Omni Reference mode, and output a single video in your chosen aspect ratio. Ideal for commercial content creation, character-driven storytelling, and rapid visual concept validation.",
+    "mediaType": "image",
+    "mediaSubtype": "webp",
+    "tags": [
+     "API",
+     "Reference to Video",
+     "Image to Video"
+    ],
+    "models": [
+     "MiniMax H3"
+    ],
+    "logos": [
+     {
+      "provider": "MiniMax"
+     }
+    ],
+    "date": "2026-07-30",
+    "openSource": false,
+    "size": 0,
+    "usage": 137,
+    "searchRank": 0,
+    "username": "ComfyUI",
+    "io": {
+     "inputs": [
+      {
+       "nodeId": 2,
+       "nodeType": "LoadImage",
+       "file": "9panel_storyboard_golden_hour_clay_court.png",
+       "mediaType": "image",
+       "sourceRevision": "d0e41fe5423f93db5b5872cf273d7b1af8aa68bc"
+      }
+     ],
+     "outputs": [
+      {
+       "nodeId": 3,
+       "nodeType": "SaveVideo",
+       "file": "api_minimax_h3_r2v.mp4",
+       "mediaType": "video"
+      }
+     ]
+    },
+    "thumbnail": [
+     "output/api_minimax_h3_r2v.mp4"
+    ],
+    "minComfyUIVersion": "0.30.0"
+   },
+   {
+    "name": "api_minimax_h3_max_t2v",
+    "title": "MiniMax H3 Max: Text to Video",
+    "description": "Generate polished, prompt-faithful video from text using MiniMax H3 Max, producing a single finished video clip with no input files required. Ideal for rapid concept exploration, cinematic text-to-video scenes, and high-throughput creative iteration where speed and visual quality matter.",
+    "mediaType": "image",
+    "mediaSubtype": "webp",
+    "tags": [
+     "API",
+     "Text to Video"
+    ],
+    "models": [
+     "MiniMax H3"
+    ],
+    "logos": [
+     {
+      "provider": "MiniMax"
+     }
+    ],
+    "date": "2026-09-01",
+    "openSource": false,
+    "size": 0,
+    "usage": 132,
+    "searchRank": 0,
+    "username": "ComfyUI",
+    "minComfyUIVersion": "0.34.2",
+    "io": {
+     "outputs": [
+      {
+       "nodeId": 11,
+       "nodeType": "SaveVideo",
+       "file": "api_minimax_h3_max_t2v.mp4",
+       "mediaType": "video"
+      }
+     ]
+    },
+    "thumbnail": [
+     "output/api_minimax_h3_max_t2v.mp4"
+    ]
+   },
+   {
+    "name": "api_minimax_h3_max_flf2v",
+    "title": "MiniMax H3 Max: FLF2V",
+    "description": "Generate polished, prompt-faithful videos faster than real time with MiniMax H3 Max, a post-trained model tuned for stronger prompt adherence and vivid cinematic aesthetics. This workflow supports text-to-video, image-to-video animation, and directed first-to-last-frame transitions, delivering clean compositions and cohesive lighting directly from the model. Ideal for rapid concept exploration, cinematic motion graphics, and high-throughput video comparison.",
+    "mediaType": "image",
+    "mediaSubtype": "webp",
+    "tags": [
+     "API",
+     "FLF2V"
+    ],
+    "models": [
+     "MiniMax H3"
+    ],
+    "logos": [
+     {
+      "provider": "MiniMax"
+     }
+    ],
+    "date": "2026-09-01",
+    "openSource": false,
+    "size": 0,
+    "usage": 179,
+    "searchRank": 0,
+    "username": "ComfyUI",
+    "io": {
+     "inputs": [
+      {
+       "nodeId": 28,
+       "nodeType": "LoadImage",
+       "file": "dream_face_first.png",
+       "mediaType": "image",
+       "sourceRevision": "d0e41fe5423f93db5b5872cf273d7b1af8aa68bc"
+      },
+      {
+       "nodeId": 29,
+       "nodeType": "LoadImage",
+       "file": "dream_face_last.png",
+       "mediaType": "image",
+       "sourceRevision": "d0e41fe5423f93db5b5872cf273d7b1af8aa68bc"
+      }
+     ],
+     "outputs": [
+      {
+       "nodeId": 11,
+       "nodeType": "SaveVideo",
+       "file": "api_minimax_h3_max_flf2v.mp4",
+       "mediaType": "video"
+      }
+     ]
+    },
+    "minComfyUIVersion": "0.34.2",
+    "thumbnail": [
+     "output/api_minimax_h3_max_flf2v.mp4"
+    ]
+   },
+   {
+    "name": "api_minimax_h3_flf2v",
+    "title": "MiniMax H3: FLF2V",
+    "description": "Generate a video from a first and last frame using MiniMax H3, producing a smooth animation between the two images. You provide 2 images, and the workflow outputs a single video clip. Ideal for creating seamless transitions in animation, visualizing before-and-after transformations, and generating consistent motion for character or scene sequences.",
+    "mediaType": "image",
+    "mediaSubtype": "webp",
+    "tags": [
+     "API",
+     "FLF2V",
+     "Video"
+    ],
+    "models": [
+     "MiniMax H3"
+    ],
+    "logos": [
+     {
+      "provider": "MiniMax"
+     }
+    ],
+    "date": "2026-07-30",
+    "openSource": false,
+    "size": 0,
+    "usage": 29,
+    "searchRank": 0,
+    "username": "ComfyUI",
+    "io": {
+     "inputs": [
+      {
+       "nodeId": 15,
+       "nodeType": "LoadImage",
+       "file": "angel-warrior-demon-battle-start.png",
+       "mediaType": "image",
+       "sourceRevision": "d0e41fe5423f93db5b5872cf273d7b1af8aa68bc"
+      },
+      {
+       "nodeId": 16,
+       "nodeType": "LoadImage",
+       "file": "angel-warrior-demon-battle-end.png",
+       "mediaType": "image",
+       "sourceRevision": "d0e41fe5423f93db5b5872cf273d7b1af8aa68bc"
+      }
+     ],
+     "outputs": [
+      {
+       "nodeId": 26,
+       "nodeType": "SaveVideo",
+       "file": "api_minimax_h3_flf2v.mp4",
+       "mediaType": "video"
+      }
+     ]
+    },
+    "thumbnail": [
+     "thumbnail/api_minimax_h3_flf2v_preview.mp4"
+    ],
+    "minComfyUIVersion": "0.30.0"
+   },
+   {
+    "name": "api_minimax_h3_t2v",
+    "title": "MiniMax H3: Text to Video",
+    "description": "Generate video directly from text using the MiniMax H3 model, producing a 5-15 second clip with native stereo audio. Ideal for rapid concept visualization, short-form social media content, and pre-visualization for film or advertising projects.",
+    "mediaType": "image",
+    "mediaSubtype": "webp",
+    "tags": [
+     "Text to Video",
+     "API",
+     "Video"
+    ],
+    "models": [
+     "MiniMax H3"
+    ],
+    "logos": [
+     {
+      "provider": "MiniMax"
+     }
+    ],
+    "date": "2026-07-30",
+    "openSource": false,
+    "size": 0,
+    "usage": 10,
+    "searchRank": 0,
+    "username": "ComfyUI",
+    "io": {
+     "outputs": [
+      {
+       "nodeId": 8,
+       "nodeType": "SaveVideo",
+       "file": "api_minimax_h3_t2v.mp4",
+       "mediaType": "video"
+      }
+     ]
+    },
+    "thumbnail": [
+     "output/api_minimax_h3_t2v.mp4"
+    ],
+    "minComfyUIVersion": "0.30.0"
+   },
+   {
+    "name": "api_minimax_h3_max_turbo_t2v",
+    "title": "MiniMax H3 Turbo: Text to Video",
+    "description": "Generate 5\u201315 second videos from text prompts using MiniMax H3 Max Turbo, a high-speed text-to-video model optimized for rapid inference. This workflow takes no file inputs and outputs a single video file, delivering 768p clips in roughly 1\u20133 seconds of generation time. Ideal for quick social media content, iterative creative exploration, and fast prototyping of video concepts.",
+    "mediaType": "image",
+    "mediaSubtype": "webp",
+    "tags": [
+     "API"
+    ],
+    "models": [
+     "MiniMax H3"
+    ],
+    "date": "2026-09-04",
+    "openSource": false,
+    "size": 0,
+    "usage": 9,
+    "searchRank": 0,
+    "username": "ComfyUI",
+    "io": {
+     "outputs": [
+      {
+       "nodeId": 11,
+       "nodeType": "SaveVideo",
+       "file": "api_minimax_h3_max_turbo_t2v.mp4",
+       "mediaType": "video"
+      }
+     ]
+    },
+    "minComfyUIVersion": "0.34.4",
+    "thumbnail": [
+     "output/api_minimax_h3_max_turbo_t2v.mp4"
+    ]
+   },
+   {
+    "name": "video_minimax_h3_i2v_continuation",
+    "title": "Image to Video",
+    "description": "Start with an image and an empty prompt, then describe the motion, shots, and audio you want MiniMax H3 to generate. The workflow produces one video with synchronized audio and remains fully editable before execution.",
+    "mediaType": "image",
+    "mediaSubtype": "webp",
+    "tags": [
+     "Image to Video",
+     "Int8",
+     "Video"
+    ],
+    "models": [
+     "MiniMax H3"
+    ],
+    "date": "2026-08-24",
+    "openSource": true,
+    "size": 44452911514,
+    "usage": 667,
+    "searchRank": 0,
+    "username": "ComfyUI",
+    "io": {
+     "inputs": [
+      {
+       "nodeId": 114,
+       "nodeType": "LoadImage",
+       "file": "transparent_rgb_gaming_mouse.png",
+       "mediaType": "image",
+       "sourceRevision": "d0e41fe5423f93db5b5872cf273d7b1af8aa68bc"
+      }
+     ]
+    },
+    "thumbnail": [
+     "input/transparent_rgb_gaming_mouse.png"
+    ],
+    "minComfyUIVersion": "0.30.0"
+   }
+  ]
+ }
+]
