@@ -594,7 +594,16 @@ export interface ModelCatalogEntry {
    * are the default one. Absent for a catalogue row that is one file already.
    */
   variants?: ModelVariant[];
+  /**
+   * What the file holds, read off its safetensors header before install
+   * (`diffusers` means no ComfyUI loader can read it). Absent until checked;
+   * `POST /catalogue/layouts` checks on demand.
+   */
+  weightsLayout?: WeightsLayout;
 }
+
+/** See `apps/api/src/models/weights-layout.ts`. */
+export type WeightsLayout = 'bundled' | 'diffusion-only' | 'diffusers' | 'unknown';
 
 /** How small a build is, in the words the version picker uses. */
 export type ModelVariantKind = 'full' | 'fp8' | 'gguf';
@@ -821,6 +830,14 @@ export interface ModelFileProblem {
   kind: 'unloadable' | 'needs-diffusion-loader';
   summary: string;
   detail: string;
+  /**
+   * The one repair the app can make itself, offered to admins only:
+   * `replace` installs a known-good build of the same family
+   * (`POST /backends/:id/models/:modelId/working-build`); `move` moves the
+   * file into diffusion_models through the agent
+   * (`POST /backends/:id/models/:modelId/move-to-diffusion-models`).
+   */
+  fix?: { kind: 'replace'; name: string; size: string | null } | { kind: 'move' } | null;
 }
 
 /** The result of asking a backend to close its gaps. */

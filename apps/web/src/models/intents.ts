@@ -124,6 +124,7 @@ export function matchesIntent(entry: ModelCatalogEntry, intent: Intent): boolean
 export function worksHere(entry: ModelCatalogEntry): boolean {
   // Nothing that cannot be installed yet works here, add-on or not.
   if (entry.installBlockedReason) return false;
+  if (unloadable(entry)) return false;
   // An add-on works here when some workflow here can use it with its model.
   if (VOCABULARY[entry.type].group !== 'models') return entry.runnability?.status !== 'no-workflow';
   const status = entry.runnability?.status;
@@ -146,8 +147,21 @@ const STATUS_RANK: Record<RunnabilityStatus, number> = {
 };
 
 export function statusRank(entry: ModelCatalogEntry): number {
+  // A file no ComfyUI loader reads sorts after everything, whatever its verdict.
+  if (unloadable(entry)) return 99;
   return entry.runnability ? STATUS_RANK[entry.runnability.status] : 3;
 }
+
+/** Its header says no ComfyUI loader can read it (diffusers-format weights). */
+export function unloadable(entry: Pick<ModelCatalogEntry, 'weightsLayout'>): boolean {
+  return entry.weightsLayout === 'diffusers';
+}
+
+/** The pill, and the tooltip on the disabled Install. */
+export const UNLOADABLE_WORDS = {
+  pill: 'Won’t run in ComfyUI',
+  detail: 'This file is in diffusers format, which ComfyUI can’t load. Pick a single-file build instead.',
+} as const;
 
 /**
  * What a missing companion is called on a card: the vocabulary's word for it

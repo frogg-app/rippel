@@ -36,10 +36,13 @@ import {
   CardVerdict,
   InstallControls,
   artGradient,
+  UnloadablePill,
   type InstallControlsProps,
 } from './CatalogueCard';
 import { CloseIcon, ExpandIcon, HeartIcon } from './icons';
 import { PreviewLightbox } from './PreviewLightbox';
+import { requestLayouts } from './weightsLayouts';
+import { UNLOADABLE_WORDS, unloadable } from './intents';
 import { useVariants, VersionPicker, type LoadVariants } from './VersionPicker';
 import { TagChip } from './TagChip';
 import styles from './ModelsPanels.module.css';
@@ -115,6 +118,11 @@ export function CatalogueDrawer({
       }
     };
   }, []);
+
+  // Looking at a file is the moment to read what it holds; see weightsLayouts.ts.
+  useEffect(() => {
+    requestLayouts([entry, ...siblings].filter((member) => !member.installed && !member.weightsLayout).map((member) => member.url));
+  }, [entry, siblings]);
 
   useEffect(() => {
     // While the lightbox is open it owns Escape; one press closes one layer.
@@ -240,6 +248,7 @@ export function CatalogueDrawer({
                       <span className={styles.versionLabel}>
                         {basename(sibling.filename)}
                         {sibling.installed ? <span className={styles.versionBadge}>Installed</span> : null}
+                        {unloadable(sibling) ? <span className={styles.versionBadge} title={UNLOADABLE_WORDS.detail}>{UNLOADABLE_WORDS.pill}</span> : null}
                       </span>
                       <span className={`mono ${styles.versionFile}`}>{sibling.savePath || (sibling.ref.startsWith('hugging-face:') ? 'Hugging Face repo' : '—')}</span>
                       <span className={`mono ${styles.versionSize}`}>{size ? formatBytes(size) : ''}</span>
@@ -261,6 +270,7 @@ export function CatalogueDrawer({
             />
           ) : null}
 
+          {unloadable(entry) && !versions.chosen ? <p><UnloadablePill /></p> : null}
           <CardVerdict entry={entry} onWorkflows={onWorkflows}>
             {isSupport ? <span className={styles.verdictWhere}> {role.where}</span> : null}
           </CardVerdict>
@@ -273,7 +283,8 @@ export function CatalogueDrawer({
 
           <div className={styles.drawerActions}>
             <InstallControls
-              entry={entry}
+              // A chosen version is another file; the header read was of the default.
+              entry={versions.chosen ? { ...entry, weightsLayout: undefined } : entry}
               {...install}
               onInstall={(chosen) => install.onInstall(chosen, versions.chosen ?? undefined)}
             />

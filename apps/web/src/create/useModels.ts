@@ -2,7 +2,7 @@
  * Checkpoints and LoRAs for the pickers, plus the answer to "can I actually
  * generate with this one?".
  */
-import { useEffect, useState, useMemo } from 'react';
+import { useCallback, useEffect, useState, useMemo } from 'react';
 import { useTargetBackend } from '../shell/useTargetBackend';
 import type { JobKind, Model } from '@comfy/shared';
 import { type CapabilityMap, modelsApi, modelSupported, workflowsApi } from '../lib/api-jobs';
@@ -13,6 +13,8 @@ export interface ModelsState {
   capabilities: CapabilityMap;
   loading: boolean;
   error: string | null;
+  /** Ask again: after an install, a move or a removal. */
+  reload?: () => void;
 }
 
 /**
@@ -24,6 +26,8 @@ const EMPTY_CAPABILITIES: CapabilityMap = { byFamily: {}, unknownFamily: [], liv
 
 export function useModels(): ModelsState {
   const targetId = useTargetBackend();
+  const [generation, setGeneration] = useState(0);
+  const reload = useCallback(() => setGeneration((n) => n + 1), []);
   const [state, setState] = useState<ModelsState>({
     checkpoints: [],
     loras: [],
@@ -62,11 +66,11 @@ export function useModels(): ModelsState {
     })();
 
     return () => controller.abort();
-  }, [targetId]);
-  return useMemo(() => targetId ? { ...state,
+  }, [targetId, generation]);
+  return useMemo(() => targetId ? { ...state, reload,
     checkpoints: state.checkpoints.filter(model => model.backendIds.includes(targetId)).map(model => ({ ...model, backendIds: [targetId] })),
     loras: state.loras.filter(model => model.backendIds.includes(targetId)).map(model => ({ ...model, backendIds: [targetId] })),
-  } : state, [state, targetId]);
+  } : { ...state, reload }, [state, targetId, reload]);
 }
 
 export function supports(model: Model, kind: JobKind, capabilities: CapabilityMap): boolean {

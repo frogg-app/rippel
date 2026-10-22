@@ -71,7 +71,11 @@ export function CreatePage() {
   const [draftNotice, setDraftNotice] = useState<string | null>(null);
   const [advancedOpen, setAdvancedOpen] = useAdvancedOpen();
   const [mode, setMode] = useCreateMode();
-  const { checkpoints, loras, capabilities, loading, error } = useModels();
+  const { checkpoints, loras, capabilities, loading, error, reload } = useModels();
+  // A model the notice installed or found ("Get a version that works"):
+  // selected as soon as the list has it. Model rows land after the backend's
+  // next scan, so the list is asked again until then.
+  const [wanted, setWanted] = useState<{ id: string | null; filename: string } | null>(null);
   const stage = useJobStage();
   // The queue is shared state (the top bar shows the same snapshot), so this is
   // a subscription, not a second fetch. Its only job here is to turn "queued"
@@ -188,6 +192,20 @@ export function CreatePage() {
     const first = partition.runnable[0];
     if (first) patch({ modelId: first.model.id });
   }, [checkpoints, partition, form.modelId, patch]);
+
+  useEffect(() => {
+    if (!wanted) return;
+    const base = (name: string) => name.split(/[\\/]/).pop()!.toLowerCase();
+    const found = checkpoints.find((model) =>
+      wanted.id ? model.id === wanted.id : base(model.filename) === base(wanted.filename));
+    if (found) {
+      patch({ modelId: found.id });
+      setWanted(null);
+      return;
+    }
+    const timer = window.setTimeout(() => reload?.(), 4_000);
+    return () => window.clearTimeout(timer);
+  }, [wanted, checkpoints, patch, reload]);
 
   const selectedModel: Model | null =
     checkpoints.find((model) => model.id === form.modelId) ?? null;
@@ -315,7 +333,16 @@ export function CreatePage() {
               onModeChange={setMode}
             />
             {selectedModel && !supported ? (
-              <ModelNotice model={selectedModel} kind={kind} answer={selectedAnswer} />
+              <ModelNotice
+                model={selectedModel}
+                kind={kind}
+                answer={selectedAnswer}
+                onWant={(next) => {
+                  setWanted(next);
+                  reload?.();
+                }}
+                onChanged={() => reload?.()}
+              />
             ) : null}
           </Group>
 

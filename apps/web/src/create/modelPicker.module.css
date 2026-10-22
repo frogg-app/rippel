@@ -411,3 +411,20 @@ button.summary:focus-visible {
   gap: 8px;
   min-width: 0;
 }
+
+/* "Remove this file": an admin's way out, deliberately quieter than the fix. */
+.quietLink {
+  background: none;
+  border: 0;
+  padding: 0;
+  margin-left: 0.75rem;
+  font: inherit;
+  font-size: var(--text-xs);
+  color: var(--text-muted, inherit);
+  opacity: 0.75;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.quietLink:hover {
+  opacity: 1;
+}

@@ -13,6 +13,7 @@
  */
 import type { Uuid } from '@comfy/shared';
 import { query } from '../db.js';
+import { knownLayouts } from './url-layout.js';
 import { classifyWeightKeys, readSafetensorsKeys, WEIGHTS_LAYOUTS, type WeightsLayout } from './weights-layout.js';
 
 const FAILED_PROBE_TTL_MS = 10 * 60_000;
@@ -85,15 +86,25 @@ export async function weightsLayoutOf(id: Uuid, budgetMs?: number): Promise<Weig
 }
 
 async function learn(id: Uuid, url: string): Promise<WeightsLayout> {
+  // Read before install, from Discover or the install guard: no need to ask again.
+  const known = (await knownLayouts([url])).get(url);
+  if (known) {
+    await remember(id, known);
+    return known;
+  }
   const keys = await probeDeps.read(url);
   if (!keys) {
     failedAt.set(id, Date.now());
     return 'unknown';
   }
   const layout = classifyWeightKeys(keys);
+  await remember(id, layout);
+  return layout;
+}
+
+async function remember(id: Uuid, layout: WeightsLayout): Promise<void> {
   await query(
     `UPDATE models SET metadata = metadata || jsonb_build_object('weightsLayout', $2::text) WHERE id = $1`,
     [id, layout],
   ).catch(() => undefined);
-  return layout;
 }

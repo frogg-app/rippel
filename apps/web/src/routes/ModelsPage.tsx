@@ -84,6 +84,9 @@ import {
 import { FacetRail } from '../models/FacetRail';
 import { TagSearch } from '../models/TagSearch';
 import { useCatalogue } from '../models/useCatalogue';
+import { useWithLayouts } from '../models/weightsLayouts';
+
+const NO_ENTRIES: ModelCatalogEntry[] = [];
 import { HostApproval } from '../models/HostApproval';
 import { useInstalls } from '../models/useInstalls';
 import { useModelLibrary } from '../models/useModelLibrary';
@@ -349,7 +352,10 @@ export function ModelsPage({ api = modelsApi, storageApi: storage = storageApi }
     filteredFor.current = backendId;
   }, [backendId, setDiscover]);
 
-  const entries = catalogue.state.kind === 'ready' ? catalogue.state.entries : [];
+  const rawEntries = catalogue.state.kind === 'ready' ? catalogue.state.entries : NO_ENTRIES;
+  // Layouts read as cards are seen (weightsLayouts.ts): a file ComfyUI can't
+  // load sorts last and leaves "Works on this machine".
+  const entries = useWithLayouts(rawEntries);
   // The bare words of the search box. Tag-shaped words are not text, whether
   // or not they have been committed yet.
   const catText = useMemo(() => parseSearch(discover.q).text, [discover.q]);

@@ -18,7 +18,9 @@ import type {
   JobKind,
   JobStatus,
   Model,
+  ModelFileOperation,
   ModelFileProblem,
+  ModelInstall,
   ModelType,
   ReadinessInstallResult,
   Upload,
@@ -394,6 +396,21 @@ interface ReadinessPayload {
 }
 
 export const readinessApi = {
+  /** Install (or find) the family's known-good build; see ModelFileProblem.fix. */
+  workingBuild: (backendId: string, modelId: string) =>
+    request<{ install: ModelInstall | null; modelId: string | null; filename: string }>(
+      `/backends/${backendId}/models/${modelId}/working-build`,
+      { method: 'POST' },
+    ),
+  /** Have the agent move diffusion weights out of checkpoints/. */
+  moveToDiffusionModels: (backendId: string, modelId: string) =>
+    request<{ operation: ModelFileOperation }>(
+      `/backends/${backendId}/models/${modelId}/move-to-diffusion-models`,
+      { method: 'POST' },
+    ).then((r) => r.operation),
+  operation: (id: string) =>
+    request<{ operation: ModelFileOperation }>(`/model-operations/${id}`).then((r) => r.operation),
+
   async get(
     backendId: string,
     modelId: string,

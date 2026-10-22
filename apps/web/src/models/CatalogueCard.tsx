@@ -48,7 +48,7 @@
  *   failed      the error, and the button back, labelled as a retry
  *   installed   no button at all: a re-install is answered with a 409
  */
-import { useState, type CSSProperties, type ReactNode, type Ref } from 'react';
+import { useRef, useState, type CSSProperties, type ReactNode, type Ref } from 'react';
 import type { ModelCatalogEntry, ModelInstall } from '@comfy/shared';
 import {
   RUNNABILITY_TONE,
@@ -61,7 +61,8 @@ import {
 } from './catalogue';
 import { cardTags, ownerOf, tagKey, type TagKey } from './discover';
 import { authorOf, filesLabel, fitOf, fullId, shortName, sizeBytesOf, type EntryGroup, type Fit } from './cardFacts';
-import { verdictLabel } from './intents';
+import { UNLOADABLE_WORDS, unloadable, verdictLabel } from './intents';
+import { useLayoutsWhenSeen } from './weightsLayouts';
 import { NeedsPills } from './MissingParts';
 import { isRecommendedHere, recommendationFor } from './recommended';
 import { CheckIcon, DownloadCountIcon, HeartIcon, InstallIcon, WorkflowIcon } from './icons';
@@ -232,7 +233,14 @@ export function InstallControls({
         <p className={styles.cardResting}>Already on this backend</p>
       ) : entry.installBlockedReason ? (
         <p className={styles.cardResting}>{entry.installBlockedReason}</p>
-      ) : live || starting ? null : (
+      ) : live || starting ? null : unloadable(entry) ? (
+        <span title={UNLOADABLE_WORDS.detail}>
+          <button type="button" className={styles.installButton} disabled aria-label="Install (won’t run in ComfyUI)">
+            <InstallIcon size={13} />
+            Install
+          </button>
+        </span>
+      ) : (
         <button
           type="button"
           className={styles.installButton}
@@ -260,6 +268,15 @@ export function FitPill({ fit, className = '', ref }: { fit: Fit; className?: st
   return (
     <span ref={ref} className={`${styles.fitPill} ${styles[`fit_${fit.tone}`]} ${className}`} title={fit.detail}>
       {fit.label}
+    </span>
+  );
+}
+
+/** "Won't run in ComfyUI", with the reason in its tooltip. */
+export function UnloadablePill() {
+  return (
+    <span className={`${styles.fitPill} ${styles.fit_bad}`} title={UNLOADABLE_WORDS.detail}>
+      {UNLOADABLE_WORDS.pill}
     </span>
   );
 }
@@ -292,6 +309,8 @@ export function CatalogueCard({
 }: CatalogueCardProps) {
   const live = install !== null && isLive(install);
   const members = group?.entries ?? [entry];
+  const cardRef = useRef<HTMLElement>(null);
+  useLayoutsWhenSeen(cardRef, members);
   const done = members.some((member) => isDone(member, member === entry ? install : null));
 
   // A cached preview can still 404 — the row was written before someone
@@ -342,6 +361,7 @@ export function CatalogueCard({
 
   return (
     <article
+      ref={cardRef}
       className={`${styles.card} ${live ? styles.cardBusy : ''}`}
       style={{ '--i': index } as CSSProperties}
       // The full id: unique where two short names are not.
@@ -377,7 +397,7 @@ export function CatalogueCard({
 
         <div className={styles.cardFacts}>
           <FitPill fit={fit} />
-          {entry.runnability ? <NeedsPills verdict={entry.runnability} /> : null}
+          {unloadable(entry) ? <UnloadablePill /> : entry.runnability ? <NeedsPills verdict={entry.runnability} /> : null}
           {files ? (
             onOpen ? (
               <button

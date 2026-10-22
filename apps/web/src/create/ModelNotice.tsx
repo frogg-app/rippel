@@ -18,8 +18,8 @@
  * button: no part fixes it, and offering one is how the user ended up
  * downloading things for a model that was never going to run.
  */
-import { useContext, useEffect, useState } from 'react';
-import type { JobKind, Model, ModelInstall } from '@comfy/shared';
+import { useContext, useEffect, useState, type ReactNode } from 'react';
+import type { JobKind, Model, ModelFileOperation, ModelFileProblem, ModelInstall } from '@comfy/shared';
 import { ApiRequestError } from '../lib/api';
 import { type MissingPart, type ModelReadiness, readinessApi } from '../lib/api-jobs';
 import { modelsApi } from '../lib/api-models';
@@ -54,10 +54,16 @@ export function ModelNotice({
   model,
   kind,
   answer,
+  onWant,
+  onChanged,
 }: {
   model: Model;
   kind: JobKind;
   answer: ModelReadiness | undefined;
+  /** Select this model once the list has it (by id, or by filename after an install). */
+  onWant?: (want: { id: string | null; filename: string }) => void;
+  /** The model list changed under us: a file moved or was removed. */
+  onChanged?: () => void;
 }) {
   const user = useContext(AuthContext)?.user ?? null;
   const backendId = model.backendIds[0] ?? null;
@@ -76,11 +82,15 @@ export function ModelNotice({
       </p>
 
       {answer.problem ? (
-        <>
-          <a className={styles.link} href={findModelsHref(mode)} title={answer.problem.detail}>
-            Pick another model
-          </a>
-        </>
+        <ProblemFix
+          model={model}
+          backendId={backendId}
+          problem={answer.problem}
+          isAdmin={isAdmin}
+          pickHref={findModelsHref(mode)}
+          onWant={onWant}
+          onChanged={onChanged}
+        />
       ) : (
         <>
           {absent.length > 0 ? (
@@ -213,5 +223,182 @@ function PartRow({
         </a>
       </span>
     </li>
+  );
+}
+
+type FixState =
+  | { kind: 'idle' }
+  | { kind: 'starting' }
+  | { kind: 'installing'; install: ModelInstall; filename: string }
+  | { kind: 'moving'; operation: ModelFileOperation }
+  | { kind: 'message'; text: string; error?: boolean };
+
+function errorText(cause: unknown, fallback: string): string {
+  if (cause instanceof ApiRequestError && cause.status === 403) return 'Only an admin can do this.';
+  return cause instanceof Error ? cause.message : fallback;
+}
+
+/**
+ * A model file with a problem of its own. One action, when the app can make
+ * the repair: install a known-good build of the same family and select it, or
+ * have the agent move bare diffusion weights to diffusion_models. Otherwise
+ * the "Pick another model" link. Admins also get a quiet "Remove this file"
+ * for a file that will never load. Detail lives in tooltips.
+ */
+export function ProblemFix({
+  model,
+  backendId,
+  problem,
+  isAdmin,
+  pickHref,
+  onWant,
+  onChanged,
+}: {
+  model: Model;
+  backendId: string;
+  problem: ModelFileProblem;
+  isAdmin: boolean;
+  pickHref: string;
+  onWant?: (want: { id: string | null; filename: string }) => void;
+  onChanged?: () => void;
+}) {
+  const [state, setState] = useState<FixState>({ kind: 'idle' });
+  const [now, setNow] = useState(() => Date.now());
+  const fix = isAdmin ? (problem.fix ?? null) : null;
+  const installId = state.kind === 'installing' ? state.install.id : null;
+  const installFile = state.kind === 'installing' ? state.filename : null;
+  const operationId = state.kind === 'moving' ? state.operation.id : null;
+
+  useEffect(() => {
+    if (!installId || !installFile) return;
+    let stopped = false;
+    const timer = window.setInterval(() => {
+      setNow(Date.now());
+      modelsApi
+        .installStatus(backendId, installId)
+        .then((install) => {
+          if (stopped) return;
+          if (install.status === 'complete') {
+            window.clearInterval(timer);
+            setState({ kind: 'message', text: 'Installed. Selecting it…' });
+            onWant?.({ id: null, filename: installFile });
+          } else if (install.status === 'failed' || install.status === 'cancelled') {
+            window.clearInterval(timer);
+            setState({ kind: 'message', text: install.error ?? 'The download did not finish.', error: true });
+          } else {
+            setState({ kind: 'installing', install, filename: installFile });
+          }
+        })
+        .catch(() => {});
+    }, POLL_MS);
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+    };
+  }, [installId, installFile, backendId, onWant]);
+
+  useEffect(() => {
+    if (!operationId) return;
+    let stopped = false;
+    const timer = window.setInterval(() => {
+      readinessApi
+        .operation(operationId)
+        .then((operation) => {
+          if (stopped) return;
+          if (operation.status === 'done') {
+            window.clearInterval(timer);
+            setState({ kind: 'message', text: 'Moved.' });
+            invalidateReadiness(backendId, model.id);
+            onChanged?.();
+          } else if (operation.status === 'failed') {
+            window.clearInterval(timer);
+            setState({ kind: 'message', text: operation.error ?? 'The move did not finish.', error: true });
+          } else {
+            setState({ kind: 'moving', operation });
+          }
+        })
+        .catch(() => {});
+    }, POLL_MS);
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+    };
+  }, [operationId, backendId, model.id, onChanged]);
+
+  const getWorking = () => {
+    setState({ kind: 'starting' });
+    readinessApi
+      .workingBuild(backendId, model.id)
+      .then((result) => {
+        if (result.install) setState({ kind: 'installing', install: result.install, filename: result.filename });
+        else {
+          setState({ kind: 'message', text: 'Already here. Selecting it…' });
+          onWant?.({ id: result.modelId, filename: result.filename });
+        }
+      })
+      .catch((cause: unknown) => setState({ kind: 'message', error: true, text: errorText(cause, 'Could not start the download.') }));
+  };
+
+  const move = () => {
+    setState({ kind: 'starting' });
+    readinessApi
+      .moveToDiffusionModels(backendId, model.id)
+      .then((operation) => setState({ kind: 'moving', operation }))
+      .catch((cause: unknown) => setState({ kind: 'message', error: true, text: errorText(cause, 'Could not move the file.') }));
+  };
+
+  const remove = () => {
+    setState({ kind: 'starting' });
+    modelsApi
+      .removeModel(model.id)
+      .then((removal) => {
+        setState({ kind: 'message', text: removal.removedFromDisk ? 'Removed.' : 'Removed from rippel.' });
+        onChanged?.();
+      })
+      .catch((cause: unknown) => setState({ kind: 'message', error: true, text: errorText(cause, 'Could not remove it.') }));
+  };
+
+  let action: ReactNode;
+  if (state.kind === 'installing') action = <InstallProgress install={state.install} now={now} compact />;
+  else if (state.kind === 'moving') action = <span>Moving…</span>;
+  else if (state.kind === 'message') action = <span role={state.error ? 'alert' : undefined}>{state.text}</span>;
+  else if (fix?.kind === 'replace') {
+    action = (
+      <button
+        type="button"
+        className={styles.getIt}
+        disabled={state.kind === 'starting'}
+        onClick={getWorking}
+        title={`Installs ${fix.name}${fix.size ? ` (${fix.size})` : ''}, a build ComfyUI can load.`}
+      >
+        {state.kind === 'starting' ? 'Starting…' : 'Get a version that works'}
+      </button>
+    );
+  } else if (fix?.kind === 'move') {
+    action = (
+      <button type="button" className={styles.getIt} disabled={state.kind === 'starting'} onClick={move} title={problem.detail}>
+        {state.kind === 'starting' ? 'Starting…' : 'Move it'}
+      </button>
+    );
+  } else {
+    action = (
+      <a className={styles.link} href={pickHref} title={problem.detail}>
+        Pick another model
+      </a>
+    );
+  }
+
+  return (
+    <p className={styles.noticeText}>
+      {action}
+      {isAdmin && problem.kind === 'unloadable' && state.kind === 'idle' ? (
+        <>
+          {' '}
+          <button type="button" className={styles.quietLink} onClick={remove} title="Remove it from rippel">
+            Remove this file
+          </button>
+        </>
+      ) : null}
+    </p>
   );
 }

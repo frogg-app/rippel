@@ -40,6 +40,10 @@ import {
 } from './installs.js';
 import { readinessFor } from './readiness.js';
 import { weightsLayoutOf } from './weights-probe.js';
+import { knownLayouts, layoutForUrl, layoutsForUrls } from './url-layout.js';
+import { workingBuildFor } from './working-builds.js';
+import { planOperation, startOperation } from './operations.js';
+import { folderOfInstalled } from '../workflows/folders.js';
 import { TransportBusy, TransportError, TransportUnavailable, type ModelTransport } from './transport.js';
 
 interface BackendUrlRow {
@@ -98,18 +102,40 @@ export default async function modelInstallRoutes(app: FastifyInstance) {
           info = null;
         }
 
+        // Layouts already read; the rest are read when a card is looked at.
+        const layouts = await knownLayouts(entries.map((entry) => entry.url));
+        const withLayout = (entry: ModelCatalogEntry): ModelCatalogEntry => {
+          const layout = layouts.get(entry.url);
+          return layout ? { ...entry, weightsLayout: layout } : entry;
+        };
         return {
           entries: entries.map((original) => {
             const entry = discoveredOn(original, info, transport.kind);
-            if (entry.installBlockedReason) return { ...entry, runnability: { ...entry.runnability!, backendId: backend.id } };
+            if (entry.installBlockedReason) return withLayout({ ...entry, runnability: { ...entry.runnability!, backendId: backend.id } });
             const judged = judgeEntry(entry, info, backend, transport.kind);
-            return { ...judged.entry, runnability: judged.verdict };
+            return withLayout({ ...judged.entry, runnability: judged.verdict });
           }),
           pending: pending + workflowCataloguePending(backend.id, backend.base_url) + huggingFaceCataloguePending(),
         };
       } catch (err) {
         return transportFailure(reply, err);
       }
+    },
+  );
+
+  /**
+   * Read the headers of catalogue files somebody is looking at, so a file no
+   * ComfyUI loader can read is marked before it is downloaded. Lazily, per
+   * card or drawer, and remembered per URL; see url-layout.ts.
+   */
+  app.post<{ Body: { urls?: unknown } }>(
+    '/catalogue/layouts',
+    { onRequest: [app.requireAdmin] },
+    async (req, reply) => {
+      const parsed = z.array(z.string().url().max(2000)).max(40).safeParse(req.body?.urls);
+      if (!parsed.success) return reply.code(400).send({ error: 'bad_request', message: 'Pass up to 40 urls.' });
+      const layouts = await layoutsForUrls(parsed.data);
+      return { layouts: Object.fromEntries(layouts) };
     },
   );
 
@@ -248,6 +274,11 @@ export default async function modelInstallRoutes(app: FastifyInstance) {
             .code(400)
             .send({ error: 'bad_request', message: `This backend does not offer "${ref}"` });
         }
+        // The header says no ComfyUI loader can read it: refuse before a
+        // multi-gigabyte download rather than after.
+        if ((await layoutForUrl(entry.url, 5_000)) === 'diffusers') {
+          return reply.code(422).send({ error: 'unloadable', message: 'Won’t run in ComfyUI. Pick another file.' });
+        }
         // Recording the row, telling the backend to start, and the two 409s
         // now live in `startInstall` — the single download path, shared with
         // the readiness route below.
@@ -354,6 +385,9 @@ export default async function modelInstallRoutes(app: FastifyInstance) {
           transport,
           transportReason,
         });
+        if (readiness.modelProblem && resolved.modelId && isAdmin) {
+          readiness.modelProblem = { ...readiness.modelProblem, fix: await problemFix(readiness.modelProblem.kind, resolved.modelId, backend.id) };
+        }
         return { readiness } satisfies { readiness: BackendReadiness };
       } catch (err) {
         // Without /object_info there is nothing honest to report; guessing at a
@@ -496,6 +530,73 @@ export default async function modelInstallRoutes(app: FastifyInstance) {
         }
         return transportFailure(reply, err);
       }
+    },
+  );
+
+  /**
+   * "Get a version that works": install the family's known-good build in place
+   * of a file ComfyUI cannot load. When this backend already has it, says so
+   * with its model id, and the caller just selects it.
+   */
+  app.post<{ Params: { id: string; modelId: string } }>(
+    '/backends/:id/models/:modelId/working-build',
+    { onRequest: [app.requireAdmin] },
+    async (req, reply) => {
+      if (!z.string().uuid().safeParse(req.params.modelId).success) return reply.code(400).send({ error: 'bad_request', message: 'Choose a model.' });
+      const backend = await adminBackend(req.params.id);
+      if (!backend) return reply.code(404).send({ error: 'not_found', message: 'No such backend' });
+      const model = await queryOne<{ filename: string; base_model: string | null }>('SELECT filename, base_model FROM models WHERE id = $1', [req.params.modelId]);
+      const entry = model ? workingBuildFor(model) : null;
+      if (!entry) return reply.code(404).send({ error: 'not_found', message: 'No known working build for this model.' });
+
+      const existing = await queryOne<{ id: string }>(
+        `SELECT m.id FROM models m JOIN model_backends mb ON mb.model_id = m.id
+          WHERE mb.backend_id = $1 AND lower(regexp_replace(m.filename, '^.*[\\/]', '')) = lower($2) LIMIT 1`,
+        [backend.id, entry.filename],
+      );
+      if (existing) return reply.code(200).send({ install: null, modelId: existing.id, filename: entry.filename });
+
+      try {
+        const transport = await requireTransport(backend.base_url, backend.id);
+        const install = await startInstall({ backendId: backend.id, backendName: backend.name, requestedBy: req.user!.id, entry, transport });
+        return reply.code(202).send({ install, modelId: null, filename: entry.filename });
+      } catch (err) {
+        if (err instanceof InstallConflict) return reply.code(409).send({ error: 'conflict', message: err.message });
+        return transportFailure(reply, err);
+      }
+    },
+  );
+
+  /**
+   * Diffusion weights filed under checkpoints/: the agent moves the file to
+   * diffusion_models/, where the workflow that can run it looks. One step of
+   * the same file-operation journal the Fix button uses.
+   */
+  app.post<{ Params: { id: string; modelId: string } }>(
+    '/backends/:id/models/:modelId/move-to-diffusion-models',
+    { onRequest: [app.requireAdmin] },
+    async (req, reply) => {
+      if (!z.string().uuid().safeParse(req.params.modelId).success) return reply.code(400).send({ error: 'bad_request', message: 'Choose a model.' });
+      const backend = await adminBackend(req.params.id);
+      if (!backend) return reply.code(404).send({ error: 'not_found', message: 'No such backend' });
+      if (!(await hasAgent(backend.id))) return reply.code(409).send({ error: 'conflict', message: 'This machine has no rippel agent to move files.' });
+      const model = await queryOne<{ filename: string }>('SELECT filename FROM models WHERE id = $1', [req.params.modelId]);
+      if (!model) return reply.code(404).send({ error: 'not_found', message: 'No such model' });
+      if ((await weightsLayoutOf(req.params.modelId).catch(() => 'unknown')) !== 'diffusion-only') {
+        return reply.code(409).send({ error: 'conflict', message: 'This file does not need moving.' });
+      }
+      const info = await objectInfoFor(backend.base_url).catch(() => null);
+      const folder = folderOfInstalled(info, model.filename) ?? 'checkpoints';
+      if (folder !== 'checkpoints') return reply.code(409).send({ error: 'conflict', message: 'This file is not in checkpoints.' });
+      const planned = await planOperation({
+        backendId: backend.id,
+        modelId: req.params.modelId,
+        actorId: req.user!.id,
+        steps: [{ kind: 'move', request: { from: `checkpoints/${model.filename}`, to: `diffusion_models/${model.filename}` } }],
+      });
+      if (!planned) return reply.code(500).send({ error: 'internal', message: 'Could not plan the move.' });
+      const operation = await startOperation(planned.id);
+      return reply.code(202).send({ operation: operation ?? planned });
     },
   );
 
@@ -716,4 +817,20 @@ async function installCompanions(params: {
     }
   }
   return started;
+}
+
+async function hasAgent(backendId: string): Promise<boolean> {
+  return Boolean(await queryOne('SELECT id FROM deployments WHERE backend_id = $1 LIMIT 1', [backendId]));
+}
+
+/** The one repair offered for a model file's own problem, if the app can make it. */
+async function problemFix(
+  kind: 'unloadable' | 'needs-diffusion-loader',
+  modelId: string,
+  backendId: string,
+): Promise<{ kind: 'replace'; name: string; size: string | null } | { kind: 'move' } | null> {
+  if (kind === 'needs-diffusion-loader') return (await hasAgent(backendId)) ? { kind: 'move' } : null;
+  const model = await queryOne<{ filename: string; base_model: string | null }>('SELECT filename, base_model FROM models WHERE id = $1', [modelId]);
+  const entry = model ? workingBuildFor(model) : null;
+  return entry ? { kind: 'replace', name: entry.name, size: entry.size } : null;
 }
