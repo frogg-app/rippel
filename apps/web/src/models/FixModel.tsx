@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { ModelFileOperation } from '@comfy/shared';
 import { request } from '../lib/api';
 import { formatBytes } from './catalogue';
+import { Button } from '../components/Button';
 
 export function OperationProgress({ operation, onChange, onDone }: {
   operation: ModelFileOperation; onChange: (operation: ModelFileOperation) => void; onDone?: () => void;
@@ -36,11 +37,11 @@ export function OperationConfirmation({ operation, onChange }: { operation: Mode
       : <>{step.request.path} · {formatBytes(step.request.sizeBytes ?? 0)} · <a href={step.request.url} target="_blank" rel="noreferrer">Source</a></>}</li>)}</ol>
     {bytes ? <p>Total download: {formatBytes(bytes)}</p> : null}
     {error ? <p role="alert">{error}</p> : null}
-    <button type="button" disabled={busy} onClick={() => {
+    <Button variant="primary" busy={busy} onClick={() => {
       setBusy(true); setError('');
       void request<{ operation: ModelFileOperation }>(`/model-operations/${operation.id}/start`, { method: 'POST' })
         .then(({ operation: next }) => onChange(next)).catch((error) => setError(error.message)).finally(() => setBusy(false));
-    }}>Confirm file changes</button>
+    }}>Confirm file changes</Button>
   </div>;
 }
 export function FixModel({ modelId, backendId, onDone }: { modelId: string; backendId: string; onDone?: () => void }) {
@@ -55,12 +56,12 @@ export function FixModel({ modelId, backendId, onDone }: { modelId: string; back
     return () => controller.abort();
   }, [modelId, backendId]);
   return <div>
-    {!operation || operation.status === 'failed' || operation.status === 'done' ? <button type="button" disabled={busy} onClick={() => {
+    {!operation || operation.status === 'failed' || operation.status === 'done' ? <Button busy={busy} onClick={() => {
       setBusy(true); setError('');
       void request<{ operation: ModelFileOperation; unavailable: string[] }>(`/models/${modelId}/fix-plan`, { method: 'POST', body: { backendId } })
         .then((result) => { setOperation(result.operation); setError(result.unavailable.join(' ')); })
         .catch((error) => setError(error.message)).finally(() => setBusy(false));
-    }}>{busy ? 'Checking fix…' : operation?.status === 'failed' ? 'Retry fix' : 'Fix'}</button> : null}
+    }}>{busy ? 'Checking fix…' : operation?.status === 'failed' ? 'Retry fix' : 'Fix'}</Button> : null}
     {error ? <p role="alert">{error}</p> : null}
     {operation?.status === 'planned' ? <OperationConfirmation operation={operation} onChange={setOperation} /> : null}
     {operation ? <OperationProgress operation={operation} onChange={setOperation} onDone={onDone} /> : null}
