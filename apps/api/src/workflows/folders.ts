@@ -183,3 +183,32 @@ export function canonicalModelDir(savePath: string | null | undefined, type: str
   segments[0] = LEGACY_FOLDER[first] ?? segments[0]!;
   return segments.join('/');
 }
+
+interface LoaderNode {
+  readonly class_type: string;
+  readonly inputs: Readonly<Record<string, unknown>>;
+}
+
+/**
+ * GGUF builds load through ComfyUI-GGUF's `UnetLoaderGGUF`, which reads the
+ * same folder and the same `unet_name` input as the stock `UNETLoader` but
+ * takes no `weight_dtype` (the file states its own). Every UNETLoader pointed
+ * at a `.gguf` file is swapped for it; everything else is returned as it was.
+ * A backend without the node then fails the ordinary node check, which is what
+ * tells the person their machine needs GGUF support.
+ */
+export function withGgufLoaders<G extends Readonly<Record<string, LoaderNode>>>(graph: G): G {
+  let changed = false;
+  const out: Record<string, LoaderNode> = {};
+  for (const [id, node] of Object.entries(graph)) {
+    const file = node.inputs.unet_name;
+    if (node.class_type === 'UNETLoader' && typeof file === 'string' && /\.gguf$/i.test(file)) {
+      const { weight_dtype: _dropped, ...inputs } = node.inputs;
+      out[id] = { ...node, class_type: 'UnetLoaderGGUF', inputs };
+      changed = true;
+    } else {
+      out[id] = node;
+    }
+  }
+  return changed ? (out as G) : graph;
+}

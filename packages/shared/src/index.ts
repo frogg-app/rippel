@@ -454,7 +454,7 @@ export interface ModelCatalogInfo {
  * "anime", "fp8"). Types only: this package carries no runtime code, so the
  * display order lives with each consumer.
  */
-export type ModelTagGroup = 'task' | 'base' | 'library' | 'format' | 'language' | 'license' | 'tag';
+export type ModelTagGroup = 'task' | 'version' | 'base' | 'library' | 'format' | 'language' | 'license' | 'tag';
 
 /** Lower-cased values per group, de-duplicated, in the source's order. */
 export type ModelTags = Record<ModelTagGroup, string[]>;
@@ -530,6 +530,11 @@ export interface ModelRunnability {
    * folder should put it.
    */
   installInto?: string;
+  /**
+   * A node class the workflow needs and the machine lacks. No download fixes
+   * it, so "works on this machine" must not count it, whatever the status.
+   */
+  missingNode?: string;
 }
 
 // ---------------------------------------------------------------- model installs
@@ -580,6 +585,42 @@ export interface ModelCatalogEntry {
   info: ModelCatalogInfo | null;
   /** Whether this would run on the backend that offered it. */
   runnability: ModelRunnability | null;
+  /**
+   * The installable builds of this model, for a repository that holds several
+   * (full weights, fp8, distilled, GGUF quantisations). `filename` and `url`
+   * are the default one. Absent for a catalogue row that is one file already.
+   */
+  variants?: ModelVariant[];
+}
+
+/** How small a build is, in the words the version picker uses. */
+export type ModelVariantKind = 'full' | 'fp8' | 'gguf';
+
+/** One installable file within a repository. */
+export interface ModelVariant {
+  /** Path within the repository, as Hugging Face names it. */
+  path: string;
+  /** The file's own name: what ComfyUI will list. */
+  filename: string;
+  kind: ModelVariantKind;
+  /** "fp16", "bf16", "fp32", "fp8" or a GGUF level such as "Q4_K_M". */
+  precision: string | null;
+  /** Fewer-step builds: turbo, lightning, schnell, LCM, "distilled". */
+  distilled: boolean;
+  /** Filled in by the variants route, from the repository tree. */
+  sizeBytes?: number | null;
+  sha256?: string | null;
+  /** Set by the variants route on the build that best fits the machine. */
+  recommended?: boolean;
+  /** Where this build lands on the machine; see `ModelCatalogEntry.savePath`. */
+  savePath?: string;
+}
+
+/** `GET /backends/:id/catalogue/variants` */
+export interface ModelVariantsResponse {
+  variants: ModelVariant[];
+  /** The memory the recommendation was measured against, when known. */
+  memoryBytes: number | null;
 }
 
 // ---------------------------------------------------------------- readiness

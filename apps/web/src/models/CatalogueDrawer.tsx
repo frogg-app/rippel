@@ -39,6 +39,7 @@ import {
 } from './CatalogueCard';
 import { CloseIcon, ExpandIcon, HeartIcon, LinkIcon } from './icons';
 import { PreviewLightbox } from './PreviewLightbox';
+import { useVariants, VersionPicker, type LoadVariants } from './VersionPicker';
 import { TagChip } from './TagChip';
 import styles from './ModelsPanels.module.css';
 
@@ -50,6 +51,8 @@ export interface CatalogueDrawerProps extends InstallControlsProps {
   onWorkflows?: (entry: ModelCatalogEntry) => void;
   /** "on desktop-4090", after the verdict: a verdict is never global. */
   backendName: string | null;
+  /** Reads a Hugging Face model's versions; without it the picker shows names only. */
+  loadVariants?: LoadVariants;
 }
 
 export function CatalogueDrawer({
@@ -59,8 +62,10 @@ export function CatalogueDrawer({
   activeTags,
   onWorkflows,
   backendName,
+  loadVariants,
   ...install
 }: CatalogueDrawerProps) {
+  const versions = useVariants(entry, loadVariants);
   const closeRef = useRef<HTMLButtonElement>(null);
   const restoreTo = useRef<Element | null>(null);
   const [enlarged, setEnlarged] = useState(false);
@@ -264,8 +269,25 @@ export function CatalogueDrawer({
             <p className={styles.drawerNote}>Used by the workflow “{entry.sourceWorkflow.title}”.</p>
           ) : null}
 
+          {/* Only worth a choice when there is one; a single build still
+              shows its size. */}
+          {versions.variants.length > 0 && !entry.installBlockedReason ? (
+            <VersionPicker
+              variants={versions.variants}
+              memoryBytes={versions.memoryBytes}
+              loading={versions.loading}
+              chosen={versions.chosen}
+              onChoose={versions.choose}
+              backendName={backendName}
+            />
+          ) : null}
+
           <div className={styles.drawerActions}>
-            <InstallControls entry={entry} {...install} />
+            <InstallControls
+              entry={entry}
+              {...install}
+              onInstall={(chosen) => install.onInstall(chosen, versions.chosen ?? undefined)}
+            />
           </div>
         </div>
       </aside>

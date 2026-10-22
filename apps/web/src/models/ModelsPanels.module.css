@@ -2511,3 +2511,116 @@ button.tagChipOn:hover {
     padding: 0 12px;
   }
 }
+
+/* -- the version picker in the drawer: which build of a model to install */
+
+.versions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.versionsHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.versionsTitle {
+  font-size: var(--text-sm);
+  color: var(--text-2);
+}
+
+.versionsMemory {
+  font-size: var(--text-xs);
+  color: var(--text-4);
+  text-align: right;
+}
+
+.versionList {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.versionRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    'label size'
+    'file size';
+  gap: 2px 12px;
+  align-items: center;
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-2);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color var(--transition), background var(--transition);
+}
+
+.versionRow:hover:not(:disabled) {
+  background: var(--surface-hover);
+}
+
+.versionRowOn {
+  border-color: var(--accent-line);
+  background: var(--accent-tint);
+  color: var(--text);
+}
+
+.versionLabel {
+  grid-area: label;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--text-sm);
+}
+
+.versionBadge {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--ok-tint);
+  color: var(--ok-text);
+  font-size: var(--text-xs);
+}
+
+.versionFile {
+  grid-area: file;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-xs);
+  color: var(--text-4);
+}
+
+.versionSize {
+  grid-area: size;
+  font-size: var(--text-xs);
+  color: var(--text-3);
+}
+
+.versionNote {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--text-4);
+}
+
+.cardVersions {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  cursor: pointer;
+}
+
+.cardVersions:hover {
+  text-decoration: underline;
+}

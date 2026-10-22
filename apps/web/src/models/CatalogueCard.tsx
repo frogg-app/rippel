@@ -76,7 +76,7 @@ export interface InstallControlsProps {
   starting: boolean;
   /** False when nothing can be installed here — an offline backend. */
   canInstall: boolean;
-  onInstall: (entry: ModelCatalogEntry) => void;
+  onInstall: (entry: ModelCatalogEntry, variant?: string) => void;
   /** A refusal from the last attempt on this entry: a 400, a 409, a 502. */
   failure: string | null;
   now: number;
@@ -355,6 +355,20 @@ export function CatalogueCard({
               </span>
             ) : null}
             {entry.size ? <span className="mono">{entry.size}</span> : null}
+            {(entry.variants?.length ?? 0) > 1 && !entry.installBlockedReason ? (
+              onOpen ? (
+                <button
+                  type="button"
+                  className={styles.cardVersions}
+                  onClick={() => onOpen(entry)}
+                  title="Choose which version to install"
+                >
+                  {entry.variants!.length} versions
+                </button>
+              ) : (
+                <span>{entry.variants!.length} versions</span>
+              )
+            ) : null}
           </p>
         </div>
 

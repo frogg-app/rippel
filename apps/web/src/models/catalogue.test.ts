@@ -297,7 +297,7 @@ describe('remaining', () => {
 /** Three entries with tags, shaped like the API's grouped output. */
 function tagged() {
   const tags = (over: Partial<ReturnType<typeof makeInfo>['tags']>) => ({
-    task: [], base: [], library: [], format: [], language: [], license: [], tag: [], ...over,
+    task: [], version: [], base: [], library: [], format: [], language: [], license: [], tag: [], ...over,
   });
   return [
     makeEntry({

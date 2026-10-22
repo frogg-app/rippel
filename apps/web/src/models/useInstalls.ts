@@ -54,7 +54,7 @@ export interface InstallsState {
   /** Refs with a POST in flight, so a card can disable its own button. */
   starting: ReadonlySet<string>;
   startFailure: StartFailure | null;
-  start: (backendId: Uuid, ref: string) => Promise<ModelInstall | null>;
+  start: (backendId: Uuid, ref: string, variant?: string) => Promise<ModelInstall | null>;
   dismissFailure: () => void;
 }
 
@@ -174,11 +174,11 @@ export function useInstalls({ api, backendId, enabled }: UseInstallsOptions): In
   }, [api, backendId, enabled, commit]);
 
   const start = useCallback(
-    async (targetBackendId: Uuid, ref: string): Promise<ModelInstall | null> => {
+    async (targetBackendId: Uuid, ref: string, variant?: string): Promise<ModelInstall | null> => {
       setStartFailure(null);
       setStarting((prev) => new Set(prev).add(ref));
       try {
-        const install = await api.install(targetBackendId, ref);
+        const install = await api.install(targetBackendId, ref, variant);
         // Commit synchronously so the card flips to "Queued" on the click
         // rather than on the next poll — the poll may be twenty seconds away.
         commit([install]);

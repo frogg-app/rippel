@@ -44,7 +44,7 @@ import { useAuth } from '../auth/context';
 import { modelsApi, type ModelsApi } from '../lib/api-models';
 import { storageApi, type StorageApi } from '../lib/api-storage';
 import { StoragePanel } from '../models/StoragePanel';
-import { CatalogueGrid } from '../models/CatalogueGrid';
+import { CatalogueGrid, type LoadVariants } from '../models/CatalogueGrid';
 import { FilterBar } from '../models/FilterBar';
 import { InstalledList } from '../models/InstalledList';
 import { InstallsList } from '../models/InstallsList';
@@ -403,11 +403,18 @@ export function ModelsPage({ api = modelsApi, storageApi: storage = storageApi }
 
   const startInstall = installs.start;
   const onInstall = useCallback(
-    (entry: ModelCatalogEntry) => {
+    (entry: ModelCatalogEntry, variant?: string) => {
       if (!backendId) return;
-      void startInstall(backendId, entry.ref);
+      void startInstall(backendId, entry.ref, variant);
     },
     [backendId, startInstall],
+  );
+  const loadVariants = useMemo(
+    () =>
+      backendId && api.variants
+        ? (ref: string, signal?: AbortSignal) => api.variants!(backendId, ref, signal)
+        : undefined,
+    [api, backendId],
   );
 
   // ------------------------------------------------------------- render
@@ -700,6 +707,7 @@ export function ModelsPage({ api = modelsApi, storageApi: storage = storageApi }
                 starting={installs.starting}
                 canInstall={backend?.status === 'online'}
                 onInstall={onInstall}
+                loadVariants={loadVariants}
                 failure={installs.startFailure}
                 now={now}
                 onReload={catalogue.reload}
@@ -811,6 +819,7 @@ function CatalogueBody({
   starting,
   canInstall,
   onInstall,
+  loadVariants,
   failure,
   now,
   onReload,
@@ -828,7 +837,8 @@ function CatalogueBody({
   installsHere: Map<string, import('@comfy/shared').ModelInstall>;
   starting: ReadonlySet<string>;
   canInstall: boolean;
-  onInstall: (entry: ModelCatalogEntry) => void;
+  onInstall: (entry: ModelCatalogEntry, variant?: string) => void;
+  loadVariants?: LoadVariants;
   failure: { ref: string; message: string } | null;
   now: number;
   onReload: () => void;
@@ -940,6 +950,7 @@ function CatalogueBody({
             starting={starting}
             canInstall={canInstall}
             onInstall={onInstall}
+            loadVariants={loadVariants}
             failure={failure}
             now={now}
             onWorkflows={onWorkflows}

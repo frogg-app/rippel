@@ -63,7 +63,7 @@ import type { ObjectInfo } from '../lib/comfy.js';
 import { checkGraph } from '../orchestrator/preflight.js';
 import type { ComfyApiGraph, WorkflowTemplate } from '../workflows/types.js';
 import { knownCapabilities, templatesFor } from '../workflows/registry.js';
-import { canonicalFolder, checkpointSlotOf, type CheckpointSlot } from '../workflows/folders.js';
+import { canonicalFolder, checkpointSlotOf, withGgufLoaders, type CheckpointSlot } from '../workflows/folders.js';
 import { claimFromCatalogueBase, inferFamily } from './family.js';
 import { knownDownloadFor } from './known-downloads.js';
 
@@ -141,10 +141,10 @@ function graphWithCheckpoint(
   filename: string,
 ): ComfyApiGraph {
   const node = template.graph[slot.nodeId]!;
-  return {
+  return withGgufLoaders({
     ...template.graph,
     [slot.nodeId]: { ...node, inputs: { ...node.inputs, [slot.input]: filename } },
-  };
+  });
 }
 
 interface Attempt {
@@ -401,8 +401,16 @@ export function runnabilityFor(input: RunnabilityInput): ModelRunnability {
       templateId: blocked.templateId,
       status: 'needs-companion',
       capabilities,
-      summary: 'Needs a custom node',
-      detail: `Its workflow uses the "${blocked.missingNodeClass}" node, which is not installed on ${input.backendName}.`,
+      missingNode: blocked.missingNodeClass,
+      ...(blocked.missingNodeClass.startsWith('UnetLoaderGGUF')
+        ? {
+            summary: 'Needs GGUF support',
+            detail: `This is a GGUF build, which loads through the ComfyUI-GGUF node. ${input.backendName} does not have it; install ComfyUI-GGUF there, or choose a non-GGUF version.`,
+          }
+        : {
+            summary: 'Needs a custom node',
+            detail: `Its workflow uses the "${blocked.missingNodeClass}" node, which is not installed on ${input.backendName}.`,
+          }),
     };
   }
   if (blocked) {
@@ -558,6 +566,8 @@ export function placedForWorkflow(
     return { entry, verdict };
   }
   const folder = verdict.installInto;
-  const placed = { ...entry, savePath: folder, ref: `${folder}/${entry.filename}` };
+  // A Hugging Face entry is found again by its repository, never by its file.
+  const ref = entry.ref.startsWith('hugging-face:') ? entry.ref : `${folder}/${entry.filename}`;
+  const placed = { ...entry, savePath: folder, ref };
   return { entry: placed, verdict: runnabilityFor({ ...input, folder }) };
 }

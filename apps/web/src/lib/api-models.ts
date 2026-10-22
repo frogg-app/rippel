@@ -87,6 +87,7 @@ import type {
   ModelWorkflows,
   Uuid,
   WorkflowTemplateSummary,
+  ModelVariantsResponse,
 } from '@comfy/shared';
 import { ApiRequestError } from './api';
 
@@ -169,8 +170,13 @@ export interface ModelsApi {
   backends(signal?: AbortSignal): Promise<Backend[]>;
   installed(signal?: AbortSignal): Promise<InstalledModels>;
   catalogue(backendId: Uuid, signal?: AbortSignal): Promise<CatalogueResult>;
-  /** 202 on success; the install comes back `queued` and is then polled. */
-  install(backendId: Uuid, ref: string): Promise<ModelInstall>;
+  /**
+   * 202 on success; the install comes back `queued` and is then polled.
+   * `variant` picks one build of a Hugging Face model (its path in the repo).
+   */
+  install(backendId: Uuid, ref: string, variant?: string): Promise<ModelInstall>;
+  /** A Hugging Face model's builds, sized, with the one for this machine marked. */
+  variants?(backendId: Uuid, ref: string, signal?: AbortSignal): Promise<ModelVariantsResponse>;
   installHistory(backendId: Uuid, signal?: AbortSignal): Promise<ModelInstall[]>;
   /** Refreshes from the backend on read — this is the poll target. */
   installStatus(backendId: Uuid, installId: Uuid, signal?: AbortSignal): Promise<ModelInstall>;
@@ -235,13 +241,19 @@ export const modelsApi: ModelsApi = {
     return { entries: body.entries ?? [], pending: body.pending ?? 0 };
   },
 
-  install: async (backendId, ref) =>
+  install: async (backendId, ref, variant) =>
     (
       await request<{ install: ModelInstall }>(`/backends/${backendId}/models`, {
         method: 'POST',
-        body: { ref },
+        body: variant ? { ref, variant } : { ref },
       })
     ).install,
+
+  variants: async (backendId, ref, signal) =>
+    request<ModelVariantsResponse>(
+      `/backends/${backendId}/catalogue/variants?ref=${encodeURIComponent(ref)}`,
+      { signal },
+    ),
 
   installHistory: async (backendId, signal) =>
     (

@@ -28,6 +28,7 @@ import type {
   WorkflowTemplate,
 } from './manifest.js';
 import { resolveSeed } from './seed.js';
+import { withGgufLoaders } from '../workflows/folders.js';
 import { checkValue, MAX_PROMPT_LENGTH } from './validate.js';
 
 export interface CompileInput {
@@ -277,6 +278,8 @@ export function compile(input: CompileInput): CompileResult {
   // module-level constant shared by every job — is never mutated.
   let graph = cloneGraph(template.graph);
   for (const s of substitutions) setPathInPlace(graph, s.path, s.value);
+  // A GGUF build of the model loads through ComfyUI-GGUF's loader instead.
+  graph = withGgufLoaders(graph);
 
   let loraNodeIds: string[] = [];
   if (loras.length > 0) {

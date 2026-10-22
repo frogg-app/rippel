@@ -156,6 +156,7 @@ describe('fetchSourceFacts', () => {
     const facts = await fetchSourceFacts({ kind: 'huggingface', repo: 'city96/FLUX.1-dev-gguf' });
     expect(facts.tags).toEqual({
       task: ['text-to-image'],
+      version: [],
       base: ['black-forest-labs/flux.1-dev'],
       library: ['diffusers'],
       format: ['safetensors', 'gguf'],

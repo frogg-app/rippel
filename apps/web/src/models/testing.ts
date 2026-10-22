@@ -112,7 +112,7 @@ export function makeInfo(overrides: Partial<ModelCatalogInfo> = {}): ModelCatalo
     likes: null,
     pipelineTag: null,
     referenceUrl: null,
-    tags: { task: [], base: [], library: [], format: [], language: [], license: [], tag: [] },
+    tags: { task: [], version: [], base: [], library: [], format: [], language: [], license: [], tag: [] },
     ...overrides,
   };
 }
@@ -172,6 +172,7 @@ export function makeCatalogue(): ModelCatalogEntry[] {
         // (`region:us`, `endpoints_compatible`) is already gone.
         tags: {
           task: ['text-to-image'],
+          version: [],
           base: [],
           library: ['diffusers'],
           format: ['safetensors', 'onnx'],
@@ -207,6 +208,7 @@ export function makeCatalogue(): ModelCatalogEntry[] {
         referenceUrl: 'https://huggingface.co/someone/flux-cinematic',
         tags: {
           task: ['text-to-image'],
+          version: [],
           base: ['black-forest-labs/flux.1-dev'],
           library: ['diffusers'],
           format: ['safetensors'],

@@ -124,6 +124,8 @@ export function worksHere(entry: ModelCatalogEntry): boolean {
   if (entry.installBlockedReason) return false;
   if (VOCABULARY[entry.type].group !== 'models') return true;
   const status = entry.runnability?.status;
+  // A missing node is not a file that can come with the model.
+  if (entry.runnability?.missingNode) return false;
   return status === 'ready' || status === 'generic' || status === 'needs-companion';
 }
 

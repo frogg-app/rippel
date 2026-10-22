@@ -17,6 +17,7 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 import type { ModelCatalogEntry, ModelInstall } from '@comfy/shared';
+import type { LoadVariants } from './VersionPicker';
 import { CatalogueCard } from './CatalogueCard';
 import { CatalogueDrawer } from './CatalogueDrawer';
 import type { TagKey } from './discover';
@@ -32,7 +33,9 @@ export interface CatalogueGridProps {
   installByFile: Map<string, ModelInstall>;
   starting: ReadonlySet<string>;
   canInstall: boolean;
-  onInstall: (entry: ModelCatalogEntry) => void;
+  onInstall: (entry: ModelCatalogEntry, variant?: string) => void;
+  /** Reads a Hugging Face model's versions for the drawer's picker. */
+  loadVariants?: LoadVariants;
   failure: { ref: string; message: string } | null;
   now: number;
   onWorkflows?: (entry: ModelCatalogEntry) => void;
@@ -45,12 +48,29 @@ export interface CatalogueGridProps {
 
 const NO_TAGS: ReadonlySet<TagKey> = new Set();
 
+export type { LoadVariants };
+
+/**
+ * The latest install of this entry, whichever of its versions it was: a
+ * Hugging Face model installed as its Q4 build is still that model.
+ */
+function installForEntry(byFile: Map<string, ModelInstall>, entry: ModelCatalogEntry): ModelInstall | null {
+  const files = [entry.filename, ...(entry.variants ?? []).map((variant) => variant.filename)];
+  let latest: ModelInstall | null = null;
+  for (const file of files) {
+    const install = byFile.get(basename(file));
+    if (install && (!latest || Date.parse(install.createdAt) > Date.parse(latest.createdAt))) latest = install;
+  }
+  return latest;
+}
+
 export function CatalogueGrid({
   entries,
   installByFile,
   starting,
   canInstall,
   onInstall,
+  loadVariants,
   failure,
   now,
   onWorkflows,
@@ -101,7 +121,7 @@ export function CatalogueGrid({
                   onOpen={openDrawer}
                   onTag={onTag}
                   activeTags={activeTags}
-                  install={installByFile.get(basename(entry.filename)) ?? null}
+                  install={installForEntry(installByFile, entry)}
                   starting={starting.has(entry.ref)}
                   canInstall={canInstall}
                   onInstall={onInstall}
@@ -137,10 +157,11 @@ export function CatalogueGrid({
           activeTags={activeTags}
           onWorkflows={onWorkflows}
           backendName={backendName}
-          install={installByFile.get(basename(open.filename)) ?? null}
+          install={installForEntry(installByFile, open)}
           starting={starting.has(open.ref)}
           canInstall={canInstall}
           onInstall={onInstall}
+          loadVariants={loadVariants}
           failure={failure?.ref === open.ref ? failure.message : null}
           now={now}
         />

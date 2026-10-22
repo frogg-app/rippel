@@ -1,13 +1,14 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 vi.mock('../db.js', () => ({ query: vi.fn(), queryOne: vi.fn() }));
 import { query, queryOne } from '../db.js';
-import { huggingFaceEntry, huggingFaceSavePath, refreshHuggingFaceCatalogue, cachedHuggingFaceModels } from './hugging-face-catalogue.js';
+import { huggingFaceEntry, huggingFaceSavePath, refreshHuggingFaceCatalogue, cachedHuggingFaceModels, withVariant } from './hugging-face-catalogue.js';
 const model = { id: 'krea/Krea-2-Turbo', pipeline_tag: 'text-to-image', gated: 'auto', downloads: 70000 };
 beforeEach(() => vi.resetAllMocks());
 afterEach(() => vi.unstubAllGlobals());
 it('includes gated models while keeping access and compatibility explicit', () => {
   expect(huggingFaceEntry(model)).toMatchObject({ name: model.id, installBlockedReason: expect.stringContaining('Access required'), runnability: { status: 'unknown', capabilities: ['txt2img'] }, info: { downloads: 70000 } });
-  expect(huggingFaceEntry({ ...model, gated: false })?.installBlockedReason).toContain('compatible workflow');
+  // Without a single loadable file there is nothing to install, and it says why.
+  expect(huggingFaceEntry({ ...model, gated: false })?.installBlockedReason).toContain('No single file');
   expect(huggingFaceEntry({ ...model, pipeline_tag: 'text-generation' })).toBeNull();
 });
 it('fetches generation tasks in the background and saves one deduplicated snapshot', async () => {
@@ -47,4 +48,42 @@ it('puts diffusion-model-only families and GGUF builds in diffusion_models, not 
   expect(huggingFaceSavePath('checkpoint', 'someone/juggernaut-xl', [], ['stabilityai/stable-diffusion-xl-base-1.0'])).toBe('');
   expect(huggingFaceSavePath('lora', 'someone/flux-style-lora', [], [])).toBe('');
   expect(huggingFaceEntry({ ...model, id: 'black-forest-labs/FLUX.1-schnell' })?.savePath).toBe('diffusion_models');
+});
+
+const files = (...names: string[]) => names.map((rfilename) => ({ rfilename }));
+
+it('makes a repository with a loadable file installable, defaulting to its best build', () => {
+  const entry = huggingFaceEntry({
+    id: 'black-forest-labs/FLUX.1-dev', pipeline_tag: 'text-to-image', gated: false,
+    siblings: files('README.md', 'ae.safetensors', 'flux1-dev.safetensors', 'transformer/diffusion_pytorch_model-00001-of-00003.safetensors'),
+  })!;
+  expect(entry.installBlockedReason).toBeUndefined();
+  expect(entry.filename).toBe('flux1-dev.safetensors');
+  expect(entry.url).toBe('https://huggingface.co/black-forest-labs/FLUX.1-dev/resolve/main/flux1-dev.safetensors');
+  expect(entry.savePath).toBe('diffusion_models');
+  // Judged against our FLUX workflow, not left as "Hugging Face".
+  expect(entry.base).toBe('FLUX.1');
+  expect(entry.variants!.map((v) => v.filename)).toEqual(['flux1-dev.safetensors']);
+});
+
+it('offers a GGUF repository at Q8 and re-points the entry at another build', () => {
+  const entry = huggingFaceEntry({
+    id: 'city96/FLUX.1-dev-gguf', pipeline_tag: 'text-to-image',
+    siblings: files('flux1-dev-F16.gguf', 'flux1-dev-Q4_K_S.gguf', 'flux1-dev-Q8_0.gguf', 'flux1-dev-Q2_K.gguf'),
+  })!;
+  expect(entry.filename).toBe('flux1-dev-Q8_0.gguf');
+  expect(entry.savePath).toBe('diffusion_models');
+  const smaller = withVariant(entry, 'flux1-dev-Q4_K_S.gguf')!;
+  expect(smaller).toMatchObject({ ref: entry.ref, filename: 'flux1-dev-Q4_K_S.gguf', savePath: 'diffusion_models' });
+  expect(smaller.url).toMatch(/flux1-dev-Q4_K_S\.gguf$/);
+  expect(withVariant(entry, 'not-in-the-repo.gguf')).toBeNull();
+});
+
+it('blocks a Diffusers-only repository with the reason', () => {
+  const entry = huggingFaceEntry({
+    id: 'Wan-AI/Wan2.1-T2V-14B', pipeline_tag: 'text-to-video',
+    siblings: files('diffusion_pytorch_model-00001-of-00006.safetensors', 'model_index.json'),
+  })!;
+  expect(entry.installBlockedReason).toContain('Diffusers');
+  expect(entry.variants).toBeUndefined();
 });

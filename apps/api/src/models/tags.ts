@@ -27,6 +27,7 @@ import type { ModelTagGroup, ModelTags } from '@comfy/shared';
 /** The order a detail view lists the groups in, and the order keys are stored. */
 export const TAG_GROUPS: readonly ModelTagGroup[] = [
   'task',
+  'version',
   'base',
   'library',
   'format',
@@ -36,7 +37,7 @@ export const TAG_GROUPS: readonly ModelTagGroup[] = [
 ];
 
 export function emptyTags(): ModelTags {
-  return { task: [], base: [], library: [], format: [], language: [], license: [], tag: [] };
+  return { task: [], version: [], base: [], library: [], format: [], language: [], license: [], tag: [] };
 }
 
 /**

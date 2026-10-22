@@ -10,7 +10,9 @@
 
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { cachedHuggingFaceModels, huggingFaceCataloguePending } from './hugging-face-catalogue.js';
+import { cachedHuggingFaceModels, huggingFaceCataloguePending, huggingFaceEntryFor, huggingFaceTree } from './hugging-face-catalogue.js';
+import { sizedVariants } from './hugging-face-files.js';
+import { foldersOfInstalled } from '../workflows/folders.js';
 import { workflowCataloguePending } from './workflow-catalogue.js';
 import { hostApprovalRoutes } from './host-approval.js';
 import type {
@@ -96,7 +98,8 @@ export default async function modelInstallRoutes(app: FastifyInstance) {
         }
 
         return {
-          entries: entries.map((entry) => {
+          entries: entries.map((original) => {
+            const entry = discoveredOn(original, info, transport.kind);
             if (entry.installBlockedReason) return { ...entry, runnability: { ...entry.runnability!, backendId: backend.id } };
             const judged = judgeEntry(entry, info, backend, transport.kind);
             return { ...judged.entry, runnability: judged.verdict };
@@ -148,8 +151,41 @@ export default async function modelInstallRoutes(app: FastifyInstance) {
     },
   );
 
+  /**
+   * The installable builds of one Hugging Face model, with sizes, and the one
+   * recommended for this machine's graphics memory. Asked when somebody opens
+   * the model; the catalogue listing itself carries names only.
+   */
+  app.get<{ Params: { id: string }; Querystring: { ref?: string } }>(
+    '/backends/:id/catalogue/variants',
+    { onRequest: [app.requireAdmin] },
+    async (req, reply) => {
+      const backend = await queryOne<{ id: string; base_url: string; vram_total: string | null; vram_limit_mb: number | null }>(
+        'SELECT id, base_url, vram_total, vram_limit_mb FROM backends WHERE id = $1',
+        [req.params.id],
+      );
+      if (!backend) return reply.code(404).send({ error: 'not_found', message: 'No such backend' });
+      const entry = req.query.ref ? await huggingFaceEntryFor(req.query.ref) : null;
+      if (!entry?.variants?.length) {
+        return reply.code(404).send({ error: 'not_found', message: 'That model has no versions to choose from.' });
+      }
+      const memoryBytes =
+        backend.vram_limit_mb !== null ? backend.vram_limit_mb * 1024 * 1024 : backend.vram_total !== null ? Number(backend.vram_total) : null;
+      const info = await objectInfoFor(backend.base_url).catch(() => null);
+      let tree: Awaited<ReturnType<typeof huggingFaceTree>> = [];
+      try {
+        tree = await huggingFaceTree(entry.ref.slice('hugging-face:'.length));
+      } catch (err) {
+        // Names without sizes are still a choice; the recommendation falls
+        // back to the best build.
+        req.log.warn({ err, ref: entry.ref }, 'could not read a Hugging Face file list');
+      }
+      return { variants: sizedVariants(entry.variants, tree, memoryBytes, Boolean(info?.UnetLoaderGGUF)), memoryBytes };
+    },
+  );
+
   /** Ask a backend to download one catalogue entry. */
-  app.post<{ Params: { id: string }; Body: { ref?: string } }>(
+  app.post<{ Params: { id: string }; Body: { ref?: string; variant?: string } }>(
     '/backends/:id/models',
     { onRequest: [app.requireAdmin] },
     async (req, reply) => {
@@ -178,18 +214,33 @@ export default async function modelInstallRoutes(app: FastifyInstance) {
         const direct = offeredAll.find((e) => e.ref === ref);
         let entry = direct;
         let info: ObjectInfo | null = null;
-        try {
-          // Fail open, as the catalogue does: a backend that will not describe
-          // itself still installs exactly what it offered.
+        if (ref.startsWith('hugging-face:')) {
+          // Not in the machine's own catalogue: found in ours, at the build the
+          // person chose, and judged the same way the card was.
+          const found = await huggingFaceEntryFor(ref, req.body?.variant);
+          if (!found) {
+            return reply.code(400).send({ error: 'bad_request', message: 'That model or version is not in the Hugging Face catalogue.' });
+          }
           info = await objectInfoFor(backend.base_url).catch(() => null);
-          const filename = ref.slice(ref.lastIndexOf('/') + 1);
-          entry =
-            offeredAll
-              .filter((e) => e.ref === ref || e.filename === filename)
-              .map((e) => judgeEntry(e, info, backend, transport.kind).entry)
-              .find((e) => e.ref === ref) ?? direct;
-        } catch {
-          entry = direct;
+          const usable = discoveredOn(found, info, transport.kind);
+          if (usable.installBlockedReason) {
+            return reply.code(400).send({ error: 'bad_request', message: usable.installBlockedReason });
+          }
+          entry = judgeEntry(usable, info, backend, transport.kind).entry;
+        } else {
+          try {
+            // Fail open, as the catalogue does: a backend that will not describe
+            // itself still installs exactly what it offered.
+            info = await objectInfoFor(backend.base_url).catch(() => null);
+            const filename = ref.slice(ref.lastIndexOf('/') + 1);
+            entry =
+              offeredAll
+                .filter((e) => e.ref === ref || e.filename === filename)
+                .map((e) => judgeEntry(e, info, backend, transport.kind).entry)
+                .find((e) => e.ref === ref) ?? direct;
+          } catch {
+            entry = direct;
+          }
         }
         if (!entry) {
           return reply
@@ -585,6 +636,20 @@ function transportFailure(reply: import('fastify').FastifyReply, err: unknown) {
  * catalogue and the install route so the folder a card promised is the folder
  * the download uses.
  */
+/**
+ * A Hugging Face entry as it stands on one machine: installed when the machine
+ * already lists its file, and blocked where Hugging Face files cannot be
+ * fetched — ComfyUI-Manager installs only from its own list.
+ */
+function discoveredOn(entry: ModelCatalogEntry, info: ObjectInfo | null, transportKind: string): ModelCatalogEntry {
+  if (!entry.ref.startsWith('hugging-face:')) return entry;
+  const installed = foldersOfInstalled(info, entry.filename).length > 0;
+  if (!entry.installBlockedReason && transportKind !== 'rippel-agent') {
+    return { ...entry, installed, installBlockedReason: 'Installing from Hugging Face needs the rippel agent on this machine.' };
+  }
+  return installed === entry.installed ? entry : { ...entry, installed };
+}
+
 function judgeEntry(
   entry: ModelCatalogEntry,
   info: ObjectInfo | null,

@@ -19,7 +19,7 @@ function model(name: string, overrides: Partial<ModelCatalogEntry> = {}): ModelC
 }
 
 const tasks = (task: string[]) =>
-  makeInfo({ tags: { task, base: [], library: [], format: [], language: [], license: [], tag: [] } });
+  makeInfo({ tags: { task, version: [], base: [], library: [], format: [], language: [], license: [], tag: [] } });
 
 describe('intentsOf', () => {
   it('reads capabilities first', () => {

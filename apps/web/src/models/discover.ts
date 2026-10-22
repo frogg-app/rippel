@@ -52,6 +52,7 @@ export const DRAWER_TAG_ORDER: readonly ModelTagGroup[] = [
 /** The facet rail's order: the questions people ask first, first. */
 export const RAIL_TAG_ORDER: readonly ModelTagGroup[] = [
   'task',
+  'version',
   'base',
   'tag',
   'license',
@@ -65,13 +66,14 @@ export const RAIL_TAG_ORDER: readonly ModelTagGroup[] = [
  * "More filters": "safetensors" and "diffusers" are answers to questions only
  * somebody who already knows ComfyUI asks.
  */
-export const RAIL_OPEN_GROUPS: readonly ModelTagGroup[] = ['task', 'base', 'tag'];
+export const RAIL_OPEN_GROUPS: readonly ModelTagGroup[] = ['task', 'version', 'base', 'tag'];
 export const RAIL_MORE_GROUPS: readonly ModelTagGroup[] = RAIL_TAG_ORDER.filter(
   (group) => !RAIL_OPEN_GROUPS.includes(group),
 );
 
 export const TAG_GROUP_LABEL: Record<ModelTagGroup, string> = {
   task: 'Task',
+  version: 'Version',
   base: 'Model family',
   library: 'Library',
   format: 'Format',
@@ -87,6 +89,7 @@ export const TAG_GROUP_LABEL: Record<ModelTagGroup, string> = {
  */
 export const TAG_GROUP_ICON: Record<ModelTagGroup, string> = {
   task: '◧',
+  version: '◑',
   base: '△',
   library: '⬡',
   format: '◈',
@@ -123,7 +126,7 @@ export function splitKey(key: TagKey): { group: ModelTagGroup; value: string } {
 }
 
 function emptyTags(): ModelTags {
-  return { task: [], base: [], library: [], format: [], language: [], license: [], tag: [] };
+  return { task: [], version: [], base: [], library: [], format: [], language: [], license: [], tag: [] };
 }
 
 /**
@@ -139,7 +142,23 @@ export function entryTags(entry: ModelCatalogEntry): ModelTags {
   for (const group of Object.keys(tags) as ModelTagGroup[]) tags[group] = [...(source[group] ?? [])];
   const family = entry.base.trim().toLowerCase();
   if (family) tags.base = [family, ...tags.base.filter((value) => value !== family)];
+  tags.version = versionTags(entry);
   return tags;
+}
+
+/**
+ * Which kinds of build a model comes in, from its installable versions: the
+ * Version filter. Only for entries that can be installed, so the filter never
+ * offers something that then cannot be had.
+ */
+export function versionTags(entry: ModelCatalogEntry): string[] {
+  const variants = entry.installBlockedReason ? [] : entry.variants ?? [];
+  const out: string[] = [];
+  if (variants.some((variant) => variant.kind === 'full' && !variant.distilled)) out.push('full');
+  if (variants.some((variant) => variant.distilled)) out.push('distilled');
+  if (variants.some((variant) => variant.kind === 'fp8')) out.push('smaller (fp8)');
+  if (variants.some((variant) => variant.kind === 'gguf')) out.push('gguf');
+  return out;
 }
 
 /** Every key an entry carries. */
