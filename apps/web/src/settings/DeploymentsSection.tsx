@@ -1670,11 +1670,12 @@ function MachineResources({
         </span>
       ) : null}
       {diskTotal ? (
-        <span className={styles.resource} title="Free space on the drive ComfyUI is installed on.">
+        <span className={styles.resource} title="Space in use on the drive ComfyUI is installed on, of the drive's total.">
           <DriveIcon size={13} />
           <span className="mono">
-            {gb(diskFree ?? 0)} GB free of {gb(diskTotal)} GB
+            {diskFree == null ? `${gb(diskTotal)} GB` : `${gb(Math.max(0, diskTotal - diskFree))}/${gb(diskTotal)} GB`}
           </span>
+          <span>disk</span>
         </span>
       ) : null}
     </div>

@@ -178,6 +178,16 @@ describe('DeploymentsSection', () => {
     expect(screen.getByText('Not enabled')).toBeInTheDocument();
   });
 
+  it('shows disk as used/total, like GPU and RAM', async () => {
+    const { api } = fakeApi();
+    render(<DeploymentsSection api={api} />);
+
+    // 2000e9 total, 400e9 free: 1600e9 used, in GiB to one decimal.
+    expect(await screen.findByText('1490.1/1862.6 GB')).toBeInTheDocument();
+    expect(screen.getByText('disk')).toBeInTheDocument();
+    expect(screen.queryByText(/free of/)).not.toBeInTheDocument();
+  });
+
   it.each([
     { lastSeenAt: online.lastSeenAt, agentVersion: null },
     { lastSeenAt: null, agentVersion: '0.3.0' },
