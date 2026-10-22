@@ -121,3 +121,22 @@ describe('classifyFailure, unreadable model files', () => {
     expect(failure.detail).toBe(raw);
   });
 });
+
+describe('GPU setup errors', () => {
+  // The real text from steve-pc, a Ryzen iGPU listed before its RX 6900 XT.
+  const steve = "VAEEncode failed: CUDA error: device kernel image is invalid\nSearch for `hipErrorInvalidImage' in https://rocm.docs.amd.com/projects/HIP/en/latest/index.html for more information.\nDevice-side assertion tracking was not enabled by user.";
+
+  it('reads a kernel/arch mismatch as GPU setup, not the job', () => {
+    for (const message of [
+      steve,
+      'KSampler failed: CUDA error: no kernel image is available for execution on the device',
+      'HIP error: invalid device function',
+    ]) {
+      const failure = classifyFailure(message);
+      expect(failure.kind).toBe('gpu-setup');
+      expect(failure.summary).toBe('This PC’s graphics card isn’t set up correctly.');
+      expect(failure.detail).toBe(message.trim());
+      expect(failure.outOfMemory).toBe(false);
+    }
+  });
+});

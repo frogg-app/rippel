@@ -149,6 +149,7 @@ function fakeApi(initial: Deployment[] = [online], over: Partial<DeploymentsApi>
     setVaeOnGpu: vi.fn(async () => done({kind: 'set-memory'})),
     setMemoryMode: vi.fn(async () => done({kind: 'set-memory'})),
     updateAgent: vi.fn(),
+    repairGpu: vi.fn(async () => done({ kind: 'repair-gpu' })),
     updateComfy: vi.fn(async () => done({ kind: 'update-comfyui' })),
     power: vi.fn(async () => ({ started: true })),
     installHelper: vi.fn(async () => done({ kind: 'install-helper' })),
@@ -750,4 +751,28 @@ it('defaults system memory off and GPU VAE on, with independent saved choices', 
  await userEvent.click(screen.getByRole('button',{name:'Apply decoder setting and restart'}));
  await waitFor(()=>expect(api.setVaeOnGpu).toHaveBeenCalledWith('d1',false));
  expect(api.setMemoryMode).not.toHaveBeenCalled();
+});
+
+describe('GPU health', () => {
+  const broken: Deployment = {
+    ...online,
+    comfy: { ...COMFY, gpuHealth: { state: 'unsupported', device: 'AMD Radeon(TM) Graphics', arch: 'gfx1036', detail: 'device kernel image is invalid' } },
+  };
+
+  it('says the GPU is not supported, with the error in the tooltip, and repairs in one click', async () => {
+    const { api } = fakeApi([broken]);
+    render(<DeploymentsSection api={api} />);
+    const pill = await screen.findByText('GPU not supported by this build');
+    expect(pill.getAttribute('title')).toContain('gfx1036');
+    expect(pill.getAttribute('title')).toContain('device kernel image is invalid');
+    fireEvent.click(screen.getByRole('button', { name: 'Repair GPU setup' }));
+    await waitFor(() => expect(api.repairGpu).toHaveBeenCalledWith('d1'));
+  });
+
+  it('offers no repair when the GPU is ready', async () => {
+    const { api } = fakeApi([{ ...online, comfy: { ...COMFY, gpuHealth: { state: 'ready', device: 'AMD Radeon RX 6900 XT' } } }]);
+    render(<DeploymentsSection api={api} />);
+    expect(await screen.findByText('GPU ready')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Repair GPU setup' })).not.toBeInTheDocument();
+  });
 });

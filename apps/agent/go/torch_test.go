@@ -40,3 +40,23 @@ func TestCUDARequiresTorchThatCanImportCurrentComfyUI(t *testing.T) {
 		}
 	}
 }
+
+// A Ryzen desktop lists its iGPU first; the wheel must be for the card.
+func TestWindowsROCmPrefersTheDiscreteCard(t *testing.T) {
+	cases := map[string]string{
+		"AMD Radeon(TM) Graphics\r\nAMD Radeon RX 6900 XT\r\n": "gfx1030",
+		"AMD Radeon 780M Graphics\nAMD Radeon RX 7900 GRE":    "gfx1100",
+		"AMD Radeon Pro W7800":                                "gfx1100",
+		"AMD Radeon RX 9060 XT":                               "gfx1200",
+		"AMD Radeon 8060S Graphics":                           "gfx1151",
+		"AMD Radeon 780M Graphics":                            "gfx1103",
+	}
+	for names, want := range cases {
+		if got, err := windowsROCmTarget(names); err != nil || got != want {
+			t.Errorf("%q: got %q %v, want %q", names, got, err, want)
+		}
+	}
+	if _, err := windowsROCmTarget("AMD Radeon(TM) Graphics"); err == nil {
+		t.Error("guessed a target for an unnamed iGPU")
+	}
+}

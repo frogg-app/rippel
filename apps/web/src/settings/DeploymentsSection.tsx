@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import type {
+  GpuHealth,
+  GpuState,
   AgentPlatform,
   AgentProbe,
   AgentTask,
@@ -441,6 +443,14 @@ function DeploymentCard({
       if (status) onChange({ ...deployment, comfy: status.comfy });
     });
 
+  const repairGpu = () =>
+    act('repair the GPU setup', async () => {
+      await follow(await api.repairGpu(deployment.id));
+      const status = await api.status(deployment.id).catch(() => null);
+      if (status) onChange({ ...deployment, comfy: status.comfy });
+      refreshBackends();
+    });
+
   const register = () =>
     act('register the backend', async () => {
       const { deployment: next, adopted } = await api.registerBackend(deployment.id);
@@ -481,6 +491,7 @@ function DeploymentCard({
             <span>{online ? 'Agent online' : agentInstalled ? 'Agent offline' : 'Agent not connected'}</span>
             <span>{PLATFORM_LABEL[deployment.platform]}</span>
             {deployment.agentVersion ? <span className="mono">agent {deployment.agentVersion}</span> : null}
+            <GpuPill health={comfy?.gpuHealth ?? null} />
           </div>
           <MachineResources backend={backend} diskFree={comfy?.diskFree ?? null} diskTotal={comfy?.diskTotal ?? null} />
         </div>
@@ -576,6 +587,16 @@ function DeploymentCard({
             {busy === 'install ComfyUI' ? 'Installing…' : 'Install engine'}
           </ReasonedButton>
         )}
+
+        {comfy?.installed && (comfy.gpuHealth?.state === 'unsupported' || comfy.gpuHealth?.state === 'cpu') ? (
+          <ReasonedButton
+            className={`${shared.action} ${shared.actionPrimary}`}
+            reason={busyReason ?? offlineReason}
+            onClick={() => void repairGpu()}
+          >
+            {busy === 'repair the GPU setup' ? 'Repairing…' : 'Repair GPU setup'}
+          </ReasonedButton>
+        ) : null}
 
         {comfy?.installed && (!comfy.helperInstalled || (comfy.running && !comfy.helperReady)) ? (
           <ReasonedButton
@@ -1680,4 +1701,19 @@ function MachineResources({
       ) : null}
     </div>
   );
+}
+
+const GPU_PILL: Record<GpuState, string> = {
+  ready: 'GPU ready',
+  unsupported: 'GPU not supported by this build',
+  cpu: 'Running on CPU',
+  checking: 'Checking GPU…',
+};
+
+/** The agent's GPU test, in a word; the device and the raw error in the tooltip. */
+export function GpuPill({ health }: { health: GpuHealth | null }) {
+  if (!health) return null;
+  const tip = [health.device && `${health.device}${health.arch ? ` (${health.arch})` : ''}`, health.torch && `torch ${health.torch}`, health.detail]
+    .filter(Boolean).join('\n');
+  return <span data-gpu={health.state} title={tip || undefined}>{GPU_PILL[health.state]}</span>;
 }

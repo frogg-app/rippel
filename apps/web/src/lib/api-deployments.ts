@@ -173,6 +173,8 @@ export interface DeploymentsApi {
   setVaeOnGpu(id: Uuid, onGpu: boolean): Promise<AgentTask>;
   setMemoryMode(id: Uuid, mode: 'auto' | 'ram'): Promise<AgentTask>;
   updateAgent(id: Uuid): Promise<AgentTask>;
+  /** Re-test the GPU and swap torch builds until one runs. */
+  repairGpu(id: Uuid): Promise<AgentTask>;
   power(id: Uuid, action: 'start' | 'stop' | 'restart'): Promise<unknown>;
   installHelper(id: Uuid): Promise<AgentTask>;
   task(id: Uuid, taskId: string, since: number): Promise<{ task: AgentTask; logOffset: number }>;
@@ -210,6 +212,7 @@ export const deploymentsApi: DeploymentsApi = {
   setVaeOnGpu: async (id, onGpu) => (await request<{ task: AgentTask }>(`/deployments/${id}/vae`, { method: 'POST', body: { onGpu } })).task,
   setMemoryMode: async (id, mode) => (await request<{ task: AgentTask }>(`/deployments/${id}/memory`, { method: 'POST', body: { mode } })).task,
   updateAgent: async (id) => (await request<{ task: AgentTask }>(`/deployments/${id}/agent-update`, { method: 'POST' })).task,
+  repairGpu: async (id) => (await request<{ task: AgentTask }>(`/deployments/${id}/gpu/repair`, { method: 'POST' })).task,
   updateComfy: async (id) =>
     (await request<{ task: AgentTask }>(`/deployments/${id}/comfyui/update`, { method: 'POST' })).task,
   power: (id, action) => request(`/deployments/${id}/comfyui/${action}`, { method: 'POST' }),

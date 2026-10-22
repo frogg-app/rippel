@@ -239,6 +239,9 @@ func (a *Agent) route(w http.ResponseWriter, r *http.Request) {
 		}
 		a.begin(w, "install-comfyui", func(task *Task) error {
 			_, err := InstallComfy(a.config(), task, body.Accelerator)
+			if err == nil {
+				err = a.RepairGPU(task)
+			}
 			a.changed()
 			return err
 		})
@@ -260,6 +263,11 @@ func (a *Agent) route(w http.ResponseWriter, r *http.Request) {
 			a.power(w, action)
 			return
 		}
+	}
+
+	if r.Method == http.MethodPost && path == "/agent/gpu/repair" {
+		a.begin(w, "repair-gpu", a.RepairGPU)
+		return
 	}
 
 	if r.Method == http.MethodPost && path == "/agent/helper/install" {

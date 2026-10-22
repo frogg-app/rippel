@@ -48,6 +48,7 @@ export type FailureKind =
   | 'cancelled'
   | 'backend-unreachable'
   | 'unreadable-model'
+  | 'gpu-setup'
   | 'unknown';
 
 export interface ClassifiedFailure {
@@ -85,6 +86,23 @@ interface Rule {
  * and "failed to load" appears in some of them.
  */
 const RULES: readonly Rule[] = [
+  {
+    // First: a torch build with no kernels for the device it ran on. Nothing
+    // about the job matters; the machine needs its GPU setup repaired. Seen
+    // as VAEEncode on a Ryzen iGPU that HIP listed before the RX 6900 XT.
+    kind: 'gpu-setup',
+    needles: [
+      'device kernel image is invalid',
+      'hiperrorinvalidimage',
+      'no kernel image is available for execution',
+      'invalid device function',
+      'hiperrornobinaryforgpu',
+      'no binary for gpu',
+      'is not compatible with the current pytorch installation',
+    ],
+    summary: 'This PC’s graphics card isn’t set up correctly.',
+    steps: [],
+  },
   {
     // Before out-of-memory and missing-model: the file is there and memory is
     // fine, but the loader cannot tell what kind of model it holds. On the

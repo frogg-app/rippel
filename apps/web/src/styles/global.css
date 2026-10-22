@@ -236,3 +236,11 @@ select:focus-visible {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* A button that reads as a link: one-word actions inside a sentence. */
+.linkButton {
+  color: var(--accent);
+}
+.linkButton:hover:not(:disabled) {
+  color: var(--accent-hover);
+}

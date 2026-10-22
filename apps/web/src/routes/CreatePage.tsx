@@ -60,6 +60,8 @@ import { partitionModels } from '../create/visibility';
 import { placeInQueue, refreshQueue, useQueue } from '../lib/api-queue';
 import { isTerminal } from '../create/jobProgress';
 import { useTargetBackend } from '../shell/useTargetBackend';
+import { useBackends } from '../shell/useBackends';
+import { GPU_SETUP_LINE, GpuSetupLine, gpuBlocked } from '../create/GpuSetupLine';
 import styles from './CreatePage.module.css';
 
 export function CreatePage() {
@@ -245,15 +247,18 @@ export function CreatePage() {
   }, [videoLimits, videoSettled, fittedVideo.fps, fittedVideo.lengthSeconds, patch]);
 
   const busy = Boolean(stage.job && !isTerminal(stage.job.status)) || stage.submitting;
+  const { backends } = useBackends();
+  const brokenGpu = gpuBlocked(backends, targetBackendId);
   const submittable = useMemo(
     () => {
+      if (brokenGpu) return { ok: false, reason: GPU_SETUP_LINE };
       const basic = checkSubmittable(form, { modelSupported: supported, busy, setupReason: waitingOn });
       if (!basic.ok || modeOfKind(kind) !== 'video') return basic;
       return videoLimits && videoSettled ? basic : {
         ok: false, reason: videoSettings.error ?? 'Loading video settings…',
       };
     },
-    [form, supported, busy, waitingOn, kind, videoLimits, videoSettled, videoSettings.error],
+    [form, supported, busy, waitingOn, kind, videoLimits, videoSettled, videoSettings.error, brokenGpu],
   );
 
   const generate = useCallback(() => {
@@ -461,7 +466,7 @@ export function CreatePage() {
             {stage.submitting ? 'Starting…' : 'Generate'}
           </button>
           <div className={styles.estimate}>
-            {submittable.reason ?? (
+            {brokenGpu ? <GpuSetupLine deploymentId={brokenGpu.deploymentId} /> : submittable.reason ?? (
               <>
                 {mode === 'video'
                   ? `${form.video.lengthSeconds}s clip`

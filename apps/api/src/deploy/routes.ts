@@ -797,6 +797,16 @@ export function makeDeploymentRoutes(deps: DeployDeps = {}) {
       } catch (cause) { return agentFailure(reply, cause); }
     });
 
+    // Re-tests the GPU and swaps torch builds until one runs; the agent does
+    // the work and reports it as a task, like an install.
+    app.post<{ Params: { id: string } }>('/deployments/:id/gpu/repair', { onRequest: [app.requireSettings] }, async (req, reply) => {
+      const row = await loadOr404(req, reply);
+      if (!row) return;
+      try {
+        return { task: await agent.repairGpu(targetOf(row)) };
+      } catch (cause) { return agentFailure(reply, cause); }
+    });
+
     app.post<{ Params: { id: string } }>('/deployments/:id/agent-update', { onRequest: [app.requireSettings] }, async (req, reply) => {
       const row = await loadOr404(req,reply);
       if (!row) return;

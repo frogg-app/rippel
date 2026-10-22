@@ -66,6 +66,10 @@ export interface Backend {
    * machine is up and its engine is stopped, not that the machine is gone.
    */
   agentOnline?: boolean | null;
+  /** The managing agent's GPU test result, when there is one. */
+  gpuState?: GpuState | null;
+  /** The managing deployment, for admins only (the Repair action). */
+  deploymentId?: string | null;
 }
 
 // ---------------------------------------------------------------- models
@@ -182,6 +186,8 @@ export type JobFailureKind =
   | 'cancelled'
   | 'backend-unreachable'
   | 'unreadable-model'
+  /** The torch build has no kernels for the GPU it ran on (hipErrorInvalidImage). */
+  | 'gpu-setup'
   | 'unknown';
 
 export interface JobFailure {
@@ -1203,6 +1209,23 @@ export interface ComfyState {
    * which on ROCm and unified-memory systems includes shared system RAM.
    */
   gpuMemory?: number | null;
+  /** The agent's own GPU test (agent 0.4.14+). */
+  gpuHealth?: GpuHealth | null;
+}
+
+/**
+ * Whether the installed torch can run on the machine's GPU: `unsupported` is
+ * a build with no kernels for the card; `cpu` is the repair's last resort.
+ */
+export type GpuState = 'ready' | 'unsupported' | 'cpu' | 'checking';
+
+export interface GpuHealth {
+  state: GpuState;
+  device?: string;
+  arch?: string;
+  torch?: string;
+  detail?: string;
+  checkedAt?: string;
 }
 
 export interface Deployment {

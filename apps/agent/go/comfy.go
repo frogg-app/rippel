@@ -59,6 +59,8 @@ type ComfyState struct {
 	// and unified-memory systems includes shared system RAM (a 16 GB 6900 XT
 	// reports 39 GB on Windows), so rippel caps that figure with this one.
 	GPUMemory *int64 `json:"gpuMemory"`
+	// Whether torch can run on the GPU, from the agent's own test.
+	GPUHealth *GPUHealth `json:"gpuHealth,omitempty"`
 }
 
 func exists(path string) bool {
@@ -202,6 +204,7 @@ func ComfyStatus(cfg *Config) ComfyState {
 		DiskFree:        free,
 		DiskTotal:       total,
 		GPUMemory:       gpuMemory(),
+		GPUHealth:       cfg.GPUHealth,
 	}
 	if installed {
 		path := cfg.ComfyPath
@@ -328,10 +331,16 @@ func InstallComfy(cfg *Config, task *Task, accelerator string) (string, error) {
 		return "", err
 	}
 
-	if accelerator == "rocm" {
-		if err := Run(task, cfg.ComfyPath, os.Environ(), python, "-c", "import torch; assert torch.version.hip and torch.cuda.is_available(), 'ROCm cannot access an AMD GPU'; print(torch.cuda.get_device_name(0))"); err != nil {
-			return "", err
-		}
+	// The GPU self-test (RepairGPU) runs after this; it, not a bare
+	// is_available(), decides whether the build fits the card.
+	target := ""
+	if runtime.GOOS == "windows" && accelerator == "rocm" {
+		target, _ = windowsROCmTarget(gpuName)
+	}
+	if target != "" {
+		_ = os.WriteFile(gpuTargetFile(cfg), []byte(target+"\n"), 0o644)
+	} else {
+		_ = os.Remove(gpuTargetFile(cfg))
 	}
 	task.Append("ComfyUI installed.")
 	return accelerator, nil
@@ -409,6 +418,7 @@ func StartComfy(cfg *Config) (PowerResult, error) {
 
 	args := []string{"main.py", "--listen", "0.0.0.0", "--port", strconv.Itoa(cfg.ComfyPort)}
 	args = append(args, comfyMemoryArgs(cfg)...)
+	args = comfyGPUArgs(cfg, args)
 
 	cmd := exec.Command(venvPython(cfg), args...)
 	cmd.Dir = cfg.ComfyPath
@@ -416,7 +426,7 @@ func StartComfy(cfg *Config) (PowerResult, error) {
 	cmd.Stderr = logFile
 	// The storage helper reads its token from ComfyUI's own environment, so it
 	// has to be set on the process we start, not on the agent.
-	cmd.Env = os.Environ()
+	cmd.Env = comfyGPUEnv(cfg, os.Environ())
 	if cfg.StorageToken != "" {
 		cmd.Env = append(cmd.Env, "RIPPEL_STORAGE_TOKEN="+cfg.StorageToken)
 	}

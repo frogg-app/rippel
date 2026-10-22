@@ -54,6 +54,9 @@ export function translateComfyError(raw: string | null | undefined): string | nu
 export function friendlyFailure(raw: string | null | undefined): JobFailure | null {
   if (!raw) return null;
   const text = raw.toLowerCase();
+  if (/device kernel image is invalid|hiperrorinvalidimage|no kernel image is available|invalid device function|hiperrornobinaryforgpu|no binary for gpu/.test(text)) {
+    return { kind: 'gpu-setup', summary: 'This PC’s graphics card isn’t set up correctly.', steps: [], detail: raw, link: null };
+  }
   if (/could not detect model type|unsupported checkpoint|error while deserializing header/.test(text)) {
     return {
       kind: 'unreadable-model',

@@ -52,6 +52,8 @@ export interface AgentClient {
   approveModelHost(target: AgentTarget, taskId: string, body: { hostname: string; approve: boolean }): Promise<{ ok: true }>;
   setVaeOnGpu(target: AgentTarget, onGpu: boolean): Promise<AgentTask>;
   setMemoryMode(target: AgentTarget, mode: 'auto' | 'ram'): Promise<AgentTask>;
+  /** Re-tests the GPU and repairs the torch build when the test fails. */
+  repairGpu(target: AgentTarget): Promise<AgentTask>;
   updateAgent(target: AgentTarget, sha256: string): Promise<AgentTask>;
   moveModel(target: AgentTarget, body: ModelMoveRequest): Promise<AgentTask>;
   /** Deletes one file under models/; answers only once it is gone (or was never there). */
@@ -136,6 +138,7 @@ export function makeAgentClient(opts: { fetchImpl?: typeof fetch; timeoutMs?: nu
   return {
     approveModelHost: (target, taskId, body) => call(target, `/agent/tasks/${encodeURIComponent(taskId)}/host-approval`, { method: 'POST', body }),
     setVaeOnGpu: (target, onGpu) => call(target, '/agent/vae', { method: 'POST', body: { onGpu } }),
+    repairGpu: async (target) => (await call<{ task: AgentTask }>(target, '/agent/gpu/repair', { method: 'POST' })).task,
     setMemoryMode: async (target, mode) => (await call<{ task: AgentTask }>(target, '/agent/memory', { method: 'POST', body: { mode } })).task,
     updateAgent: async (target, sha256) => (await call<{ task: AgentTask }>(target, '/agent/update', { method: 'POST', body: { sha256 } })).task,
     moveModel: async (target, body) =>

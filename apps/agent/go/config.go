@@ -14,7 +14,7 @@ import (
 // AgentVersion is reported on every ping and check-in. rippel stores it against
 // the deployment, so it is the one string an operator sees when asking "what is
 // actually running on that box".
-const AgentVersion = "0.4.13"
+const AgentVersion = "0.4.14"
 
 // Config is the agent's settings, and the directory they came from.
 //
@@ -37,6 +37,11 @@ type Config struct {
 	MemoryMode         string   `json:"memoryMode,omitempty"`
 	StorageToken       string   `json:"storageToken,omitempty"`
 	HeartbeatSeconds   int      `json:"heartbeatSeconds,omitempty"`
+	// Written by the GPU self-test (gpu_health.go).
+	GPUHealth      *GPUHealth `json:"gpuHealth,omitempty"`
+	GPUEnv         string     `json:"gpuEnv,omitempty"`
+	GPUFallback    string     `json:"gpuFallback,omitempty"`
+	GPUFingerprint string     `json:"gpuFingerprint,omitempty"`
 
 	// Derived at load time, never written back.
 	Platform string `json:"-"`
@@ -161,6 +166,10 @@ func LoadConfig() (*Config, error) {
 		VAEOnGPU:           file.VAEOnGPU,
 		MemoryMode:         envString("RIPPEL_MEMORY_MODE", file.MemoryMode, "auto"),
 		StorageToken:       envString("RIPPEL_STORAGE_TOKEN", file.StorageToken, ""),
+		GPUHealth:          file.GPUHealth,
+		GPUEnv:             file.GPUEnv,
+		GPUFallback:        file.GPUFallback,
+		GPUFingerprint:     file.GPUFingerprint,
 		Platform:           normalisePlatform(),
 		Home:               home,
 	}

@@ -32,6 +32,8 @@ import { Mark } from '../components/Mark';
 import { DownloadIcon, PlayIcon, RemixIcon } from './icons';
 import { isTerminal } from './jobProgress';
 import { friendlyFailure } from './failureText';
+import { GpuSetupLine } from './GpuSetupLine';
+import { useBackends } from '../shell/useBackends';
 import styles from './stage.module.css';
 
 export function JobStage({
@@ -506,6 +508,7 @@ function Failure({ job }: { job: Job }) {
       <Message title="Generation failed" body={job.error ?? 'The backend gave no reason.'} tone="danger" />
     );
   }
+  if (failure.kind === 'gpu-setup') return <GpuFailure job={job} detail={failure.detail} />;
   return (
     <div className={styles.message}>
       <p className={`${styles.messageTitle} ${styles.danger}`}>{FAILURE_TITLE[failure.kind]}</p>
@@ -532,6 +535,23 @@ function Failure({ job }: { job: Job }) {
   );
 }
 
+/** One line and Repair; the error stays under Details. */
+function GpuFailure({ job, detail }: { job: Job; detail: string }) {
+  const { backends } = useBackends();
+  const deploymentId = backends.find((b) => b.id === job.backendId)?.deploymentId;
+  return (
+    <div className={styles.message}>
+      <p className={`${styles.messageBody} ${styles.danger}`}><GpuSetupLine deploymentId={deploymentId} /></p>
+      {detail ? (
+        <details className={styles.failureDetail}>
+          <summary>Details</summary>
+          <p className={styles.errorBody}>{detail}</p>
+        </details>
+      ) : null}
+    </div>
+  );
+}
+
 /**
  * A title per kind, so the headline is already the diagnosis.
  *
@@ -547,5 +567,6 @@ const FAILURE_TITLE: Record<JobFailure['kind'], string> = {
   cancelled: 'Stopped before it finished',
   'backend-unreachable': 'Lost contact with the machine',
   'unreadable-model': 'ComfyUI couldn’t read this model',
+  'gpu-setup': 'Graphics card not set up',
   unknown: 'Generation failed',
 };
