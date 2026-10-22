@@ -65,8 +65,19 @@ export function LoraSection({
   loras,
   models,
   checkpoint,
+  takesLoras = null,
+  familyLabel = 'This model',
+  notice = null,
+  onDismissNotice,
   onChange,
 }: {
+  /** False when the workflow that would run cannot take add-ons at all. */
+  takesLoras?: boolean | null;
+  /** "LTX-Video", for the sentences. */
+  familyLabel?: string;
+  /** Styles just dropped because they stopped fitting, said once. */
+  notice?: string | null;
+  onDismissNotice?: () => void;
   loras: LoraSelection[];
   /** Every installed LoRA, unfiltered. */
   models: Model[];
@@ -83,12 +94,16 @@ export function LoraSection({
   );
 
   const add = (model: Model) => {
+    onDismissNotice?.();
     onChange([...loras, { modelId: model.id, weight: DEFAULT_LORA_WEIGHT }]);
     setOpen(false);
     addRef.current?.focus();
   };
 
   const nothingInstalled = models.length === 0;
+  // The compiler refuses add-ons on a workflow without a LoRA chain; say so
+  // here instead of offering a button that can only lead to a failed job.
+  const refused = takesLoras === false;
   const nothingLeft = partition.offered.length === 0 && partition.hidden.length === 0;
 
   return (
@@ -111,7 +126,9 @@ export function LoraSection({
           />
         </span>
 
-        {nothingInstalled ? (
+        {refused ? (
+          <span className={styles.none}>not available</span>
+        ) : nothingInstalled ? (
           <span className={styles.none}>none installed</span>
         ) : (
           <button
@@ -142,7 +159,20 @@ export function LoraSection({
         />
       ) : null}
 
-      {loras.length === 0 ? (
+      {notice ? (
+        <p className={styles.empty} role="status">
+          {notice}{' '}
+          {onDismissNotice ? (
+            <button type="button" className={styles.link} onClick={onDismissNotice}>
+              OK
+            </button>
+          ) : null}
+        </p>
+      ) : null}
+
+      {refused ? (
+        <p className={styles.empty}>{familyLabel} workflows don’t take style add-ons.</p>
+      ) : loras.length === 0 ? (
         <p className={styles.empty}>
           {/* What one is, said once, before anything else: someone who has
               never heard of a LoRA should not have to open a hint to learn
@@ -170,7 +200,7 @@ export function LoraSection({
         </p>
       ) : null}
 
-      {loras.map((lora, index) => (
+      {refused ? null : loras.map((lora, index) => (
         <ChosenLora
           key={lora.modelId}
           lora={lora}
@@ -388,12 +418,18 @@ function LoraPickerPopup({
     inputRef.current?.focus();
   }, []);
 
+  const optionId = (index: number) => `${reactId}-option-${index}`;
+
   useEffect(() => {
-    const node = listRef.current?.children[activeIndex] as HTMLElement | undefined;
+    const node = document.getElementById(optionId(activeIndex));
     node?.scrollIntoView?.({ block: 'nearest' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeIndex]);
 
-  const optionId = (index: number) => `${reactId}-option-${index}`;
+  // Where the styles that might not match begin. Only drawn as a group when
+  // the model's family is known: otherwise nothing was compared, and the foot
+  // note says so instead.
+  const firstUnsure = checkpointFamily === null ? -1 : rows.findIndex((entry) => entry.fit === 'unknown');
 
   const onKeyDown = (event: React.KeyboardEvent) => {
     if (event.key === 'Escape') {
@@ -448,7 +484,13 @@ function LoraPickerPopup({
       />
 
       <ul ref={listRef} id={listId} role="listbox" aria-label={VOCABULARY.lora.plural} className={styles.list}>
-        {rows.map((entry, index) => (
+        {rows.map((entry, index) => [
+          index === firstUnsure ? (
+            <li key="unsure-head" role="presentation" className={styles.groupHead}>
+              Might not match — no family recorded, so these weren’t checked against this model. They may do
+              nothing, or spoil the result.
+            </li>
+          ) : null,
           <li
             key={entry.model.id}
             id={optionId(index)}
@@ -465,8 +507,8 @@ function LoraPickerPopup({
               <span className={styles.rowFamily}>{describe(entry, checkpointFamily)}</span>
               <RowNote entry={entry} />
             </span>
-          </li>
-        ))}
+          </li>,
+        ])}
       </ul>
 
       {/* Said once, at the foot of the list, rather than on every row: when the

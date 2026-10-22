@@ -181,6 +181,7 @@ export type JobFailureKind =
   | 'bad-value'
   | 'cancelled'
   | 'backend-unreachable'
+  | 'unreadable-model'
   | 'unknown';
 
 export interface JobFailure {
@@ -191,6 +192,8 @@ export interface JobFailure {
   steps: string[];
   /** The backend's own words, kept whole, for a disclosure. */
   detail: string;
+  /** Where the fix lives in rippel, when it lives somewhere: "Open Models". */
+  link?: { label: string; href: string } | null;
 }
 
 export interface Job {
@@ -799,6 +802,25 @@ export interface BackendReadiness {
   manualSteps: string[];
   /** Why `offers` is empty, when it is: no Manager, no permission, a 502. */
   catalogueError: string | null;
+  /**
+   * Whether this template can splice in style add-ons (LoRAs). The compiler
+   * refuses LoRAs on a template without a `lora` manifest entry; saying so
+   * here lets the form stop offering them. Optional for older payloads.
+   */
+  takesLoras?: boolean;
+  /**
+   * Something wrong with the chosen model file itself, which no companion
+   * download fixes — e.g. diffusers-format weights ComfyUI cannot load, or
+   * bare diffusion weights sitting where a whole-checkpoint loader reads.
+   */
+  modelProblem?: ModelFileProblem | null;
+}
+
+export interface ModelFileProblem {
+  /** `unloadable`: nothing will load it. `needs-diffusion-loader`: it needs moving. */
+  kind: 'unloadable' | 'needs-diffusion-loader';
+  summary: string;
+  detail: string;
 }
 
 /** The result of asking a backend to close its gaps. */

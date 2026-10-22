@@ -395,3 +395,12 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* "Might not match": the unknown-family styles, set apart under a warning. */
+.groupHead {
+  padding: 8px 10px 4px;
+  font-size: 10.5px;
+  line-height: 1.45;
+  color: var(--warn);
+  border-top: 1px solid var(--line);
+}

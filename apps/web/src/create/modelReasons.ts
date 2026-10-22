@@ -164,3 +164,68 @@ export function listNames(models: Model[]): string {
   if (rest > 0) return `${names.join(', ')} and ${rest} more`;
   return names.length === 2 ? `${names[0]} and ${names[1]}` : (names[0] ?? '');
 }
+
+export type PillTone = 'ok' | 'needs' | 'bad';
+
+/**
+ * The fit pills on a tile — the same words the Models page uses: "Will run",
+ * "Needs prompt reader", "Needs image decoder". One pill per missing kind of
+ * part, never a count, because what is missing is what a person needs to know.
+ */
+export function fitPills(
+  entry: ModelEntry,
+  kind: JobKind,
+  readiness: ReadinessMap,
+): { label: string; tone: PillTone }[] {
+  if (entry.runnable) return [{ label: 'Will run', tone: 'ok' }];
+  const answer = readiness.here[entry.model.id];
+  if (entry.blocked === 'needs-setup') {
+    if (answer?.problem) {
+      return [{ label: answer.problem.kind === 'unloadable' ? 'Can’t load this file' : 'Needs moving', tone: 'bad' }];
+    }
+    const pills: { label: string; tone: PillTone }[] = [];
+    const seen = new Set<string>();
+    for (const part of answer?.missing ?? []) {
+      const label = part.misfiled
+        ? 'Needs moving'
+        : `Needs ${part.type ? VOCABULARY[part.type].name.toLowerCase() : part.label}`;
+      if (seen.has(label)) continue;
+      seen.add(label);
+      pills.push({ label, tone: 'needs' });
+    }
+    if (pills.length > 0) return pills;
+  }
+  return [{ label: blockedReason(entry, kind, readiness).badge, tone: 'bad' }];
+}
+
+/** "a prompt reader (T5 text encoder) and an image decoder" */
+export function joinParts(parts: MissingPart[]): string {
+  const names = parts.map(partName);
+  if (names.length <= 1) return names[0] ?? '';
+  return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+}
+
+/** Parts a download can fix, as opposed to ones that need moving. */
+export function absentParts(missing: readonly MissingPart[] | undefined): MissingPart[] {
+  return (missing ?? []).filter((part) => !part.misfiled);
+}
+
+/**
+ * Why Generate is waiting, for a chosen model that cannot run yet. Null when
+ * the model is not blocked on its setup (then the form's own reason stands).
+ */
+export function setupReason(answer: { state: string; missing?: MissingPart[]; problem?: { kind: string } | null } | undefined): string | null {
+  if (!answer || answer.state !== 'blocked') return null;
+  if (answer.problem) {
+    return answer.problem.kind === 'unloadable'
+      ? 'This model file can’t be loaded — pick another model'
+      : 'Move this model file into the right folder first';
+  }
+  const absent = absentParts(answer.missing).length;
+  const moved = (answer.missing ?? []).length - absent;
+  if (absent === 1 && moved === 0) return 'Install the missing part first';
+  if (absent > 1 && moved === 0) return `Install the ${absent} missing parts first`;
+  if (absent === 0 && moved > 0) return 'Move the misplaced file first';
+  if (absent > 0) return `Install the ${absent} missing part${absent > 1 ? 's' : ''} and move the misplaced file first`;
+  return 'This model isn’t set up on that machine yet';
+}

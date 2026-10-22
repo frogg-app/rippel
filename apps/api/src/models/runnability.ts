@@ -66,6 +66,7 @@ import { knownCapabilities, templatesFor } from '../workflows/registry.js';
 import { canonicalFolder, checkpointSlotOf, withGgufLoaders, type CheckpointSlot } from '../workflows/folders.js';
 import { claimFromCatalogueBase, inferFamily } from './family.js';
 import { knownDownloadFor } from './known-downloads.js';
+import { LAYOUT_WORDS, type WeightsLayout } from './weights-layout.js';
 
 /**
  * The catalogue's save paths onto ComfyUI folder names.
@@ -137,7 +138,17 @@ export interface RunnabilityInput {
    * produced: the same judgement, one graph at a time.
    */
   templates?: readonly WorkflowTemplate[];
+  /**
+   * What the file holds, from its safetensors header (`weights-layout.ts`),
+   * when we have read it. The one fact here that a filename and a folder
+   * cannot supply: a diffusers-format LTX transformer in `checkpoints/` looks
+   * exactly like a runnable LTX-Video checkpoint until ComfyUI opens it.
+   */
+  layout?: WeightsLayout | null;
 }
+
+/** Loaders that expect a whole checkpoint, VAE included. */
+const WHOLE_CHECKPOINT_LOADERS = new Set(['CheckpointLoaderSimple', 'CheckpointLoader']);
 
 /** The template's graph with the checkpoint slot pointed at this file. */
 function graphWithCheckpoint(
@@ -253,6 +264,19 @@ export function runnabilityFor(input: RunnabilityInput): ModelRunnability {
     };
   }
 
+  // No loader ComfyUI ships can read it, so nothing installed beside it helps.
+  // Said before any workflow is consulted: "needs a prompt reader" would send
+  // someone to download one for a file that will still not load.
+  if (input.layout === 'diffusers') {
+    return {
+      ...base,
+      status: 'no-workflow',
+      capabilities: [],
+      summary: LAYOUT_WORDS.diffusers.summary,
+      detail: LAYOUT_WORDS.diffusers.detail,
+    };
+  }
+
   // Every graph that could serve this family, not one per capability: the
   // registry can hold two specific templates for one family that differ only
   // by which folder they load the model from, and a file in
@@ -300,8 +324,14 @@ export function runnabilityFor(input: RunnabilityInput): ModelRunnability {
     };
     const slot = checkpointSlotOf(template);
 
-    const folderMismatch =
-      slot && slot.folder && input.folder && slot.folder !== input.folder && !input.alsoIn?.includes(slot.folder)
+    // Diffusion weights alone cannot go through a whole-checkpoint loader
+    // wherever they sit: it finds no VAE and cannot place the model. The graph
+    // that can run them reads `diffusion_models/`, so that is where it wants.
+    const wholeLoaderOnBareWeights =
+      input.layout === 'diffusion-only' && slot !== null && WHOLE_CHECKPOINT_LOADERS.has(slot.nodeClass);
+    const folderMismatch = wholeLoaderOnBareWeights
+      ? { loader: 'UNETLoader', wants: 'diffusion_models' }
+      : slot && slot.folder && input.folder && slot.folder !== input.folder && !input.alsoIn?.includes(slot.folder)
         ? { loader: slot.nodeClass, wants: slot.folder }
         : null;
 
@@ -404,8 +434,12 @@ export function runnabilityFor(input: RunnabilityInput): ModelRunnability {
       status: 'wrong-folder',
       capabilities,
       ...(mismatch && !input.installed ? { installInto: mismatch.wants } : {}),
-      summary: input.installed ? 'On disk, but the workflow cannot see it' : 'Lands in the wrong folder',
-      detail: mismatch
+      summary: input.layout === 'diffusion-only'
+        ? input.installed ? 'Diffusion weights only — in the wrong folder' : 'Lands in the wrong folder'
+        : input.installed ? 'On disk, but the workflow cannot see it' : 'Lands in the wrong folder',
+      detail: input.layout === 'diffusion-only' && mismatch
+        ? `${LAYOUT_WORDS.diffusionOnly.detail} It is in "${input.folder}"; move it to "${mismatch.wants}".`
+        : mismatch
         ? input.installed
           ? `It is in "${input.folder}", but the workflow loads it from "${mismatch.wants}" — it needs moving there, not downloading again.`
           : `Installs into "${input.folder}", but the workflow loads it from "${mismatch.wants}" — it would have to be moved there afterwards.`
@@ -521,7 +555,7 @@ const FAMILY_NAMES: Record<string, string> = {
   wan: 'WAN',
 };
 
-function familyName(family: string): string {
+export function familyName(family: string): string {
   return FAMILY_NAMES[family] ?? family;
 }
 

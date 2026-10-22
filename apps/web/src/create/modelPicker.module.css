@@ -184,6 +184,43 @@ button.summary:focus-visible {
   border-color: var(--line);
 }
 
+/* Chosen-but-not-ready: selectable, so not "not-allowed", but quieter than
+   a model that will run. */
+.tileDim {
+  border-style: dashed;
+}
+
+.tileDim .tileArt {
+  filter: grayscale(0.6) brightness(0.7);
+}
+
+.tileDim .tileFamily,
+.tileBlocked .tileFamily {
+  color: var(--text-3);
+}
+
+.pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.pill_ok {
+  color: var(--ok-text);
+  border-color: var(--ok-line);
+  background: var(--ok-tint);
+}
+
+.pill_needs {
+  color: var(--warn);
+  border-color: var(--warn-line);
+  background: color-mix(in srgb, var(--warn) 10%, transparent);
+}
+
+.pill_bad {
+  color: var(--text-3);
+}
+
 .tileBlocked .tileArt {
   filter: grayscale(0.85) brightness(0.55);
 }
@@ -318,4 +355,59 @@ button.summary:focus-visible {
 
 .firstRunAction:hover {
   filter: brightness(1.08);
+}
+
+/* The chosen model's missing parts, under the grid. */
+.notice {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--warn-line);
+  border-radius: 10px;
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  color: var(--text-muted);
+  animation: rise var(--dur-slow) var(--ease-out) both;
+}
+
+.noticeHead {
+  margin: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.noticeText {
+  margin: 0;
+}
+
+.noticeParts {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.noticePart {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.noticePartName {
+  color: var(--text-3);
+  font-weight: 600;
+}
+
+.noticePartActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
 }

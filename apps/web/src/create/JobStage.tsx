@@ -31,7 +31,7 @@ import { SparkIcon } from '../components/icons';
 import { Mark } from '../components/Mark';
 import { DownloadIcon, PlayIcon, RemixIcon } from './icons';
 import { isTerminal } from './jobProgress';
-import { translateComfyError } from './failureText';
+import { friendlyFailure } from './failureText';
 import styles from './stage.module.css';
 
 export function JobStage({
@@ -499,10 +499,8 @@ function Failure({ job }: { job: Job }) {
   // A missing file reported as raw ComfyUI validation text — by a job stored
   // before the server classified failures, or one it filed as a bad value —
   // reads as the missing file it is. The raw words stay in the disclosure.
-  const plain = job.failure?.kind === 'missing-model' ? null : translateComfyError(raw);
-  const failure: JobFailure | null = plain
-    ? { kind: 'missing-model', summary: plain, steps: [], detail: raw ?? '' }
-    : job.failure;
+  const serverSaid = job.failure && job.failure.kind !== 'unknown' && job.failure.kind !== 'bad-value';
+  const failure: JobFailure | null = (serverSaid ? null : friendlyFailure(raw)) ?? job.failure;
   if (!failure) {
     return (
       <Message title="Generation failed" body={job.error ?? 'The backend gave no reason.'} tone="danger" />
@@ -519,9 +517,14 @@ function Failure({ job }: { job: Job }) {
           ))}
         </ul>
       ) : null}
+      {failure.link ? (
+        <p className={styles.messageBody}>
+          <a href={failure.link.href}>{failure.link.label}</a>
+        </p>
+      ) : null}
       {failure.detail ? (
         <details className={styles.failureDetail}>
-          <summary>What the machine said</summary>
+          <summary>Details</summary>
           <p className={styles.errorBody}>{failure.detail}</p>
         </details>
       ) : null}
@@ -543,5 +546,6 @@ const FAILURE_TITLE: Record<JobFailure['kind'], string> = {
   'bad-value': 'The backend refused a setting',
   cancelled: 'Stopped before it finished',
   'backend-unreachable': 'Lost contact with the machine',
+  'unreadable-model': 'ComfyUI couldn’t read this model',
   unknown: 'Generation failed',
 };

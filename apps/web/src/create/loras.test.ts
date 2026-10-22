@@ -8,7 +8,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import type { Model } from '@comfy/shared';
-import { fitOf, matchesQuery, partitionLoras } from './loras';
+import { fitOf, invalidLoras, matchesQuery, partitionLoras } from './loras';
 
 function model(id: string, baseModel: string | null, name = id): Model {
   return {
@@ -92,5 +92,32 @@ describe('matchesQuery', () => {
   it('treats an empty or blank query as no filter', () => {
     expect(matchesQuery(entry, '')).toBe(true);
     expect(matchesQuery(entry, '   ')).toBe(true);
+  });
+});
+
+describe('invalidLoras', () => {
+  const pytorch = model('pt', null, 'Pytorch LoRA Weights');
+  const sd15 = model('sd15', 'sd1.5', 'Hyper SD15');
+  const sdxlStyle = model('xl', 'sdxl', 'XL style');
+
+  it('drops every style for a workflow that takes none, and says why', () => {
+    const result = invalidLoras([{ modelId: 'pt', weight: 0.7 }], [pytorch], model('ltx', 'ltx-video'), false, 'LTX-Video');
+    expect(result.keep).toEqual([]);
+    expect(result.notice).toBe('Removed Pytorch LoRA Weights: LTX-Video workflows don’t take style add-ons.');
+  });
+
+  it('drops a style made for another family, and keeps fitting and unknown ones', () => {
+    const chosen = [
+      { modelId: 'sd15', weight: 0.7 },
+      { modelId: 'xl', weight: 0.7 },
+      { modelId: 'pt', weight: 0.7 },
+    ];
+    const result = invalidLoras(chosen, [pytorch, sd15, sdxlStyle], sdxl, true, 'SDXL');
+    expect(result.keep.map((s) => s.modelId)).toEqual(['xl', 'pt']);
+    expect(result.notice).toMatch(/Removed Hyper SD15/);
+  });
+
+  it('says nothing when everything still fits', () => {
+    expect(invalidLoras([{ modelId: 'xl', weight: 1 }], [sdxlStyle], sdxl, true, 'SDXL').notice).toBeNull();
   });
 });

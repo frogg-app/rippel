@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest';
 import type { Model } from '@comfy/shared';
 import type { CapabilityMap, ModelReadiness } from '../lib/api-jobs';
 import type { ReadinessMap } from './useReadiness';
-import { classify, partitionModels } from './visibility';
+import { classify, isSelectable, partitionModels } from './visibility';
 
 function model(id: string, baseModel: string | null): Model {
   return {
@@ -275,5 +275,24 @@ describe('classify', () => {
   it('still hides nothing on a null family when the map is not live', () => {
     const entry = classify(model('a', null), 'txt2img', guessed, map());
     expect(entry.hidden).toBeNull();
+  });
+});
+
+describe('the order of the grid', () => {
+  it('puts models that will run first, then the ones a download away, then the rest', () => {
+    const broken = model('broken', 'ltxv');
+    const waiting = model('waiting', 'ltxv');
+    const runs = model('runs', 'ltxv');
+    const readiness = map({ broken: 'blocked', waiting: 'blocked', runs: 'ready' });
+    // A file no download fixes sinks below one that needs a part.
+    readiness.here.broken!.problem = { kind: 'unloadable', summary: 'x', detail: 'y' };
+    const partition = partitionModels([broken, waiting, runs], 'txt2vid', live, readiness);
+    expect(partition.listed.map((entry) => entry.model.id)).toEqual(['runs', 'waiting', 'broken']);
+  });
+
+  it('lets a model waiting on parts be chosen, but not one with no workflow', () => {
+    const readiness = map({ waiting: 'blocked' });
+    expect(isSelectable(classify(model('waiting', 'ltxv'), 'txt2vid', live, readiness))).toBe(true);
+    expect(isSelectable(classify(model('odd', 'pixart'), 'txt2vid', guessed, map()))).toBe(false);
   });
 });

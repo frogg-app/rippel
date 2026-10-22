@@ -8,6 +8,7 @@ import { folderOfInstalled, foldersOfInstalled } from '../workflows/folders.js';
 import { findTemplateById } from '../workflows/registry.js';
 import { buildFixPlan } from './fix-plan.js';
 import { runnabilityFor } from './runnability.js';
+import { weightsLayoutOf } from './weights-probe.js';
 import { planOperation, startOperation, getOperation, type ModelOperation } from './operations.js';
 export default async function fixRoutes(app: FastifyInstance) {
   app.get<{ Params: { id: string } }>('/model-operations/:id', { onRequest: [app.requireAdmin] }, async (req, reply) => {
@@ -37,7 +38,8 @@ export default async function fixRoutes(app: FastifyInstance) {
     clearObjectInfoCache(backend.base_url);
     const info = await objectInfoFor(backend.base_url);
     const verdict = runnabilityFor({ filename: model.filename, type: model.type, catalogueBase: model.base_model,
-      folder: folderOfInstalled(info,model.filename), alsoIn: foldersOfInstalled(info,model.filename), info, backendId: backend.id, backendName: backend.name, installed: true });
+      folder: folderOfInstalled(info,model.filename), alsoIn: foldersOfInstalled(info,model.filename), info, backendId: backend.id, backendName: backend.name, installed: true,
+      layout: await weightsLayoutOf(req.params.id).catch(() => null) });
     const template = verdict.templateId ? findTemplateById(verdict.templateId) : undefined;
     if (!template) return reply.code(422).send({ message: 'No workflow can fix this model. Choose one from the workflow library.' });
     const plan = await buildFixPlan({ template, filename: model.filename, info });

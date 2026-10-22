@@ -838,16 +838,19 @@ describe('what the picker hides', () => {
     await user.click(screen.getByRole('radio', { name: 'Video' }));
 
     // Hunyuan has no workflow anywhere: gone. LTX has one and the machine is
-    // not set up for it: present, blocked, and it says what to do.
+    // not set up for it: present, choosable, and once chosen it says what to
+    // do while Generate waits.
     const ltx = await screen.findByRole('radio', { name: /LTX Video/i });
-    expect(ltx).toHaveAttribute('aria-disabled', 'true');
+    expect(ltx).toHaveAttribute('aria-disabled', 'false');
     await waitFor(() =>
       expect(screen.queryByRole('radio', { name: /Hunyuan/i })).not.toBeInTheDocument(),
     );
 
     await user.click(ltx);
-    expect(await screen.findByText(/T5 text encoder is not installed/i)).toBeInTheDocument();
+    expect(ltx).toHaveAttribute('aria-checked', 'true');
+    expect(await screen.findByText(/LTX-Video isn’t set up on this machine yet/)).toBeInTheDocument();
     expect(screen.getByText(/Move it into models\/checkpoints\./i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Generate/ })).toBeDisabled();
   });
 
   it('shows everything when readiness cannot be asked', async () => {
@@ -1045,6 +1048,8 @@ describe('extra styles', () => {
     // Unknown family is offered, marked, never hidden: it is the normal state
     // of a locally discovered file.
     expect(within(list).getByText('Pytorch LoRA Weights')).toBeInTheDocument();
+    // ...but set apart, under a warning, after the ones that fit.
+    expect(within(list).getByText(/Might not match/)).toBeInTheDocument();
     // Trained for SD 1.5 against an SDXL checkpoint: impossible, so hidden.
     expect(within(list).queryByText('Hyper SD15 1step LoRA')).toBeNull();
 
@@ -1053,6 +1058,35 @@ describe('extra styles', () => {
     const picker = screen.getByRole('dialog', { name: /add an extra style/i });
     await user.click(within(picker).getByRole('button', { name: /show anyway/i }));
     expect(within(list).getByText('Hyper SD15 1step LoRA')).toBeInTheDocument();
+  });
+
+  it('drops chosen styles with a notice when the model switches to one whose workflow takes none', async () => {
+    const user = userEvent.setup();
+    const { readinessApi } = await import('../lib/api-jobs');
+    vi.mocked(readinessApi.get).mockImplementation(async (_backend, modelId, capability) => {
+      if (modelId === 'model-ltx' && capability === 'txt2vid') return { ...UNKNOWN, state: 'ready' as const, takesLoras: false };
+      if (modelId === 'model-sdxl') return { ...UNKNOWN, state: 'ready' as const, takesLoras: true };
+      return UNKNOWN;
+    });
+    render(
+      <>
+        <ModeToggle />
+        <CreatePage />
+      </>,
+    );
+    await screen.findByRole('radio', { name: /SDXL Base/i });
+    await user.click(screen.getByRole('button', { name: /add a style/i }));
+    await user.click(screen.getByRole('option', { name: /Pytorch LoRA Weights/ }));
+    expect(screen.getByRole('button', { name: /remove pytorch lora weights/i })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('radio', { name: 'Video' }));
+    await user.click(await screen.findByRole('radio', { name: /LTX Video/i }));
+
+    expect(
+      await screen.findByText('Removed Pytorch LoRA Weights: LTX-Video workflows don’t take style add-ons.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /remove pytorch lora weights/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /add a style/i })).toBeNull();
   });
 
   it('adds a style, stacks a second, and sends both with their weights', async () => {
@@ -1134,7 +1168,7 @@ describe('for somebody new', () => {
     expect(within(tile).getByText(/all-round pictures/i)).toBeInTheDocument();
   });
 
-  it('says which file a model is missing in plain words, and Get it fetches it', async () => {
+  it('names the missing part on the tile, and installs exactly that part from the notice', async () => {
     const user = userEvent.setup();
     const { readinessApi } = await import('../lib/api-jobs');
     vi.mocked(readinessApi.get).mockImplementation(async (_backend, modelId, capability) => {
@@ -1145,12 +1179,41 @@ describe('for somebody new', () => {
           isFallback: false,
           videoLimits: null,
           summary: 'the T5 text encoder is not installed.',
-          steps: ['Install t5xxl_fp16.safetensors.'],
-          missing: [{ label: 'T5 text encoder', type: 'clip' as const, misfiled: false }],
+          steps: ['Install T5 XXL fp8.'],
+          missing: [
+            {
+              label: 'T5 text encoder',
+              type: 'clip' as const,
+              misfiled: false,
+              offer: { ref: 'hf:t5', name: 'T5 XXL fp8', filename: 't5xxl_fp8_e4m3fn.safetensors', size: '4.89GB' },
+            },
+            { label: 'LTX-Video VAE', type: 'vae' as const, misfiled: false, offer: null },
+          ],
           installable: true,
+          takesLoras: false,
         };
       }
       return UNKNOWN;
+    });
+    vi.mocked(readinessApi.installMissing).mockResolvedValueOnce({
+      installs: [
+        {
+          id: 'install-1',
+          backendId: 'backend-1',
+          displayName: 'T5 XXL fp8',
+          filename: 't5xxl_fp8_e4m3fn.safetensors',
+          status: 'downloading',
+          createdAt: new Date().toISOString(),
+          startedAt: new Date().toISOString(),
+          finishedAt: null,
+          bytesReceived: 1_000,
+          bytesTotal: 4_000,
+          detail: null,
+          error: null,
+        } as never,
+      ],
+      skipped: [],
+      manualSteps: [],
     });
 
     render(
@@ -1163,18 +1226,46 @@ describe('for somebody new', () => {
     await user.click(screen.getByRole('radio', { name: 'Video' }));
 
     const ltx = await screen.findByRole('radio', { name: /LTX Video/i });
-    expect(within(ltx).getByText('Needs one more file')).toBeInTheDocument();
+    expect(within(ltx).getByText('Needs prompt reader')).toBeInTheDocument();
+    expect(within(ltx).getByText('Needs image decoder')).toBeInTheDocument();
     await user.click(ltx);
-    expect(
-      await screen.findByText(/This model needs one more file — a prompt reader \(T5 text encoder\)/),
-    ).toBeInTheDocument();
-    expect(screen.queryByText(/wrong folder|needs another model/i)).toBeNull();
 
-    await user.click(screen.getByRole('button', { name: 'Get it' }));
+    expect(
+      await screen.findByText(
+        'LTX-Video needs a prompt reader (T5 text encoder) and an image decoder (LTX-Video VAE) before it can run',
+      ),
+    ).toBeInTheDocument();
+    const generate = screen.getByRole('button', { name: /Generate/ });
+    expect(generate).toBeDisabled();
+    expect(screen.getByText('Install the 2 missing parts first')).toBeInTheDocument();
+    // A part the catalogue cannot supply still has somewhere to look.
+    expect(screen.getAllByRole('link', { name: 'Find on Models' })).toHaveLength(2);
+
+    await user.click(screen.getByRole('button', { name: 'Install T5 XXL fp8 (4.89GB)' }));
     await waitFor(() =>
-      expect(readinessApi.installMissing).toHaveBeenCalledWith(expect.any(String), 'model-ltx', 'txt2vid'),
+      expect(readinessApi.installMissing).toHaveBeenCalledWith(expect.any(String), 'model-ltx', 'txt2vid', ['hf:t5']),
     );
-    expect(await screen.findByText(/Downloading now/i)).toBeInTheDocument();
+    expect(await screen.findByRole('progressbar')).toBeInTheDocument();
+    // And the LTX workflow takes no style add-ons, so none are offered.
+    expect(screen.getByText('LTX-Video workflows don’t take style add-ons.')).toBeInTheDocument();
+  });
+
+  it('sorts models that will run first and pills them', async () => {
+    const { readinessApi } = await import('../lib/api-jobs');
+    vi.mocked(readinessApi.get).mockImplementation(async (_backend, modelId) =>
+      modelId === 'model-sdxl'
+        ? { ...UNKNOWN, state: 'ready' as const }
+        : {
+            ...UNKNOWN,
+            state: 'blocked' as const,
+            missing: [{ label: 'VAE', type: 'vae' as const, misfiled: false }],
+          },
+    );
+    render(<CreatePage />);
+    const sdxl = await screen.findByRole('radio', { name: /SDXL Base/i });
+    expect(within(sdxl).getByText('Will run')).toBeInTheDocument();
+    const radios = screen.getAllByRole('radio').filter((r) => r.getAttribute('aria-checked') !== null);
+    expect(radios[0]).toBe(sdxl);
   });
 
   it('opens on an invitation, not an error, when nothing is installed', async () => {

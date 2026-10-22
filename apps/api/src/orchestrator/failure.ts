@@ -47,6 +47,7 @@ export type FailureKind =
   | 'bad-value'
   | 'cancelled'
   | 'backend-unreachable'
+  | 'unreadable-model'
   | 'unknown';
 
 export interface ClassifiedFailure {
@@ -63,6 +64,8 @@ export interface ClassifiedFailure {
    * making every caller compare against the string.
    */
   outOfMemory: boolean;
+  /** Where in rippel the fix is. */
+  link: { label: string; href: string } | null;
 }
 
 interface Rule {
@@ -71,6 +74,7 @@ interface Rule {
   needles: readonly string[];
   summary: string;
   steps: readonly string[];
+  link?: { label: string; href: string };
 }
 
 /**
@@ -81,6 +85,25 @@ interface Rule {
  * and "failed to load" appears in some of them.
  */
 const RULES: readonly Rule[] = [
+  {
+    // Before out-of-memory and missing-model: the file is there and memory is
+    // fine, but the loader cannot tell what kind of model it holds. On the
+    // case that added this rule it was diffusers-format LTX weights in
+    // `checkpoints/`, which no ComfyUI loader reads.
+    kind: 'unreadable-model',
+    needles: [
+      'could not detect model type',
+      'unsupported checkpoint',
+      'error while deserializing header',
+      'invalid load key',
+    ],
+    summary: 'The machine has this model file, but ComfyUI can’t recognise what kind of model is inside it.',
+    steps: [
+      'It is usually a file in a format ComfyUI does not load (for example diffusers-format weights), or diffusion weights alone in the "checkpoints" folder.',
+      'Open the model on the Models page to see what it needs, or pick a model marked “Will run”.',
+    ],
+    link: { label: 'Open installed models', href: '/models?tab=installed' },
+  },
   {
     kind: 'out-of-memory',
     // Three vendors and two spellings each. `allocate` on its own is too broad;
@@ -121,6 +144,7 @@ const RULES: readonly Rule[] = [
     steps: [
       'Install it from the Models page, or pick a model that is already on that machine.',
     ],
+    link: { label: 'Open Models', href: '/models?tab=installed' },
   },
   {
     kind: 'missing-node',
@@ -193,6 +217,7 @@ export function classifyFailure(message: string | null | undefined): ClassifiedF
       steps: [...rule.steps],
       detail,
       outOfMemory: rule.kind === 'out-of-memory',
+      link: rule.link ?? null,
     };
   }
 
@@ -206,6 +231,7 @@ export function classifyFailure(message: string | null | undefined): ClassifiedF
     steps: [],
     detail,
     outOfMemory: false,
+    link: null,
   };
 }
 
@@ -235,5 +261,6 @@ export function toJobFailure(failure: ClassifiedFailure): JobFailure {
     summary: failure.summary,
     steps: failure.steps,
     detail: failure.detail,
+    link: failure.link,
   };
 }

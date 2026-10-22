@@ -18,6 +18,7 @@ import type {
   JobKind,
   JobStatus,
   Model,
+  ModelFileProblem,
   ModelType,
   ReadinessInstallResult,
   Upload,
@@ -332,6 +333,23 @@ export interface ModelReadiness {
   missing?: MissingPart[];
   /** The server offered a download for at least one gap: "Get it" can work. */
   installable?: boolean;
+  /**
+   * Whether the workflow that would run can take style add-ons. Null when the
+   * server did not say (an older API, or we could not ask): the form then
+   * offers them as it always did, and the server still refuses a bad one.
+   */
+  takesLoras?: boolean | null;
+  /** The chosen file itself cannot load as it stands; no download fixes it. */
+  problem?: ModelFileProblem | null;
+}
+
+/** The recommended download that closes one gap, as the server offered it. */
+export interface PartOffer {
+  ref: string;
+  name: string;
+  filename: string;
+  /** "4.89GB", when the catalogue said. */
+  size: string | null;
 }
 
 /** One file a model needs and the backend does not have where it looks. */
@@ -342,6 +360,8 @@ export interface MissingPart {
   type: ModelType | null;
   /** On disk, but somewhere ComfyUI does not read from. Not downloadable. */
   misfiled: boolean;
+  /** The one-click download for this part, when an admin asked and there is one. */
+  offer?: PartOffer | null;
 }
 
 const UNKNOWN_READINESS: ModelReadiness = {
@@ -365,7 +385,10 @@ interface ReadinessPayload {
     status?: string;
     type?: ModelType | null;
     misfiled?: { instruction?: string } | null;
+    offers?: { ref: string; name?: string; filename: string; installed?: boolean; size?: string | null }[];
   }[];
+  takesLoras?: boolean;
+  modelProblem?: ModelFileProblem | null;
   manualSteps?: string[];
   installable?: { name?: string; filename?: string }[];
 }
@@ -407,10 +430,12 @@ export const readinessApi = {
     backendId: string,
     modelId: string,
     capability: JobKind,
+    /** Only these catalogue refs; omit for every recommended gap. */
+    refs?: string[],
   ): Promise<ReadinessInstallResult> =>
     request<ReadinessInstallResult>(`/backends/${backendId}/readiness/install`, {
       method: 'POST',
-      body: { modelId, capability },
+      body: { modelId, capability, ...(refs ? { refs } : {}) },
     }),
 };
 
@@ -421,8 +446,10 @@ function toReadiness(payload: ReadinessPayload): ModelReadiness {
   // duration control while a companion file is missing, and drawing it with
   // the wrong family's bounds would be the original bug in a narrower case.
   const videoLimits = payload.videoLimits ?? null;
+  const takesLoras = typeof payload.takesLoras === 'boolean' ? payload.takesLoras : null;
+  const problem = payload.modelProblem ?? null;
   if (payload.ready) {
-    return { state: 'ready', templateLabel, isFallback, videoLimits, summary: null, steps: [] };
+    return { state: 'ready', templateLabel, isFallback, videoLimits, summary: null, steps: [], takesLoras, problem: null };
   }
 
   const unmet = (payload.requirements ?? []).filter(
@@ -443,15 +470,35 @@ function toReadiness(payload: ReadinessPayload): ModelReadiness {
     templateLabel,
     isFallback,
     videoLimits,
-    summary: unmet.length > 0 ? summarise(unmet) : 'the backend is not set up for it yet.',
+    summary: problem
+      ? problem.detail
+      : unmet.length > 0
+        ? summarise(unmet)
+        : 'the backend is not set up for it yet.',
     steps,
     missing: unmet.map((requirement) => ({
       label: requirement.label,
       type: requirement.type ?? null,
       misfiled: requirement.status === 'misfiled',
+      offer: requirement.status === 'missing' ? partOffer(requirement.offers) : null,
     })),
     installable: (payload.installable ?? []).length > 0,
+    takesLoras,
+    problem,
   };
+}
+
+/**
+ * The first offer not already installed: the same pick the server's
+ * `recommendedInstalls` makes for one gap, so "Install" here queues exactly
+ * what "Get it" would have.
+ */
+function partOffer(
+  offers: { ref: string; name?: string; filename: string; installed?: boolean; size?: string | null }[] | undefined,
+): PartOffer | null {
+  const best = (offers ?? []).find((offer) => !offer.installed);
+  if (!best) return null;
+  return { ref: best.ref, name: best.name ?? best.filename, filename: best.filename, size: best.size ?? null };
 }
 
 /** "the checkpoint is in the wrong folder, and the T5 text encoder is missing." */

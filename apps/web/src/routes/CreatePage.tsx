@@ -20,6 +20,10 @@ import { AdvancedDrawer } from '../create/AdvancedDrawer';
 import { LoraSection } from '../create/LoraSection';
 import { JobStage } from '../create/JobStage';
 import { ModelPicker } from '../create/ModelPicker';
+import { ModelNotice } from '../create/ModelNotice';
+import { setupReason } from '../create/modelReasons';
+import { invalidLoras } from '../create/loras';
+import { familyWords } from '../create/families';
 import { PromptFields } from '../create/PromptFields';
 import { ReferenceImage } from '../create/ReferenceImage';
 import {
@@ -142,6 +146,26 @@ export function CreatePage() {
   const supported = selectedModel
     ? isRunnable(selectedModel, kind, capabilities, readiness)
     : false;
+  const selectedAnswer = selectedModel ? readiness.here[selectedModel.id] : undefined;
+  const waitingOn = supported ? null : setupReason(selectedAnswer);
+
+  // Style add-ons follow the model. The workflow that would run says whether it
+  // takes any at all; the family says which. Selections that stop fitting when
+  // the model or mode changes are dropped here, with a sentence, rather than
+  // left to fail at Generate.
+  const takesLoras = selectedAnswer?.takesLoras ?? null;
+  const familyLabel = selectedModel?.baseModel
+    ? familyWords(selectedModel.baseModel).label
+    : selectedModel?.displayName ?? 'this model';
+  const [loraNotice, setLoraNotice] = useState<string | null>(null);
+  useEffect(() => {
+    if (!selectedModel || readiness.loading) return;
+    const { keep, notice } = invalidLoras(form.loras, loras, selectedModel, takesLoras, familyLabel);
+    if (notice) {
+      patch({ loras: keep });
+      setLoraNotice(notice);
+    }
+  }, [selectedModel, readiness.loading, takesLoras, familyLabel, form.loras, loras, patch]);
 
   const videoSettings = useVideoLimits(form.modelId, kind);
   const videoLimits = videoSettings.limits;
@@ -156,13 +180,13 @@ export function CreatePage() {
   const busy = Boolean(stage.job && !isTerminal(stage.job.status)) || stage.submitting;
   const submittable = useMemo(
     () => {
-      const basic = checkSubmittable(form, { modelSupported: supported, busy });
+      const basic = checkSubmittable(form, { modelSupported: supported, busy, setupReason: waitingOn });
       if (!basic.ok || modeOfKind(kind) !== 'video') return basic;
       return videoLimits && videoSettled ? basic : {
         ok: false, reason: videoSettings.error ?? 'Loading video settings…',
       };
     },
-    [form, supported, busy, kind, videoLimits, videoSettled, videoSettings.error],
+    [form, supported, busy, waitingOn, kind, videoLimits, videoSettled, videoSettings.error],
   );
 
   const generate = useCallback(() => {
@@ -227,6 +251,9 @@ export function CreatePage() {
               onChange={(modelId) => patch({ modelId })}
               onModeChange={setMode}
             />
+            {selectedModel && !supported ? (
+              <ModelNotice model={selectedModel} kind={kind} answer={selectedAnswer} />
+            ) : null}
           </Group>
 
           <Segmented
@@ -300,6 +327,10 @@ export function CreatePage() {
             loras={form.loras}
             models={loras}
             checkpoint={checkpoints.find((model) => model.id === form.modelId) ?? null}
+            takesLoras={takesLoras}
+            familyLabel={familyLabel}
+            notice={loraNotice}
+            onDismissNotice={() => setLoraNotice(null)}
             onChange={(next) => patch({ loras: next })}
           />
 

@@ -382,8 +382,19 @@ export interface Submittable {
 
 export function checkSubmittable(
   state: CreateFormState,
-  context: { modelSupported: boolean; busy: boolean },
+  context: {
+    modelSupported: boolean;
+    busy: boolean;
+    /**
+     * Why the chosen model cannot run yet, in an instruction ("Install the 2
+     * missing parts first"). Leads, because no prompt fixes it.
+     */
+    setupReason?: string | null;
+  },
 ): Submittable {
+  if (state.modelId && !context.modelSupported && context.setupReason) {
+    return { ok: false, reason: context.setupReason };
+  }
   if (!state.prompt.trim()) return { ok: false, reason: 'Write a prompt first.' };
   if (!state.modelId) return { ok: false, reason: 'Pick a model.' };
   if (!context.modelSupported) {

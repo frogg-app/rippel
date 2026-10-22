@@ -39,6 +39,7 @@ import {
   type InstallRow,
 } from './installs.js';
 import { readinessFor } from './readiness.js';
+import { weightsLayoutOf } from './weights-probe.js';
 import { TransportBusy, TransportError, TransportUnavailable, type ModelTransport } from './transport.js';
 
 interface BackendUrlRow {
@@ -349,6 +350,7 @@ export default async function modelInstallRoutes(app: FastifyInstance) {
           checkpointFilename: resolved.checkpointFilename,
           modelId: resolved.modelId,
           modelLabel: resolved.modelLabel,
+          layout: resolved.modelId ? await weightsLayoutOf(resolved.modelId).catch(() => null) : null,
           transport,
           transportReason,
         });
@@ -420,6 +422,7 @@ export default async function modelInstallRoutes(app: FastifyInstance) {
           checkpointFilename: resolved.checkpointFilename,
           modelId: resolved.modelId,
           modelLabel: resolved.modelLabel,
+          layout: resolved.modelId ? await weightsLayoutOf(resolved.modelId).catch(() => null) : null,
           transport,
         });
 

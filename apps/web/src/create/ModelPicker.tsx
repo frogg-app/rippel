@@ -38,7 +38,7 @@ import type { CreateMode } from './mode';
 import { modeOfKind } from './form';
 import { invalidateReadiness, type ReadinessMap } from './useReadiness';
 import { AuthContext } from '../auth/context';
-import { type Partition, partitionModels } from './visibility';
+import { isSelectable, type Partition, partitionModels } from './visibility';
 import { modelWash } from './modelArt';
 import { familyHint, familyWords } from './families';
 import { findModelsHref } from './discoverLinks';
@@ -47,6 +47,7 @@ import {
   KIND_NOUN,
   NOT_SUPPORTED,
   blockedReason,
+  fitPills,
   listNames,
   missingSentence,
 } from './modelReasons';
@@ -134,6 +135,10 @@ export function ModelPicker({
           {shown.map((entry, index) => {
             const model = entry.model;
             const supported = entry.runnable;
+            // A model waiting on parts can be chosen: the notice under the grid
+            // then names the parts and installs them, and Generate waits.
+            const selectable = isSelectable(entry);
+            const pills = fitPills(entry, kind, readiness);
             const selected = model.id === value;
             const reason = supported ? null : blockedReason(entry, kind, readiness);
             const generic = entry.runnable && isFallbackFamily(model, capabilities);
@@ -146,7 +151,7 @@ export function ModelPicker({
                 type="button"
                 role="radio"
                 aria-checked={selected}
-                aria-disabled={!supported}
+                aria-disabled={!selectable}
                 title={
                   reason
                     ? `${model.displayName}: ${reason.detail}`
@@ -155,14 +160,14 @@ export function ModelPicker({
                 className={[
                   styles.tile,
                   selected ? styles.tileOn : '',
-                  supported ? '' : styles.tileBlocked,
+                  supported ? '' : selectable ? styles.tileDim : styles.tileBlocked,
                   explainedId === model.id ? styles.tileExplained : '',
                 ]
                   .filter(Boolean)
                   .join(' ')}
                 style={{ '--i': index } as React.CSSProperties}
                 onClick={() => {
-                  if (supported) {
+                  if (selectable) {
                     setExplainedId(null);
                     onChange(model.id);
                   } else {
@@ -180,7 +185,13 @@ export function ModelPicker({
                   <span className={styles.tileFamily}>{family.label}</span>
                   {hint ? <span className={styles.tileHint}>{hint}</span> : null}
                   <span className={styles.tileName}>{model.displayName}</span>
-                  {reason ? <span className={styles.badge}>{reason.badge}</span> : null}
+                  <span className={styles.pills}>
+                    {pills.map((pill) => (
+                      <span key={pill.label} className={`${styles.badge} ${styles[`pill_${pill.tone}`]}`}>
+                        {pill.label}
+                      </span>
+                    ))}
+                  </span>
                 </span>
                 {/* A generic template will probably work and may look wrong; say
                     so quietly rather than either hiding it or blocking it. */}

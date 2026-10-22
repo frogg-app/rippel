@@ -49,6 +49,7 @@ import type {
   BackendReadiness,
   MisfiledModel,
   ModelCatalogEntry,
+  ModelFileProblem,
   ModelRequirementReport,
   ModelType,
   Uuid,
@@ -66,6 +67,7 @@ import {
 import type { ModelRequirement, WorkflowTemplate } from '../workflows/types.js';
 import { listBackendFolder, listBackendFolders } from './installs.js';
 import type { ModelTransport } from './transport.js';
+import { LAYOUT_WORDS, type WeightsLayout } from './weights-layout.js';
 
 import { FOLDER_READ_BY } from '../workflows/folders.js';
 
@@ -111,6 +113,37 @@ export interface ReadinessInput {
    * template's gaps are ever fetched; see {@link scanFolders}.
    */
   readonly folders: ReadonlyMap<string, readonly string[]>;
+  /** What the chosen checkpoint file holds, when its header has been read. */
+  readonly layout?: WeightsLayout | null;
+}
+
+/**
+ * The checkpoint file's own problem, if it has one no download fixes.
+ *
+ * Without this, readiness checked that the loader *lists* the file and the T5
+ * is present, and said "ready" for a diffusers-format LTX transformer that
+ * ComfyUI then refused with "Could not detect model type".
+ */
+export function modelFileProblem(
+  template: WorkflowTemplate,
+  layout: WeightsLayout | null | undefined,
+  filename: string | null,
+): ModelFileProblem | null {
+  if (layout === 'diffusers') {
+    return { kind: 'unloadable', summary: LAYOUT_WORDS.diffusers.summary, detail: LAYOUT_WORDS.diffusers.detail };
+  }
+  if (layout === 'diffusion-only') {
+    const req = checkpointRequirement(template);
+    const site = req ? requirementSite(template.graph, req) : null;
+    if (site && (site.nodeClass === 'CheckpointLoaderSimple' || site.nodeClass === 'CheckpointLoader')) {
+      return {
+        kind: 'needs-diffusion-loader',
+        summary: LAYOUT_WORDS.diffusionOnly.summary,
+        detail: `${LAYOUT_WORDS.diffusionOnly.detail} Move ${filename ?? 'it'} from "checkpoints" to "diffusion_models" on the machine.`,
+      };
+    }
+  }
+  return null;
 }
 
 // ------------------------------------------------------------------ helpers
@@ -394,6 +427,8 @@ export function analyse(input: ReadinessInput): BackendReadiness {
   }
 
   const installable = recommendedInstalls(reports);
+  const modelProblem = modelFileProblem(template, input.layout, input.checkpointFilename);
+  if (modelProblem) manualSteps.unshift(modelProblem.detail);
 
   return {
     backendId: input.backend.id,
@@ -407,12 +442,14 @@ export function analyse(input: ReadinessInput): BackendReadiness {
     videoLimits: videoLimitsFor(manifest),
     modelId: input.modelId,
     modelLabel: input.modelLabel,
-    ready: reports.every((r) => r.status === 'satisfied') && missingNodeClasses.length === 0,
+    ready: !modelProblem && reports.every((r) => r.status === 'satisfied') && missingNodeClasses.length === 0,
     requirements: reports,
     missingNodeClasses,
     installable,
     manualSteps,
     catalogueError: input.catalogueError,
+    takesLoras: Boolean(manifest.lora),
+    modelProblem,
   };
 }
 
@@ -536,6 +573,7 @@ export async function readinessFor(params: {
   transport: ModelTransport | null;
   /** Why there is no transport, for `catalogueError`. */
   transportReason?: string | null;
+  layout?: WeightsLayout | null;
 }): Promise<BackendReadiness> {
   const info = await objectInfoFor(params.backend.base_url);
 
@@ -565,5 +603,6 @@ export async function readinessFor(params: {
     catalogue,
     catalogueError,
     folders,
+    layout: params.layout ?? null,
   });
 }

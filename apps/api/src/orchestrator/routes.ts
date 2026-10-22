@@ -19,6 +19,9 @@ import { candidatesFor, filenamesOn, sizesOn } from './select.js';
 import { sizeOfJob } from './cost.js';
 import { assessOn } from './fit.js';
 import { preflight } from './preflight.js';
+import { loraProblem } from './lora-check.js';
+import { weightsLayoutOf } from '../models/weights-probe.js';
+import { modelFileProblem } from '../models/readiness.js';
 import { createJob, getJob, queuePosition, type JobRow } from './jobs.js';
 import { jobWithAssets } from './runner.js';
 import { publish, subscribe } from './events.js';
@@ -141,6 +144,34 @@ export default async function jobRoutes(app: FastifyInstance) {
           message: model.base_model
             ? `There is no ${params.kind} workflow for ${model.base_model} models yet.`
             : `${model.display_name} has not been matched to a model family, so no workflow can be chosen for it.`,
+        });
+      }
+
+      // Style add-ons the workflow cannot take, or that were made for another
+      // family, are refused here in the person's words — before the job
+      // exists, rather than as a compiler error or a picture of noise.
+      if ((params.loras ?? []).length > 0) {
+        const loraRows = await query<{ id: string; display_name: string; filename: string; base_model: string | null }>(
+          'SELECT id, display_name, filename, base_model FROM models WHERE id = ANY($1::uuid[])',
+          [params.loras!.map((l) => l.modelId)],
+        );
+        const problem = loraProblem({ manifest: template.manifest, checkpoint: model, loras: loraRows });
+        if (problem) return reply.code(400).send({ error: 'invalid_loras', message: problem });
+      }
+
+      // A file ComfyUI cannot load (diffusers-format weights) or bare diffusion
+      // weights headed for a whole-checkpoint loader: both pass every file
+      // check below and then fail on the GPU box with "Could not detect model
+      // type". The header says so now.
+      const fileProblem = modelFileProblem(
+        template,
+        await weightsLayoutOf(params.modelId, 3_000).catch(() => null),
+        model.filename,
+      );
+      if (fileProblem) {
+        return reply.code(422).send({
+          error: 'unloadable_model',
+          message: `${model.display_name}: ${fileProblem.summary}. ${fileProblem.detail}`,
         });
       }
 

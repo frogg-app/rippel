@@ -228,7 +228,16 @@ export function partitionModels(
   readiness: ReadinessMap,
 ): Partition {
   const entries = models.map((model) => classify(model, kind, capabilities, readiness));
-  const listed = entries.filter((entry) => entry.hidden === null);
+  // Models that will run lead, then the ones a download away, then the rest:
+  // the order a person should consider them in. Stable within each band, so
+  // the grid does not reshuffle among equals.
+  const band = (entry: ModelEntry) =>
+    entry.runnable ? 0 : entry.blocked === 'needs-setup' && !readiness.here[entry.model.id]?.problem ? 1 : 2;
+  const listed = entries
+    .filter((entry) => entry.hidden === null)
+    .map((entry, index) => ({ entry, index }))
+    .sort((a, b) => band(a.entry) - band(b.entry) || a.index - b.index)
+    .map(({ entry }) => entry);
   const hidden = entries.filter((entry) => entry.hidden !== null);
 
   return {
@@ -249,4 +258,14 @@ export function isListed(
 ): boolean {
   if (!modelId) return false;
   return partition.listed.some((entry) => entry.model.id === modelId);
+}
+
+/**
+ * Can this tile be chosen? A model that runs, and one waiting on parts: picking
+ * the second is how a person gets told exactly which parts, with the buttons
+ * that install them, while Generate waits. Ones that need a starting image or
+ * have no workflow still only explain themselves.
+ */
+export function isSelectable(entry: ModelEntry): boolean {
+  return entry.runnable || entry.blocked === 'needs-setup';
 }

@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { query } from '../db.js';
 import { folderOfInstalled, foldersOfInstalled } from '../workflows/folders.js';
 import { runnabilityFor } from '../models/runnability.js';
+import { weightsLayouts } from '../models/weights-probe.js';
 import { objectInfoFor } from '../orchestrator/preflight.js';
 import { normalizeBaseModel } from '../workflows/registry.js';
 import { requireTransport } from '../models/installs.js';
@@ -276,6 +277,13 @@ async function verdicts(models: Model[]): Promise<Record<Uuid, ModelRunnability>
     }),
   );
 
+  // What each checkpoint file holds, from its header: the one thing a name,
+  // a folder and /object_info cannot say. Remembered on the row after the
+  // first read, so this costs a range request once per file, ever.
+  const layouts = await weightsLayouts(
+    models.filter((model) => model.type === 'checkpoint').map((model) => model.id),
+  ).catch(() => new Map());
+
   const out: Record<Uuid, ModelRunnability> = {};
   for (const model of models) {
     for (const backend of backends) {
@@ -297,6 +305,7 @@ async function verdicts(models: Model[]): Promise<Record<Uuid, ModelRunnability>
         backendId: backend.id,
         backendName: backend.name,
         installed: true,
+        layout: layouts.get(model.id) ?? null,
       });
       const held = out[model.id];
       if (!held || STATUS_RANK[verdict.status] < STATUS_RANK[held.status]) out[model.id] = verdict;

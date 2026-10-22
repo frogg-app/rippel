@@ -109,3 +109,15 @@ describe('naming the missing file', () => {
     expect(missingFileName('no such file or directory')).toBeNull();
   });
 });
+
+describe('classifyFailure, unreadable model files', () => {
+  it('turns "Could not detect model type" into a plain sentence with a link', () => {
+    const raw =
+      'CheckpointLoaderSimple failed: ERROR: Could not detect model type of: C:\\Users\\steve\\.rippel-agent\\ComfyUI\\models\\checkpoints\\model_weights_0306.safetensors';
+    const failure = classifyFailure(raw);
+    expect(failure.kind).toBe('unreadable-model');
+    expect(failure.summary).toMatch(/can’t recognise/);
+    expect(failure.link?.href).toBe('/models?tab=installed');
+    expect(failure.detail).toBe(raw);
+  });
+});

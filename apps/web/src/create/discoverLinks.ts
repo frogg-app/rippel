@@ -38,3 +38,8 @@ export function findStylesHref(family: string | null): string {
     include: family ? [tagKey('base', family)] : [],
   });
 }
+
+/** Discover, searching for one missing part by name and type. */
+export function findPartHref(search: { q: string; type: import('@comfy/shared').ModelType | null }): string {
+  return discoverHref({ intent: 'all', q: search.q, type: search.type });
+}

@@ -66,6 +66,7 @@ import { LibraryFormatError } from '../workflows/library/litegraph.js';
 import { libraryWorkflowReport } from '../workflows/library/report.js';
 import { folderForType } from './installs.js';
 import { runnabilityFor } from './runnability.js';
+import { weightsLayoutOf } from './weights-probe.js';
 import { chooseTemplate, overrideFor, type OverrideLookup } from './workflow-choice.js';
 
 // ---------------------------------------------------------------- summaries
@@ -350,6 +351,7 @@ export function makeWorkflowRoutes(deps: WorkflowRouteDeps = {}) {
 
         const folder = folderOfInstalled(info, model.filename);
         const assigned = await assignedFor(model.id);
+        const layout = model.type === 'checkpoint' ? await weightsLayoutOf(model.id).catch(() => null) : null;
         const installedHere = backend ? holding.includes(backend.id) : false;
 
         const options: ModelWorkflowOption[] = [];
@@ -374,6 +376,7 @@ export function makeWorkflowRoutes(deps: WorkflowRouteDeps = {}) {
               backendName: backend?.name ?? 'the backend',
               installed: installedHere,
               templates: [template],
+              layout,
             });
             options.push({
               template: templateSummary(template),

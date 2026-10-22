@@ -91,3 +91,38 @@ export function matchesQuery(entry: LoraEntry, query: string): boolean {
     (entry.family ?? '').toLowerCase().includes(needle)
   );
 }
+
+/**
+ * Chosen styles that can no longer go with the job, and why.
+ *
+ * Run whenever the model or mode changes: a style that fitted the SDXL model a
+ * moment ago does not fit the LTX-Video one just picked, and an LTX-Video
+ * workflow takes no styles at all. Dropping them here, with a sentence saying
+ * so, is what keeps Generate from failing on them (the server refuses them too).
+ * Unknown-family styles are kept: they are allowed, under a warning.
+ */
+export function invalidLoras(
+  chosen: readonly LoraSelection[],
+  loras: readonly Model[],
+  checkpoint: Model | null | undefined,
+  takesLoras: boolean | null,
+  familyLabel: string,
+): { keep: LoraSelection[]; notice: string | null } {
+  if (chosen.length === 0) return { keep: [...chosen], notice: null };
+  const name = (id: string) => loras.find((model) => model.id === id)?.displayName ?? 'a style';
+  if (takesLoras === false) {
+    return {
+      keep: [],
+      notice: `Removed ${chosen.map((s) => name(s.modelId)).join(', ')}: ${familyLabel} workflows don’t take style add-ons.`,
+    };
+  }
+  const dropped = chosen.filter((selection) => {
+    const model = loras.find((entry) => entry.id === selection.modelId);
+    return !model || fitOf(model, checkpoint) === 'mismatch';
+  });
+  if (dropped.length === 0) return { keep: [...chosen], notice: null };
+  return {
+    keep: chosen.filter((selection) => !dropped.includes(selection)),
+    notice: `Removed ${dropped.map((s) => name(s.modelId)).join(', ')}: made for a different kind of model than ${familyLabel}.`,
+  };
+}

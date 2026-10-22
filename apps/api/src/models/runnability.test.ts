@@ -446,3 +446,51 @@ describe('style add-ons', () => {
     expect(addOn('Hugging Face', 'mystery-style.safetensors').status).toBe('support');
   });
 });
+
+describe('runnabilityFor, with the file layout known', () => {
+  // steve-pc on 2026-10-23: the Muinez file in checkpoints, the T5 present.
+  const STEVE = objectInfo({ checkpoints: ['model_weights_0306.safetensors'], clips: ['t5xxl_fp16.safetensors'] });
+  const file = {
+    ...base,
+    info: STEVE,
+    filename: 'model_weights_0306.safetensors',
+    type: 'checkpoint' as const,
+    catalogueBase: 'ltx-video',
+    folder: 'checkpoints',
+    installed: true,
+  };
+
+  it('said "Will run" with no layout — the verdict that was wrong', () => {
+    expect(runnabilityFor(file).status).toBe('ready');
+  });
+
+  it('says diffusers-format weights cannot run, and does not ask for parts', () => {
+    const verdict = runnabilityFor({ ...file, layout: 'diffusers' });
+    expect(verdict.status).toBe('no-workflow');
+    expect(verdict.summary).toMatch(/can’t load/);
+    expect(verdict.detail).toMatch(/diffusers-format/);
+    expect(verdict.missing).toEqual([]);
+  });
+
+  it('sends bare diffusion weights in checkpoints/ to diffusion_models/', () => {
+    const verdict = runnabilityFor({ ...file, layout: 'diffusion-only' });
+    expect(verdict.status).toBe('wrong-folder');
+    expect(verdict.detail).toMatch(/move it to "diffusion_models"/);
+  });
+
+  it('names the image decoder bare diffusion weights need once they are in diffusion_models/', () => {
+    const verdict = runnabilityFor({
+      ...file,
+      info: objectInfo({ checkpoints: [], unets: ['model_weights_0306.safetensors'], clips: ['t5xxl_fp16.safetensors'] }),
+      folder: 'diffusion_models',
+      layout: 'diffusion-only',
+    });
+    expect(verdict.status).toBe('needs-companion');
+    expect(verdict.templateId).toMatch(/-dm$/);
+    expect(verdict.missing.map((m) => m.loader)).toContain('VAELoader');
+  });
+
+  it('leaves a bundled checkpoint alone', () => {
+    expect(runnabilityFor({ ...file, layout: 'bundled' }).status).toBe('ready');
+  });
+});

@@ -89,14 +89,20 @@ describe('a failed job leads with what it means', () => {
     // Not dropped: it is the only thing that says precisely what went wrong,
     // and it is what gets pasted into a bug report.
     paint(failedJob(OOM));
-    expect(screen.getByText('What the machine said')).toBeInTheDocument();
+    expect(screen.getByText('Details')).toBeInTheDocument();
     expect(screen.getByText(OOM_TEXT)).toBeInTheDocument();
   });
 
-  it('falls back to the raw text for a job stored before classification', () => {
+  it('explains an unclassified out-of-memory, keeping the raw text', () => {
     paint(failedJob(null));
-    expect(screen.getByText('Generation failed')).toBeInTheDocument();
+    expect(screen.getByText('Ran out of memory')).toBeInTheDocument();
     expect(screen.getByText(OOM_TEXT)).toBeInTheDocument();
+  });
+
+  it('falls back to the raw text when nothing recognises it', () => {
+    paint(failedJob(null, 'Something odd happened'));
+    expect(screen.getByText('Generation failed')).toBeInTheDocument();
+    expect(screen.getByText('Something odd happened')).toBeInTheDocument();
   });
 
   it('gives a missing file its own headline, not the memory one', () => {
@@ -119,7 +125,7 @@ describe('raw ComfyUI validation text', () => {
     paint(failedJob(null, RAW));
     expect(screen.getByText('A file is missing')).toBeInTheDocument();
     expect(screen.getByText(/The model file isn't on this machine \(wan2\.1_t2v\.safetensors\)/)).toBeInTheDocument();
-    expect(screen.getByText('What the machine said')).toBeInTheDocument();
+    expect(screen.getByText('Details')).toBeInTheDocument();
     expect(screen.getByText(RAW)).toBeInTheDocument();
   });
 
@@ -169,5 +175,19 @@ describe('the fit warning', () => {
     paintWith(null);
     expect(screen.queryByText(/may not fit/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Bigger than usual/i)).not.toBeInTheDocument();
+  });
+});
+
+describe('a model file ComfyUI cannot read', () => {
+  const RAW =
+    'CheckpointLoaderSimple failed: ERROR: Could not detect model type of: C:\\Users\\steve\\.rippel-agent\\ComfyUI\\models\\checkpoints\\model_weights_0306.safetensors';
+
+  it('leads with a plain headline, a fix and a link, with the raw error under Details', () => {
+    paint(failedJob(null, RAW));
+    expect(screen.getByText('ComfyUI couldn’t read this model')).toBeInTheDocument();
+    expect(screen.getByText(/pick a model marked “Will run”/)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Open installed models' })).toHaveAttribute('href', '/models?tab=installed');
+    expect(screen.getByText('Details')).toBeInTheDocument();
+    expect(screen.getByText(RAW)).toBeInTheDocument();
   });
 });

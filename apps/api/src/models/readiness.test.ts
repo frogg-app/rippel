@@ -342,3 +342,62 @@ describe('helpers', () => {
     ).toBe(true);
   });
 });
+
+describe('readiness when the checkpoint file itself is the problem', () => {
+  // steve-pc: the Muinez LTX file in checkpoints, the T5 installed. Every
+  // requirement is satisfied, which is why this used to say "ready".
+  const steve = (layout: 'diffusers' | 'diffusion-only' | 'bundled' | null) =>
+    analyse({
+      backend: BACKEND,
+      template: txt2vidLtxvTemplate,
+      checkpointFilename: 'model_weights_0306.safetensors',
+      modelId: 'm1',
+      modelLabel: 'Model Weights 0306',
+      info: {
+        ...INFO,
+        CheckpointLoaderSimple: { input: { required: { ckpt_name: [['model_weights_0306.safetensors'], {}] } } },
+        CLIPLoader: { input: { required: { clip_name: [['t5xxl_fp16.safetensors'], {}] } } },
+      },
+      catalogue: CATALOGUE,
+      catalogueError: null,
+      folders: FOLDERS,
+      layout,
+    });
+
+  it('is ready without a layout, and with a bundled one', () => {
+    expect(steve(null).ready).toBe(true);
+    expect(steve('bundled').ready).toBe(true);
+  });
+
+  it('is not ready for diffusers-format weights, and says no download fixes it', () => {
+    const readiness = steve('diffusers');
+    expect(readiness.ready).toBe(false);
+    expect(readiness.modelProblem?.kind).toBe('unloadable');
+    expect(readiness.manualSteps[0]).toMatch(/diffusers-format/);
+    expect(readiness.installable).toEqual([]);
+  });
+
+  it('asks for bare diffusion weights to be moved out of checkpoints', () => {
+    const readiness = steve('diffusion-only');
+    expect(readiness.ready).toBe(false);
+    expect(readiness.modelProblem?.kind).toBe('needs-diffusion-loader');
+    expect(readiness.manualSteps[0]).toMatch(/Move model_weights_0306\.safetensors from "checkpoints" to "diffusion_models"/);
+  });
+
+  it('says whether the template takes style add-ons', () => {
+    expect(steve(null).takesLoras).toBe(false);
+    expect(
+      analyse({
+        backend: BACKEND,
+        template: txt2imgSdxlTemplate,
+        checkpointFilename: 'SDXL\\sd_xl_base_1.0.safetensors',
+        modelId: 'm2',
+        modelLabel: 'SDXL',
+        info: INFO,
+        catalogue: CATALOGUE,
+        catalogueError: null,
+        folders: FOLDERS,
+      }).takesLoras,
+    ).toBe(true);
+  });
+});

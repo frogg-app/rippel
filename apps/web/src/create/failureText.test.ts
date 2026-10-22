@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { translateComfyError } from './failureText';
+import { friendlyFailure, translateComfyError } from './failureText';
 
 describe('translateComfyError', () => {
   it('names the missing file for a loader that listed nothing', () => {
@@ -22,5 +22,22 @@ describe('translateComfyError', () => {
   it('leaves anything else alone', () => {
     expect(translateComfyError('KSampler failed: HIP out of memory.')).toBeNull();
     expect(translateComfyError(null)).toBeNull();
+  });
+});
+
+describe('friendlyFailure', () => {
+  it('maps the LTX "Could not detect model type" error to an unreadable-model explanation', () => {
+    const raw = 'CheckpointLoaderSimple failed: ERROR: Could not detect model type of: C:\\m\\checkpoints\\model_weights_0306.safetensors';
+    const failure = friendlyFailure(raw)!;
+    expect(failure.kind).toBe('unreadable-model');
+    expect(failure.link?.href).toBe('/models?tab=installed');
+    expect(failure.detail).toBe(raw);
+  });
+
+  it('maps out-of-memory and missing files, and leaves the rest alone', () => {
+    expect(friendlyFailure('torch.OutOfMemoryError: HIP out of memory')!.kind).toBe('out-of-memory');
+    expect(friendlyFailure("ckpt_name: 'x.safetensors' not in []")!.kind).toBe('missing-model');
+    expect(friendlyFailure('FileNotFoundError: [Errno 2] No such file or directory')!.kind).toBe('missing-model');
+    expect(friendlyFailure('something else')).toBeNull();
   });
 });
