@@ -12,6 +12,7 @@ import type {
 import { CheckIcon, ChipIcon, CopyIcon, DownloadIcon, DriveIcon, PlusIcon, RamIcon } from '../library/icons';
 import { Mark } from '../components/Mark';
 import { DeleteButton } from '../components/ConfirmDelete';
+import { Button } from '../components/Button';
 import { gb, memoryReading } from '../lib/format';
 import { ApiRequestError, errorDetail, errorLine, messageOr } from '../lib/api';
 import {
@@ -862,7 +863,7 @@ function CopyField({
           {copied ? 'Copied' : 'Copy'}
         </button>
       </div>
-      {meta ? <p className={styles.codeMeta}>{meta}</p> : null}
+      {meta ? <p className={`${styles.codeMeta} ${styles.withAction}`}>{meta}</p> : null}
     </div>
   );
 }
@@ -949,21 +950,22 @@ function PairingPanel({
   }, [state.kind]);
 
   const fresh = (
-    <button type="button" className={styles.linkButton} onClick={() => void issue()}>
+    <Button variant="quiet" onClick={() => void issue()}>
       New code
-    </button>
+    </Button>
   );
 
   if (paired) {
     return (
-      <p className={styles.stepNote}>
-        <strong>{deployment.name} is paired.</strong>{' '}
+      <p className={`${styles.stepNote} ${styles.withAction}`}>
+        <span>
+          <strong>{deployment.name} is paired.</strong> To pair it again after a reinstall, get a new code.
+        </span>
         {/* Dropping the paired flag is what asks for a code: the effect above
             issues one as soon as there is a reason to have it. */}
-        <button type="button" className={styles.linkButton} onClick={() => setPaired(false)}>
+        <Button variant="quiet" onClick={() => setPaired(false)}>
           New code
-        </button>{' '}
-        to pair it again after a reinstall.
+        </Button>
       </p>
     );
   }
@@ -984,8 +986,9 @@ function PairingPanel({
   }
   if (state.kind === 'error') {
     return (
-      <div className={shared.notice} role="alert">
-        {state.message} {fresh}
+      <div className={`${shared.notice} ${styles.withAction}`} role="alert">
+        <span>{state.message}</span>
+        {fresh}
       </div>
     );
   }
@@ -993,8 +996,9 @@ function PairingPanel({
   const left = new Date(state.code.expiresAt).getTime() - now;
   if (left <= 0) {
     return (
-      <p className={`${styles.stepNote} ${styles.codeDead}`} role="status">
-        That code expired. {fresh}
+      <p className={`${styles.stepNote} ${styles.codeDead} ${styles.withAction}`} role="status">
+        <span>That code expired.</span>
+        {fresh}
       </p>
     );
   }
@@ -1007,7 +1011,10 @@ function PairingPanel({
         big
         meta={
           <>
-            Expires in <span className="mono">{countdown(left)}</span>, and works once. {fresh}
+            <span>
+              Expires in <span className="mono">{countdown(left)}</span>, and works once.
+            </span>
+            {fresh}
           </>
         }
       />
