@@ -33,7 +33,7 @@ export interface IntentWords {
   explain: string;
 }
 
-/** In the order the chips are drawn: the common job first, Everything last. */
+/** In the order the chips are drawn: Everything first, then the jobs. */
 export const INTENTS: readonly Intent[] = ['all', 'images', 'video', 'edit', 'enlarge', 'styles'];
 
 export const INTENT_WORDS: Record<Intent, IntentWords> = {
@@ -120,6 +120,8 @@ export function matchesIntent(entry: ModelCatalogEntry, intent: Intent): boolean
  * work, and the empty state offers the way out.
  */
 export function worksHere(entry: ModelCatalogEntry): boolean {
+  // Nothing that cannot be installed yet works here, add-on or not.
+  if (entry.installBlockedReason) return false;
   if (VOCABULARY[entry.type].group !== 'models') return true;
   const status = entry.runnability?.status;
   return status === 'ready' || status === 'generic' || status === 'needs-companion';
