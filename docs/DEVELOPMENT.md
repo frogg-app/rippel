@@ -129,6 +129,10 @@ ssh lilypad 'docker exec rippel-pg psql -U $(docker exec rippel-pg printenv POST
 - **Windows one-liners.** PowerShell and cmd need different quoting; the
   Deployments screen shows both.
 - **The headless dev box.** Share URLs as `192.168.1.9`, never `localhost`.
+- **`go test ./...` in `apps/agent/go` stops a real agent.** Some tests go
+  through the install/uninstall paths, which run `systemctl --user stop
+  rippel-agent`. If an agent is installed on the box you test on, start it
+  again afterwards (`systemctl --user start rippel-agent`).
 
 ## Conventions
 

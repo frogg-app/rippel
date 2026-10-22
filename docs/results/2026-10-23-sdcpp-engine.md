@@ -135,6 +135,9 @@ LoRAs), `holdsPlan`, and the engine chooser / sd.cpp card in the web.
   `~/.rippel-agent/config.json`, sd-server lives in `~/.rippel-agent/sdcpp`,
   models in `~/.rippel-agent/sdcpp/models` (hard links into
   `/home/claude/sdcpp-dev/cache`). `rippel-agent uninstall` removes it.
+- Running the agent's Go tests on this box stops that service (the tests
+  exercise the uninstall path); `systemctl --user start rippel-agent` brings
+  it back. sd-server itself survives, being detached.
 - Agent binaries: `apps/agent/dist/` (gitignored; rebuild with
   `PATH=~/go/bin:$PATH npm run build:release` in `apps/agent`).
 
