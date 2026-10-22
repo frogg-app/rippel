@@ -192,8 +192,8 @@
 .shared svg {
   display: block;
   flex: none;
-  width: 14px;
-  height: 14px;
+  width: 17px;
+  height: 17px;
 }
 .sharedPrivate {
   color: var(--text-3);

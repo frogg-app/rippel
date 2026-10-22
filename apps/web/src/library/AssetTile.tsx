@@ -87,11 +87,11 @@ export function AssetTile({
         role="img"
       >
         {asset.visibility === 'public' ? (
-          <GlobeIcon size={14} />
+          <GlobeIcon size={17} />
         ) : asset.visibility === 'link' ? (
-          <LinkIcon size={14} />
+          <LinkIcon size={17} />
         ) : (
-          <LockIcon size={14} />
+          <LockIcon size={17} />
         )}
       </span>
 
