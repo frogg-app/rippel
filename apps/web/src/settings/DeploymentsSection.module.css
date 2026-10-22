@@ -499,3 +499,22 @@
 @media (max-width: 450px) { .computeSetting > button { width: auto; max-width: 145px; } }
 
 .preferredInstall { border-color: var(--accent) !important; color: var(--accent) !important; }
+
+/* GPU, RAM and disk under the machine's name: icon, figure, word. */
+.resources {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin-top: 6px;
+  font-size: var(--text-xs);
+  color: var(--text-3);
+}
+.resource {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.resource svg {
+  color: var(--text-4);
+  flex: none;
+}

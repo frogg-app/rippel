@@ -3,12 +3,13 @@ import type {
   AgentPlatform,
   AgentProbe,
   AgentTask,
+  Backend,
   Deployment,
   SshRun,
 } from '@comfy/shared';
-import { CheckIcon, CopyIcon, DownloadIcon, PlusIcon } from '../library/icons';
+import { CheckIcon, ChipIcon, CopyIcon, DownloadIcon, DriveIcon, PlusIcon, RamIcon } from '../library/icons';
 import { Mark } from '../components/Mark';
-import { gb } from '../lib/format';
+import { gb, memoryReading } from '../lib/format';
 import { ApiRequestError } from '../lib/api';
 import {
   deploymentsApi as defaultApi,
@@ -16,7 +17,7 @@ import {
   type InstallInstructions,
   type PairingCode,
 } from '../lib/api-deployments';
-import { refreshBackends } from '../shell/useBackends';
+import { refreshBackends, useBackends } from '../shell/useBackends';
 import shared from './SettingsModal.module.css';
 import { Dropdown } from '../components/Dropdown';
 import styles from './DeploymentsSection.module.css';
@@ -39,6 +40,8 @@ export function DeploymentsSection({ api = defaultApi }: { api?: DeploymentsApi 
   const [installMethods, setInstallMethods] = useState<Record<string, 'manual' | 'command'>>({});
   const [toast, setToast] = useState<string | null>(null);
   const deploymentRevision = useRef(0);
+  // Memory comes from the linked backend, which is what ComfyUI reports it to.
+  const { backends } = useBackends();
 
   const load = useCallback(
     async (signal?: AbortSignal) => {
@@ -107,6 +110,7 @@ export function DeploymentsSection({ api = defaultApi }: { api?: DeploymentsApi 
           <DeploymentCard
             key={deployment.id}
             deployment={deployment}
+            backend={backends.find((b) => b.id === deployment.backendId) ?? null}
             installMethod={installMethods[deployment.id] ?? 'manual'}
             index={index}
             api={api}
@@ -184,6 +188,7 @@ const PLATFORM_LABEL: Record<AgentPlatform, string> = {
 
 function DeploymentCard({
   deployment,
+  backend,
   installMethod,
   index,
   api,
@@ -192,6 +197,7 @@ function DeploymentCard({
   onError,
 }: {
   deployment: Deployment;
+  backend: Backend | null;
   installMethod: 'manual' | 'command';
   index: number;
   api: DeploymentsApi;
@@ -475,12 +481,8 @@ function DeploymentCard({
             <span>{online ? 'Agent online' : agentInstalled ? 'Agent offline' : 'Agent not connected'}</span>
             <span>{PLATFORM_LABEL[deployment.platform]}</span>
             {deployment.agentVersion ? <span className="mono">agent {deployment.agentVersion}</span> : null}
-            {comfy?.diskTotal ? (
-              <span className="mono">
-                {gb(comfy.diskFree ?? 0)} GB free of {gb(comfy.diskTotal)} GB
-              </span>
-            ) : null}
           </div>
+          <MachineResources backend={backend} diskFree={comfy?.diskFree ?? null} diskTotal={comfy?.diskTotal ?? null} />
         </div>
       </div>
 
@@ -1629,5 +1631,52 @@ function SshInstallForm({
         </button>
       </div>
     </form>
+  );
+}
+
+/**
+ * GPU memory, system RAM and disk, each with an icon saying which it is. GPU
+ * and RAM matter most for what a machine can run, so they come first; GPU uses
+ * `memoryReading`, which knows the reported figure is a budget, not the card.
+ */
+function MachineResources({
+  backend,
+  diskFree,
+  diskTotal,
+}: {
+  backend: Backend | null;
+  diskFree: number | null;
+  diskTotal: number | null;
+}) {
+  const vram = backend ? memoryReading(backend) : null;
+  const ram = backend?.ramTotal ? backend : null;
+  if (!vram && !ram && !diskTotal) return null;
+  return (
+    <div className={styles.resources}>
+      {vram ? (
+        <span className={styles.resource} title={vram.title}>
+          <ChipIcon size={13} />
+          <span className="mono">{vram.text}</span>
+          <span>GPU</span>
+        </span>
+      ) : null}
+      {ram?.ramTotal ? (
+        <span className={styles.resource} title="System memory in use, of the machine's total.">
+          <RamIcon size={13} />
+          <span className="mono">
+            {ram.ramFree === null ? `${gb(ram.ramTotal)} GB` : `${gb(Math.max(0, ram.ramTotal - ram.ramFree))}/${gb(ram.ramTotal)} GB`}
+          </span>
+          <span>RAM</span>
+        </span>
+      ) : null}
+      {diskTotal ? (
+        <span className={styles.resource} title="Free space on the drive ComfyUI is installed on.">
+          <DriveIcon size={13} />
+          <span className="mono">
+            {gb(diskFree ?? 0)} GB free of {gb(diskTotal)} GB
+          </span>
+        </span>
+      ) : null}
+    </div>
   );
 }

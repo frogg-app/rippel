@@ -220,3 +220,35 @@ export function ArchiveIcon(props: IconProps) {
     </Svg>
   );
 }
+
+/** A disk drive, for storage. */
+export function DriveIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <rect x="3" y="7" width="18" height="10" rx="2" />
+      <path d="M7 12h5" />
+      <circle cx="17" cy="12" r="0.6" />
+    </Svg>
+  );
+}
+
+/** A memory stick, for system RAM. */
+export function RamIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <rect x="2.5" y="7" width="19" height="8" rx="1" />
+      <path d="M6.5 10v2M10 10v2M14 10v2M17.5 10v2M5 15v2M9 15v2M15 15v2M19 15v2" />
+    </Svg>
+  );
+}
+
+/** A chip, for graphics memory. */
+export function ChipIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <rect x="6" y="6" width="12" height="12" rx="1.5" />
+      <rect x="9.5" y="9.5" width="5" height="5" rx="0.5" />
+      <path d="M9 3v3M15 3v3M9 18v3M15 18v3M3 9h3M3 15h3M18 9h3M18 15h3" />
+    </Svg>
+  );
+}
