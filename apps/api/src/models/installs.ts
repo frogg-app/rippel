@@ -400,14 +400,19 @@ export async function activeInstalls(): Promise<(InstallRow & { base_url: string
 export async function createInstall(params: {
   backendId: Uuid;
   requestedBy: Uuid;
-  entry: { name: string; filename: string; type: ModelType; base: string; url: string; ref: string };
+  entry: { name: string; filename: string; type: ModelType; base: string; url: string; ref: string; savePath?: string };
   /** Recorded as `waiting` behind this install rather than started now. */
   after?: Uuid;
 }): Promise<InstallRow> {
   // The catalogue ref is "<save_path>/<filename>" — the exact tuple the
   // transport's whitelist matches on. Splitting it back out here keeps the
   // save_path out of the API surface while preserving it for the request.
-  const savePath = params.entry.ref.slice(0, params.entry.ref.lastIndexOf('/'));
+  // A Hugging Face ref is "hugging-face:<owner>/<repo>", not a path: split
+  // like the others it gave "hugging-face:<owner>", which no transport
+  // recognises, and every such install failed. Those carry their own.
+  const savePath = params.entry.ref.startsWith('hugging-face:') && params.entry.savePath !== undefined
+    ? params.entry.savePath
+    : params.entry.ref.slice(0, params.entry.ref.lastIndexOf('/'));
 
   const row = await queryOne<InstallRow>(
     `INSERT INTO model_installs

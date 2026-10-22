@@ -56,3 +56,24 @@ describe('installs that wait their turn', () => {
     expect(sql).toContain("busy.status IN ('queued', 'downloading')");
   });
 });
+
+describe('where an install is saved', () => {
+  it('takes a Hugging Face entry\'s own save path, not a split of its ref', async () => {
+    vi.mocked(queryOne).mockResolvedValue({ ...row, status: 'waiting', created_at: new Date() } as never);
+    await startInstall({
+      backendId: 'b1',
+      backendName: 'Desktop',
+      requestedBy: 'u1',
+      entry: {
+        name: 'lynaNSFW/mysticxxx_MM_H3', filename: 'MysticXXX_MMH3-V2.safetensors', type: 'lora', base: 'SDXL',
+        url: 'https://huggingface.co/lynaNSFW/mysticxxx_MM_H3/resolve/main/MysticXXX_MMH3-V2.safetensors',
+        ref: 'hugging-face:lynaNSFW/mysticxxx_MM_H3', savePath: '', installed: false,
+      } as never,
+      transport: { kind: 'rippel-agent', install: vi.fn() } as never,
+      after: 'model-1',
+    });
+    const [, values] = vi.mocked(queryOne).mock.calls[0]!;
+    // Split like a path ref, this was "hugging-face:lynaNSFW" and the agent refused it.
+    expect(values![7]).toBe('');
+  });
+});
