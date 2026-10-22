@@ -400,13 +400,15 @@ export const readinessApi = {
   workingBuild: (backendId: string, modelId: string) =>
     request<{ install: ModelInstall | null; modelId: string | null; filename: string }>(
       `/backends/${backendId}/models/${modelId}/working-build`,
-      { method: 'POST' },
+      // An empty JSON body: a bare POST reached the API as 415 Unsupported Media Type.
+      { method: 'POST', body: {} },
     ),
   /** Have the agent move diffusion weights out of checkpoints/. */
   moveToDiffusionModels: (backendId: string, modelId: string) =>
     request<{ operation: ModelFileOperation }>(
       `/backends/${backendId}/models/${modelId}/move-to-diffusion-models`,
-      { method: 'POST' },
+      // An empty JSON body: a bare POST reached the API as 415 Unsupported Media Type.
+      { method: 'POST', body: {} },
     ).then((r) => r.operation),
   operation: (id: string) =>
     request<{ operation: ModelFileOperation }>(`/model-operations/${id}`).then((r) => r.operation),
