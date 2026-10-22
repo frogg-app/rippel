@@ -81,7 +81,8 @@ lilypad has no Go, so the binaries it serves are built on the dev box:
 2. Commit and push. If `apps/tray` changed, wait for the `tray` workflow:
    `gh run list --workflow tray.yml -L1`, then `gh run watch <id>`.
 3. In `apps/agent`: `node scripts/fetch-tray.mjs master` (name the branch;
-   the default is whatever branch is checked out), then
+   the default is whatever branch is checked out; add `--dry-run` to see
+   which run it would take without downloading), then
    `PATH=~/go/bin:$PATH npm run build:release`.
 4. `scp dist/* lilypad:rippel/apps/agent/dist/` and restart `rippel-api`.
 5. Check
