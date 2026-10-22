@@ -1,5 +1,5 @@
 /** One repair for a model file's own problem, on the Create screen. */
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { within, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Model, ModelFileProblem, ModelInstall } from '@comfy/shared';
 
@@ -54,16 +54,20 @@ describe('ProblemFix', () => {
     await waitFor(() => expect(onWant).toHaveBeenCalledWith({ id: 'm2', filename: 'x' }));
   });
 
-  it('keeps "Pick another model" when there is no known-good build, with a quiet Remove for admins', async () => {
+  it('keeps "Pick another model" when there is no known-good build, with a danger Remove for admins', async () => {
     vi.mocked(modelsApi.removeModel).mockResolvedValue({ removed: true, removedFromDisk: false, note: 'n' });
     const { onChanged } = show(unloadable);
     expect(screen.getByRole('link', { name: 'Pick another model' })).toHaveAttribute('title', unloadable.detail);
     vi.mocked(modelsApi.backends).mockResolvedValue([{ id: 'b1', name: 'desktop-6900xt' } as never]);
-    fireEvent.click(screen.getByRole('button', { name: 'Remove this file' }));
+    const trigger = screen.getByRole('button', { name: /^Remove / });
+    expect(trigger).toHaveAttribute('data-variant', 'danger-soft');
     // Asks first, naming the machine; nothing is deleted yet.
-    expect(await screen.findByText(/from desktop-6900xt\?/)).toBeInTheDocument();
+    await waitFor(() => expect(trigger).toHaveAttribute('title', expect.stringContaining('desktop-6900xt')));
+    fireEvent.click(trigger);
+    const ask = screen.getByRole('alertdialog', { name: 'Delete this file?' });
+    expect(ask).toHaveTextContent(/will be removed from desktop-6900xt\./);
     expect(modelsApi.removeModel).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    fireEvent.click(within(ask).getByRole('button', { name: 'Delete' }));
     await waitFor(() => expect(onChanged).toHaveBeenCalled());
   });
 

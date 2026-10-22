@@ -29,6 +29,7 @@ import {
   TrashIcon,
 } from './icons';
 import { VISIBILITIES, VISIBILITY_HINT, VISIBILITY_LABEL, absoluteShareUrl } from '../lib/sharing';
+import { DeleteButton } from '../components/ConfirmDelete';
 import styles from './DetailDrawer.module.css';
 
 /**
@@ -288,18 +289,14 @@ export function DetailDrawer({
                   <UndoIcon size={14} />
                   Restore
                 </button>
-                <button
-                  type="button"
-                  className={`${styles.action} ${styles.actionDanger}`}
-                  onClick={() => {
-                    if (window.confirm('Delete this for good? It cannot be restored.')) {
-                      onPurge?.(asset);
-                    }
-                  }}
-                >
-                  <TrashIcon size={14} />
-                  Delete forever
-                </button>
+                <DeleteButton
+                  size="md"
+                  icon={<TrashIcon size={14} />}
+                  label="Delete forever"
+                  confirmTitle="Delete this for good?"
+                  confirmBody="It will be removed from the archive and cannot be restored."
+                  onConfirm={() => onPurge?.(asset)}
+                />
               </>
             ) : editable ? (
               <>

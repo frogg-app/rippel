@@ -41,7 +41,7 @@ export interface InstalledDrawerProps {
   memoryBytes: number | null;
   onClose: () => void;
   onWorkflows?: (model: Model) => void;
-  onRemove?: (model: Model) => void;
+  onRemove?: (model: Model) => Promise<unknown> | void;
   onFixed?: () => void;
 }
 

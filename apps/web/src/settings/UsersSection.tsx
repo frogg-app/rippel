@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { ManagedUser } from '@comfy/shared';
 import { usersApi, type UsersApi, type UserPermissions } from '../lib/api-users';
 import { Dropdown } from '../components/Dropdown';
+import { DeleteButton } from '../components/ConfirmDelete';
 import { ChevronDownIcon } from '../components/icons';
 import styles from './UsersSection.module.css';
 export function UsersSection({ currentUserId, api = usersApi }: { currentUserId?: string; api?: UsersApi }) {
@@ -45,7 +46,6 @@ export function UsersSection({ currentUserId, api = usersApi }: { currentUserId?
 }
 function UserEditor({ user, own, api, onSaved, onDeleted }: { onDeleted: () => void; user: ManagedUser; own: boolean; api: UsersApi; onSaved: (user: ManagedUser) => void }) {
   const [expanded, setExpanded] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState(false);
   const [draft, setDraft] = useState<UserPermissions>(() => ({ role: user.role, settingsAccess: user.settingsAccess, suspended: user.suspended, generationEnabled: user.generationEnabled, maxQueuedJobs: user.maxQueuedJobs, dailyGenerationLimit: user.dailyGenerationLimit }));
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -57,10 +57,9 @@ function UserEditor({ user, own, api, onSaved, onDeleted }: { onDeleted: () => v
     finally { setBusy(false); }
   }
   async function remove() {
-    setBusy(true); setError(null);
-    try { await api.remove(user.id); onDeleted(); }
-    catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not delete user.'); }
-    finally { setBusy(false); }
+    try { await api.remove(user.id); }
+    catch (cause) { throw new Error(cause instanceof Error ? cause.message : 'Could not delete user.'); }
+    onDeleted();
   }
   return <article className={styles.userRow}>
     <button type="button" className={styles.userSummary} aria-expanded={expanded} aria-controls={`user-${user.id}`} onClick={() => setExpanded(value => !value)}>
@@ -83,10 +82,8 @@ function UserEditor({ user, own, api, onSaved, onDeleted }: { onDeleted: () => v
       <button>{busy ? 'Saving…' : 'Save permissions'}</button>
     </fieldset>
     {!own && <div className={styles.deleteArea}>
-      {confirmDelete ? <>
-        <p>Delete {user.email}? This permanently removes their account, sessions, job history, collections, and library records. Stored files remain on disk. This cannot be undone.</p>
-        <div className={styles.deleteActions}><button type="button" disabled={busy} onClick={() => void remove()}>Confirm delete user</button><button type="button" disabled={busy} onClick={() => setConfirmDelete(false)}>Keep user</button></div>
-      </> : <button type="button" disabled={busy} onClick={() => setConfirmDelete(true)}>Delete user</button>}
+      <p>Deleting removes their account, sessions, job history, collections and library records. Stored files stay on disk.</p>
+      <DeleteButton size="md" label="Delete user" disabled={busy} confirmTitle="Delete this user?" confirmBody={<><strong>{user.email}</strong> will be deleted for good. This cannot be undone.</>} onConfirm={remove} />
     </div>}
     {error && <p role="alert">{error}</p>}{message && <p role="status">{message}</p>}
   </form>}

@@ -11,6 +11,7 @@ import type {
 } from '@comfy/shared';
 import { CheckIcon, ChipIcon, CopyIcon, DownloadIcon, DriveIcon, PlusIcon, RamIcon } from '../library/icons';
 import { Mark } from '../components/Mark';
+import { DeleteButton } from '../components/ConfirmDelete';
 import { gb, memoryReading } from '../lib/format';
 import { ApiRequestError } from '../lib/api';
 import {
@@ -210,7 +211,6 @@ function DeploymentCard({
   const [busy, setBusy] = useState<string | null>(null);
   const [task, setTask] = useState<AgentTask | null>(null);
   const [probe, setProbe] = useState<AgentProbe | null>(null);
-  const [armed, setArmed] = useState(false);
   const [agentUpdate, setAgentUpdate] = useState<'updating' | 'reconnecting' | 'done' | null>(null);
   const updateController = useRef<AbortController | null>(null);
   useEffect(() => () => updateController.current?.abort(), []);
@@ -218,12 +218,6 @@ function DeploymentCard({
   // so the panel holding it is already open rather than behind another click.
   const agentInstalled = Boolean(deployment.lastSeenAt || deployment.agentVersion || deployment.status === 'online');
   const [showInstall, setShowInstall] = useState(() => !agentInstalled);
-
-  useEffect(() => {
-    if (!armed) return;
-    const timer = setTimeout(() => setArmed(false), 5000);
-    return () => clearTimeout(timer);
-  }, [armed]);
 
   const comfy = deployment.comfy;
   const [vaeOnGpu, setVaeOnGpu] = useState(comfy?.vaeOnGpu ?? true);
@@ -459,16 +453,15 @@ function DeploymentCard({
       if (adopted) onError(`Linked to the existing backend "${next.backendName}".`);
     });
 
+  // Not through act(): the confirm shows its own spinner and error.
   const remove = async () => {
-    if (!armed) {
-      setArmed(true);
-      return;
-    }
-    await act('remove the backend', async () => {
+    try {
       await api.remove(deployment.id);
-      onRemoved();
-      refreshBackends();
-    });
+    } catch (cause) {
+      throw new Error(cause instanceof Error ? cause.message : 'Could not remove the backend.');
+    }
+    onRemoved();
+    refreshBackends();
   };
 
   return (
@@ -661,15 +654,20 @@ function DeploymentCard({
       ) : null}
       {task ? <TaskLog task={task} onDismiss={() => setTask(null)} /> : null}
       <footer className={styles.cardFooter}>
-        <button
-          type="button"
-          className={`${shared.action} ${shared.actionDanger}`}
-          onClick={() => void remove()}
+        <DeleteButton
+          size="md"
           disabled={busy !== null}
-          aria-label={armed ? `Really remove ${deployment.name}` : `Remove ${deployment.name}`}
-        >
-          {armed ? 'Really remove?' : 'Remove'}
-        </button>
+          aria-label={`Remove ${deployment.name}`}
+          confirmTitle="Remove this backend?"
+          confirmBody={
+            <>
+              <strong>{deployment.name}</strong> will be disconnected from rippel. Its files stay on the machine.
+            </>
+          }
+          confirmLabel="Remove"
+          busyLabel="Removing…"
+          onConfirm={remove}
+        />
       </footer>
     </li>
   );

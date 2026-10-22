@@ -340,45 +340,9 @@
   background: var(--surface-hover);
 }
 
+/* The shared DeleteButton; only its place on the bar is set here. */
 .barRemove {
   margin-left: auto;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  height: 36px;
-  padding: 0 16px;
-  border-radius: 999px;
-  border: 1px solid var(--danger-line);
-  background: var(--danger-tint);
-  color: var(--danger-text);
-  font-size: var(--text-sm);
-  font-weight: 500;
-  white-space: nowrap;
-  transition:
-    background var(--transition),
-    color var(--transition),
-    border-color var(--transition),
-    box-shadow var(--dur-slow) var(--ease-out),
-    transform var(--dur-fast) var(--ease-out);
-}
-
-.barRemove:hover:not(:disabled) {
-  background: rgba(235, 111, 146, 0.18);
-}
-
-/* Armed: filled, and it breathes so the second press feels deliberate. */
-.barArmed,
-.barArmed:hover:not(:disabled) {
-  background: var(--danger);
-  border-color: var(--danger);
-  color: #fff;
-  box-shadow: 0 6px 22px rgba(235, 111, 146, 0.35);
-  animation: pulse 1.4s var(--ease-in-out) infinite;
-}
-
-.barRemove:disabled {
-  opacity: 0.5;
-  cursor: progress;
 }
 
 .barNote {

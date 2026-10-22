@@ -1,0 +1,124 @@
+/* See Button.tsx for what each variant means. Colours come from tokens.css. */
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  font-weight: 500;
+  white-space: nowrap;
+  line-height: 1;
+}
+
+.sm {
+  height: 28px;
+  padding: 0 10px;
+  font-size: var(--text-xs);
+}
+
+.md {
+  height: var(--action-height);
+  padding: 0 var(--space-4);
+  border-radius: var(--radius);
+  font-size: var(--text-sm);
+}
+
+.pill {
+  border-radius: 999px;
+}
+
+.button:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+  border-color: var(--focus-line);
+}
+
+.button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.button[aria-busy='true'] {
+  cursor: progress;
+  opacity: 0.85;
+}
+
+.icon {
+  display: inline-flex;
+  margin-left: -2px;
+}
+
+.primary {
+  border-color: var(--accent-line);
+  background: var(--accent-tint);
+  color: var(--accent);
+  font-weight: 600;
+}
+.primary:hover:not(:disabled) {
+  background: var(--accent-tint-hover);
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.secondary {
+  border-color: var(--line-input);
+  background: var(--surface-1);
+  color: var(--text-2);
+}
+.secondary:hover:not(:disabled) {
+  background: var(--surface-3);
+  border-color: var(--line-strong);
+  color: var(--text);
+}
+
+.quiet {
+  background: transparent;
+  color: var(--text-3);
+}
+.quiet:hover:not(:disabled) {
+  background: var(--surface-3);
+  color: var(--text);
+}
+
+.danger {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: var(--accent-ink);
+  font-weight: 600;
+}
+.danger:hover:not(:disabled) {
+  background: var(--danger-text);
+  border-color: var(--danger-text);
+  box-shadow: 0 6px 18px rgba(235, 111, 146, 0.28);
+}
+.danger:focus-visible {
+  border-color: var(--danger-text);
+  box-shadow: 0 0 0 3px rgba(235, 111, 146, 0.32);
+}
+
+.dangerSoft {
+  background: var(--danger-tint);
+  border-color: var(--danger-line);
+  color: var(--danger-text);
+}
+.dangerSoft:hover:not(:disabled),
+.dangerSoft[aria-expanded='true'] {
+  background: rgba(235, 111, 146, 0.18);
+  border-color: var(--danger);
+  color: var(--text);
+}
+.dangerSoft:focus-visible {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 3px rgba(235, 111, 146, 0.25);
+}
+
+.spinner {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  border: 1.5px solid currentColor;
+  border-right-color: transparent;
+  animation: spin 0.7s linear infinite;
+}

@@ -382,6 +382,20 @@ button.summary:focus-visible {
   margin: 0;
 }
 
+/* The fix, then Remove, on one row of same-height buttons; a message or
+   progress takes the fix's place. Wraps only when the column is too narrow. */
+.noticeActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--gap-xs);
+  margin-top: 2px;
+}
+
+.noticeRemove {
+  margin-left: auto;
+}
+
 .noticeParts {
   margin: 0;
   padding: 0;

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { AgentTask, ComfyState, Deployment } from '@comfy/shared';
 import { ApiRequestError } from '../lib/api';
@@ -260,10 +260,11 @@ describe('DeploymentsSection', () => {
     render(<DeploymentsSection api={api} />);
     const remove = await screen.findByRole('button', { name: 'Remove studio-4090' });
     expect(remove.closest('footer')).not.toBeNull();
-    expect(remove.className).toContain('actionDanger');
+    expect(remove).toHaveAttribute('data-variant', 'danger-soft');
     await userEvent.click(remove);
     expect(api.remove).not.toHaveBeenCalled();
-    await userEvent.click(screen.getByRole('button', { name: 'Really remove studio-4090' }));
+    const ask = screen.getByRole('alertdialog', { name: 'Remove this backend?' });
+    await userEvent.click(within(ask).getByRole('button', { name: 'Remove' }));
     await waitFor(() => expect(api.remove).toHaveBeenCalledWith('d1'));
   });
 

@@ -23,7 +23,8 @@
 .expanded { transform: rotate(180deg); }
 .userRow .card { border: 0; border-top: 1px solid var(--line); border-radius: 0; }
 .deleteArea { border-top: 1px solid var(--line); padding-top: var(--space-4); display: flex; flex-direction: column; gap: var(--gap); }
-.deleteActions { display: flex; gap: var(--gap); flex-wrap: wrap; }
+.deleteArea > p { margin: 0; color: var(--text-3); font-size: var(--text-sm); }
+.deleteArea > button { align-self: flex-start; }
 @media (max-width: 600px) { .section .userSummary { flex-wrap: wrap; } .overview { text-align: left; flex-basis: 100%; order: 1; } }
 
 .card [role=combobox] { width: 100%; justify-content: space-between; text-align: left; }

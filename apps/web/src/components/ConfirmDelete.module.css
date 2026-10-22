@@ -1,0 +1,68 @@
+/* The delete confirm: a small panel off its trigger. Same surface and z as the dropdown. */
+
+.panel {
+  position: fixed;
+  z-index: var(--dropdown-z);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 12px 10px 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--danger-line);
+  background: var(--dropdown-bg);
+  box-shadow: var(--shadow-pop);
+  font-size: var(--text-sm);
+  line-height: 1.45;
+  text-align: left;
+  white-space: normal;
+  animation: confirmIn var(--dur-fast) var(--ease-out);
+  transform-origin: top right;
+}
+
+.up {
+  transform-origin: bottom right;
+}
+
+@keyframes confirmIn {
+  from {
+    opacity: 0;
+    transform: translateY(-3px) scale(0.98);
+  }
+}
+
+.title {
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text);
+}
+
+.body {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--text-3);
+  overflow-wrap: anywhere;
+}
+
+.error {
+  margin: 2px 0 0;
+  font-size: var(--text-xs);
+  color: var(--danger-text);
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--gap-xs);
+  margin-top: 8px;
+}
+
+.body strong {
+  color: var(--text-2);
+  font-weight: 600;
+}
+
+/* The machine, said last, does not break at its hyphen ("steve-/pc"). */
+.body strong:last-child {
+  white-space: nowrap;
+}

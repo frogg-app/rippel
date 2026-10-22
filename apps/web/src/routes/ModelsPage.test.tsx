@@ -860,7 +860,7 @@ describe('ModelsPage', () => {
       expect(within(outputs).getByRole('link', { name: 'in library' })).toBeInTheDocument();
     });
 
-    it('removes a selection only on the second press, and drops the rows', async () => {
+    it('removes a selection only after the confirm, and drops the rows', async () => {
       const storage = stubStorage(listing());
       renderPage(makeStubApi(), admin, '/models', storage);
       await ready();
@@ -871,9 +871,11 @@ describe('ModelsPage', () => {
 
       const remove = within(inputs).getByRole('button', { name: /^Remove 1 file from desktop-6900xt/ });
       await user.click(remove);
-      // Armed, not done: nothing has been sent yet.
+      // Asked, not done: nothing has been sent yet.
       expect(storage.removed).toHaveLength(0);
-      await user.click(within(inputs).getByRole('button', { name: /^Confirm: remove 1 file/ }));
+      const ask = screen.getByRole('alertdialog', { name: 'Delete this file?' });
+      expect(ask).toHaveTextContent('will be removed from desktop-6900xt');
+      await user.click(within(ask).getByRole('button', { name: 'Delete' }));
 
       await waitFor(() => expect(storage.removed).toEqual([{ folder: 'input', paths: ['probe.png'] }]));
       expect(within(inputs).queryByText('probe.png')).not.toBeInTheDocument();
@@ -889,7 +891,7 @@ describe('ModelsPage', () => {
       const inputs = await screen.findByRole('region', { name: 'Inputs' });
       await user.click(within(inputs).getByLabelText("Select all of Steve’s inputs"));
       await user.click(within(inputs).getByRole('button', { name: /^Remove 1 file/ }));
-      await user.click(within(inputs).getByRole('button', { name: /^Confirm/ }));
+      await user.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Delete' }));
 
       expect(await screen.findByRole('status')).toHaveTextContent('The backend did not answer.');
       expect(within(inputs).getByText('0123456789abcdef0123456789abcdef.png')).toBeInTheDocument();
@@ -1148,8 +1150,10 @@ describe('ModelsPage', () => {
       const user = await openTab(/^Remove LTX-Video 2B$/);
       // Not yet: the first press only arms the confirm.
       expect(api.calls.filter((call) => call.startsWith('remove:'))).toEqual([]);
-      expect(screen.getByText('Delete LTX-Video 2B from desktop-6900xt?')).toBeInTheDocument();
-      await user.click(screen.getByRole('button', { name: 'Delete' }));
+      const ask = screen.getByRole('alertdialog', { name: 'Delete this file?' });
+      expect(ask).toHaveTextContent('LTX-Video 2B will be removed from desktop-6900xt.');
+      expect(within(ask).getByRole('button', { name: 'Cancel' })).toHaveFocus();
+      await user.click(within(ask).getByRole('button', { name: 'Delete' }));
 
       await waitFor(() => expect(api.calls).toContain('remove:ltx'));
       await waitFor(() => expect(screen.queryByText('LTX-Video 2B')).not.toBeInTheDocument());

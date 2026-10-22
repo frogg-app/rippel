@@ -41,10 +41,11 @@ import {
   generates,
 
 } from './catalogue';
-import { CloseIcon, DownloadCountIcon, ExpandIcon, WorkflowIcon } from './icons';
+import { DownloadCountIcon, ExpandIcon, WorkflowIcon } from './icons';
 import { PreviewLightbox } from './PreviewLightbox';
 import { TypeBadge } from './TypeBadge';
 import { Mark } from '../components/Mark';
+import { DeleteButton } from '../components/ConfirmDelete';
 import { FitPill } from './CatalogueCard';
 import { modelFit } from './cardFacts';
 import { NeedsPills } from './MissingParts';
@@ -59,7 +60,7 @@ export interface InstalledCardProps {
   backendOrder: { id: Uuid; name: string; online: boolean }[];
   selectedBackendId: Uuid | null;
   onWorkflows?: (model: Model) => void;
-  onRemove?: (model: Model) => void;
+  onRemove?: (model: Model) => Promise<unknown> | void;
   onFixed?: () => void;
   /** Position in the grid, for the staggered entrance. */
   index?: number;
@@ -260,10 +261,9 @@ export function InstalledCard({
 }
 
 /**
- * Remove, in two steps and in place: the first press turns the button into
- * "Delete <name> from <machine>?" with a confirm, so a slip of the pointer over
- * a card cannot delete a file, and no browser dialog interrupts the page. It
- * names the machine because the file itself goes, not only rippel's record.
+ * Remove, behind the shared delete confirm, so a slip of the pointer over a
+ * card cannot delete a file. It names the machine because the file itself
+ * goes, not only rippel's record.
  */
 export function RemoveButton({
   model,
@@ -272,42 +272,22 @@ export function RemoveButton({
 }: {
   model: Model;
   machines: readonly { name: string }[];
-  onRemove: (model: Model) => void;
+  onRemove: (model: Model) => Promise<unknown> | void;
 }) {
-  const [armed, setArmed] = useState(false);
   const where = machines.length > 0 ? machines.map((m) => m.name).join(' and ') : 'rippel';
-  if (!armed) {
-    return (
-      <button
-        type="button"
-        className={`${styles.rowAction} ${styles.rowActionQuiet}`}
-        onClick={() => setArmed(true)}
-        aria-label={`Remove ${model.displayName}`}
-      >
-        <CloseIcon size={12} />
-        Remove
-      </button>
-    );
-  }
   return (
-    <span className={`${styles.rowConfirm} pop`} role="group" aria-label={`Delete ${model.displayName}?`}>
-      <span className={styles.rowConfirmText} title={`Deletes ${model.filename} from disk. This cannot be undone.`}>
-        Delete {model.displayName} from {where}?
-      </span>
-      <button
-        type="button"
-        className={`${styles.rowAction} ${styles.rowActionDanger}`}
-        onClick={() => {
-          setArmed(false);
-          onRemove(model);
-        }}
-      >
-        Delete
-      </button>
-      <button type="button" className={styles.rowAction} onClick={() => setArmed(false)}>
-        Keep
-      </button>
-    </span>
+    <DeleteButton
+      pill
+      aria-label={`Remove ${model.displayName}`}
+      hint={`Deletes ${model.filename} from disk`}
+      confirmTitle="Delete this file?"
+      confirmBody={
+        <>
+          <strong>{model.displayName}</strong> will be removed from <strong>{where}</strong>.
+        </>
+      }
+      onConfirm={() => onRemove(model)}
+    />
   );
 }
 

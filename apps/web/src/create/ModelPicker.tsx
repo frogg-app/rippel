@@ -152,11 +152,10 @@ export function ModelPicker({
                 role="radio"
                 aria-checked={selected}
                 aria-disabled={!selectable}
-                title={
-                  reason
-                    ? `${model.displayName}: ${reason.detail}`
-                    : `${family.label} · ${model.filename}${generic ? ' · generic workflow' : ''}`
-                }
+                // The why lives on the pill that says "Needs…", as a whole
+                // sentence; a long reason tacked onto the tile's own hover
+                // read as "Model: cannot run h…".
+                title={`${family.label} · ${model.filename}${generic ? ' · generic workflow' : ''}`}
                 className={[
                   styles.tile,
                   selected ? styles.tileOn : '',
@@ -187,7 +186,11 @@ export function ModelPicker({
                   <span className={styles.tileName}>{model.displayName}</span>
                   <span className={styles.pills}>
                     {pills.map((pill) => (
-                      <span key={pill.label} className={`${styles.badge} ${styles[`pill_${pill.tone}`]}`}>
+                      <span
+                        key={pill.label}
+                        className={`${styles.badge} ${styles[`pill_${pill.tone}`]}`}
+                        title={reason && pill.tone !== 'ok' ? `${model.displayName} ${reason.detail}` : undefined}
+                      >
                         {pill.label}
                       </span>
                     ))}

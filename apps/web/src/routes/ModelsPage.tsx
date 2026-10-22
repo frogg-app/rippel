@@ -211,20 +211,19 @@ export function ModelsPage({ api = modelsApi, storageApi: storage = storageApi }
   const [removalNote, setRemovalNote] = useState<string | null>(null);
   const removeModel = useCallback(
     async (model: Model) => {
-      // Optimistic: the row goes now, and comes back on a refresh if the
-      // request fails.
-      library.remove(model.id);
+      // Not optimistic: the confirm stays open with a spinner until the
+      // machine answers, and says why in place if it could not.
       try {
         const removal = await api.removeModel(model.id);
+        library.remove(model.id);
         setRemovalNote(
           removal.note ??
             (removal.removedFromDisk ? `Deleted ${model.displayName}.` : `${model.displayName} was removed.`),
         );
       } catch (cause) {
-        setRemovalNote(
+        throw new Error(
           cause instanceof ApiRequestError ? cause.message : `Could not delete ${model.displayName}.`,
         );
-        library.refresh();
       }
     },
     [api, library],
@@ -602,7 +601,7 @@ export function ModelsPage({ api = modelsApi, storageApi: storage = storageApi }
                   previews={library.previews}
                   onWorkflows={openModelWorkflows}
                   onFixed={library.refresh}
-                  onRemove={isAdmin ? (model) => void removeModel(model) : undefined}
+                  onRemove={isAdmin ? removeModel : undefined}
                 />
               )}
             </div>

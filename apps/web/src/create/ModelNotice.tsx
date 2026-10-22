@@ -34,6 +34,8 @@ import { NOT_SUPPORTED, absentParts, joinParts } from './modelReasons';
 import { WorkflowSuggestions } from '../models/WorkflowSuggestions';
 import { modeOfKind } from './form';
 import { invalidateReadiness } from './useReadiness';
+import { Button } from '../components/Button';
+import { DeleteButton } from '../components/ConfirmDelete';
 import styles from './modelPicker.module.css';
 
 const POLL_MS = 3_000;
@@ -250,7 +252,6 @@ function PartRow({
 
 type FixState =
   | { kind: 'idle' }
-  | { kind: 'confirm'; machine: string }
   | { kind: 'starting' }
   | { kind: 'installing'; install: ModelInstall; filename: string }
   | { kind: 'moving'; operation: ModelFileOperation }
@@ -265,7 +266,8 @@ function errorText(cause: unknown, fallback: string): string {
  * A model file with a problem of its own. One action, when the app can make
  * the repair: install a known-good build of the same family and select it, or
  * have the agent move bare diffusion weights to diffusion_models. Otherwise
- * the "Pick another model" link. Admins also get a quiet "Remove this file"
+ * the "Pick another model" link. Admins also get a danger "Remove", behind
+ * the shared delete confirm,
  * for a file that will never load. Detail lives in tooltips.
  */
 export function ProblemFix({
@@ -370,62 +372,54 @@ export function ProblemFix({
       .catch((cause: unknown) => setState({ kind: 'message', error: true, text: errorText(cause, 'Could not move the file.') }));
   };
 
-  // Remove deletes the file from the machine, so it asks first, by name.
-  const armRemove = () => {
-    setState({ kind: 'confirm', machine: 'this machine' });
-    modelsApi
-      .backends()
+  // Remove deletes the file from the machine, so its confirm names both.
+  const canRemove = isAdmin && problem.kind === 'unloadable';
+  const [machine, setMachine] = useState('this machine');
+  useEffect(() => {
+    if (!canRemove) return;
+    let stopped = false;
+    Promise.resolve()
+      .then(() => modelsApi.backends())
       .then((list) => {
         const name = list.find((b) => b.id === backendId)?.name;
-        if (name) setState((s) => (s.kind === 'confirm' ? { kind: 'confirm', machine: name } : s));
+        if (name && !stopped) setMachine(name);
       })
       .catch(() => {});
-  };
+    return () => {
+      stopped = true;
+    };
+  }, [canRemove, backendId]);
 
-  const remove = () => {
-    setState({ kind: 'starting' });
-    modelsApi
-      .removeModel(model.id)
-      .then((removal) => {
-        setState({ kind: 'message', text: removal.removedFromDisk ? 'Deleted.' : 'Removed from rippel.' });
-        onChanged?.();
-      })
-      .catch((cause: unknown) => setState({ kind: 'message', error: true, text: errorText(cause, 'Could not delete it.') }));
+  const remove = async () => {
+    try {
+      const removal = await modelsApi.removeModel(model.id);
+      setState({ kind: 'message', text: removal.removedFromDisk ? 'Deleted.' : 'Removed from rippel.' });
+      onChanged?.();
+    } catch (cause) {
+      throw new Error(errorText(cause, 'Could not delete it.'));
+    }
   };
 
   let action: ReactNode;
-  if (state.kind === 'confirm') {
-    action = (
-      <span role="group" aria-label="Confirm delete" title={`Deletes ${model.filename} from disk.`}>
-        Delete {model.displayName} from {state.machine}?{' '}
-        <button type="button" className={styles.getIt} onClick={remove}>
-          Delete
-        </button>{' '}
-        <button type="button" className={styles.quietLink} onClick={() => setState({ kind: 'idle' })}>
-          Keep
-        </button>
-      </span>
-    );
-  } else if (state.kind === 'installing') action = <InstallProgress install={state.install} now={now} compact />;
+  if (state.kind === 'installing') action = <InstallProgress install={state.install} now={now} compact />;
   else if (state.kind === 'moving') action = <span>Moving…</span>;
   else if (state.kind === 'message') action = <span role={state.error ? 'alert' : undefined}>{state.text}</span>;
   else if (fix?.kind === 'replace') {
     action = (
-      <button
-        type="button"
-        className={styles.getIt}
-        disabled={state.kind === 'starting'}
+      <Button
+        variant="primary"
+        busy={state.kind === 'starting'}
         onClick={getWorking}
         title={`Installs ${fix.name}${fix.size ? ` (${fix.size})` : ''}, a build ComfyUI can load.`}
       >
         {state.kind === 'starting' ? 'Starting…' : 'Get a version that works'}
-      </button>
+      </Button>
     );
   } else if (fix?.kind === 'move') {
     action = (
-      <button type="button" className={styles.getIt} disabled={state.kind === 'starting'} onClick={move} title={problem.detail}>
+      <Button variant="primary" busy={state.kind === 'starting'} onClick={move} title={problem.detail}>
         {state.kind === 'starting' ? 'Starting…' : 'Move it'}
-      </button>
+      </Button>
     );
   } else {
     action = (
@@ -436,16 +430,22 @@ export function ProblemFix({
   }
 
   return (
-    <p className={styles.noticeText}>
+    <div className={styles.noticeActions}>
       {action}
-      {isAdmin && problem.kind === 'unloadable' && state.kind === 'idle' ? (
-        <>
-          {' '}
-          <button type="button" className={styles.quietLink} onClick={armRemove} title="Delete it from the machine">
-            Remove this file
-          </button>
-        </>
+      {canRemove && state.kind === 'idle' ? (
+        <DeleteButton
+          className={styles.noticeRemove}
+          aria-label={`Remove ${model.displayName}`}
+          hint={`Deletes ${model.filename} from ${machine}`}
+          confirmTitle="Delete this file?"
+          confirmBody={
+            <>
+              <strong>{model.displayName}</strong> will be removed from <strong>{machine}</strong>.
+            </>
+          }
+          onConfirm={remove}
+        />
       ) : null}
-    </p>
+    </div>
   );
 }

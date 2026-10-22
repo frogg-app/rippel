@@ -39,5 +39,5 @@ it('starts condensed and requires confirmation before deletion',async()=>{
  const client=api();render(<UsersSection api={client}/>);
  const summary=await screen.findByRole('button',{name:/Member/});expect(summary).toHaveAttribute('aria-expanded','false');expect(screen.queryByRole('form')).not.toBeInTheDocument();
  fireEvent.click(summary);fireEvent.click(screen.getByRole('button',{name:'Delete user'}));expect(client.remove).not.toHaveBeenCalled();
- fireEvent.click(screen.getByRole('button',{name:'Confirm delete user'}));await waitFor(()=>expect(client.remove).toHaveBeenCalledWith('u1'));await waitFor(()=>expect(screen.queryByText('Member')).not.toBeInTheDocument());
+ fireEvent.click(within(screen.getByRole('alertdialog',{name:'Delete this user?'})).getByRole('button',{name:'Delete'}));await waitFor(()=>expect(client.remove).toHaveBeenCalledWith('u1'));await waitFor(()=>expect(screen.queryByText('Member')).not.toBeInTheDocument());
 });

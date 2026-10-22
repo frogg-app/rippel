@@ -540,7 +540,3 @@
   color: var(--text-4);
 }
 
-.actionDanger {
-  color: var(--danger-text);
-  border-color: var(--danger-line);
-}

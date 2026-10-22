@@ -58,7 +58,7 @@ export interface InstalledListProps {
   /** Opens the Workflows sheet for a model. */
   onWorkflows?: (model: Model) => void;
   /** Present for an administrator: the card offers a two-step Remove. */
-  onRemove?: (model: Model) => void;
+  onRemove?: (model: Model) => Promise<unknown> | void;
   onFixed?: () => void;
   /** The selected backend's graphics memory, for the fit pill. */
   memoryBytes?: number | null;
@@ -172,7 +172,7 @@ export function InstalledList({
           memoryBytes={memoryBytes}
           onClose={closeDrawer}
           onWorkflows={onWorkflows ? (model) => { closeDrawer(); onWorkflows(model); } : undefined}
-          onRemove={onRemove ? (model) => { closeDrawer(); onRemove(model); } : undefined}
+          onRemove={onRemove ? async (model) => { await onRemove(model); closeDrawer(); } : undefined}
           onFixed={onFixed}
         />
       ) : null}

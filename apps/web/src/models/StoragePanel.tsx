@@ -12,7 +12,7 @@
  * and one sticky bar that names what will go. The bar's button confirms in
  * place (press once to arm, again to remove) rather than opening a dialog.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { Backend, BackendStorage, StorageFile, StorageFolder } from '@comfy/shared';
 import { Mark } from '../components/Mark';
@@ -20,6 +20,7 @@ import { ApiRequestError } from '../lib/api';
 import { ageLabel, formatBytes, type StorageApi } from '../lib/api-storage';
 import { Notice } from './Notice';
 import { TrashIcon } from '../library/icons';
+import { DeleteButton } from '../components/ConfirmDelete';
 import styles from './StoragePanel.module.css';
 
 const HELPER_PATH = 'tools/comfyui-rippel-storage';
@@ -204,7 +205,6 @@ function FolderSection({
   onRemove: (paths: string[]) => Promise<void>;
 }) {
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
-  const [armed, setArmed] = useState(false);
   const [busy, setBusy] = useState(false);
   const owners = useMemo(() => groupByOwner(group.files), [group.files]);
   const now = Date.now();
@@ -217,17 +217,6 @@ function FolderSection({
       return next.size === current.size ? current : next;
     });
   }, [group.files]);
-
-  // Arming times out: a button that stays red while you read something else
-  // is a button you press by accident later.
-  const disarm = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => {
-    if (!armed) return;
-    disarm.current = setTimeout(() => setArmed(false), 5000);
-    return () => {
-      if (disarm.current) clearTimeout(disarm.current);
-    };
-  }, [armed]);
 
   const selectedBytes = useMemo(
     () => group.files.filter((file) => selected.has(file.path)).reduce((sum, f) => sum + f.size, 0),
@@ -254,16 +243,14 @@ function FolderSection({
     });
 
   const confirm = async () => {
-    if (!armed) {
-      setArmed(true);
-      return;
-    }
-    setArmed(false);
     setBusy(true);
     const paths = [...selected];
-    setSelected(new Set());
-    await onRemove(paths);
-    setBusy(false);
+    try {
+      await onRemove(paths);
+      setSelected(new Set());
+    } finally {
+      setBusy(false);
+    }
   };
 
   const count = selected.size;
@@ -356,22 +343,22 @@ function FolderSection({
           <button type="button" className={styles.barClear} onClick={() => setSelected(new Set())}>
             Clear
           </button>
-          <button
-            type="button"
-            className={armed ? `${styles.barRemove} ${styles.barArmed}` : styles.barRemove}
+          <DeleteButton
+            size="md"
+            pill
+            className={styles.barRemove}
             disabled={busy}
-            onClick={() => void confirm()}
-            aria-label={
-              armed
-                ? `Confirm: remove ${count} ${count === 1 ? 'file' : 'files'} from ${backend.name}`
-                : `Remove ${count} ${count === 1 ? 'file' : 'files'} from ${backend.name}`
+            icon={<TrashIcon size={14} />}
+            aria-label={`Remove ${count} ${count === 1 ? 'file' : 'files'} from ${backend.name}`}
+            label={`Remove ${count} ${count === 1 ? 'file' : 'files'} (${formatBytes(selectedBytes)})`}
+            confirmTitle={count === 1 ? 'Delete this file?' : `Delete ${count} files?`}
+            confirmBody={
+              <>
+                {formatBytes(selectedBytes)} will be removed from <strong>{backend.name}</strong>.
+              </>
             }
-          >
-            <TrashIcon size={14} />
-            {armed
-              ? `Really remove from ${backend.name}?`
-              : `Remove ${count} ${count === 1 ? 'file' : 'files'} (${formatBytes(selectedBytes)}) from ${backend.name}`}
-          </button>
+            onConfirm={confirm}
+          />
           <span className={styles.barNote}>{folder === 'output' ? 'Library copies stay.' : 'Uploads in rippel stay.'}</span>
         </div>
       ) : null}

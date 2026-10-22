@@ -101,3 +101,8 @@
   .context { flex-wrap: wrap; }
   .skeletonGrid { grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--library-tile-min)), 1fr)); }
 }
+
+/* Empty archive: the shared danger trigger, kept to the end of the line. */
+.emptyArchive {
+  margin-left: auto;
+}

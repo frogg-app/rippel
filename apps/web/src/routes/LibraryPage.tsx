@@ -18,6 +18,7 @@ import type { CreateNavState, CreatePrefill } from '../library/remix';
 import { useCollections } from '../library/useCollections';
 import { useLibraryActions } from '../library/useLibraryActions';
 import { useLibraryFeed } from '../library/useLibraryFeed';
+import { DeleteButton } from '../components/ConfirmDelete';
 import styles from './LibraryPage.module.css';
 
 /**
@@ -158,17 +159,14 @@ export function LibraryPage() {
               ? `Archived items are deleted for good after ${retentionDays} days.`
               : 'Archived items are deleted for good after a while.'}
             {feed.items.length > 0 ? (
-              <button
-                type="button"
-                className={styles.clear}
-                onClick={() => {
-                  if (window.confirm('Delete everything in the archive for good? This cannot be undone.')) {
-                    void actions.emptyArchive();
-                  }
-                }}
-              >
-                Empty archive
-              </button>
+              <DeleteButton
+                className={styles.emptyArchive}
+                label="Empty archive"
+                confirmTitle="Empty the archive?"
+                confirmBody={`${feed.items.length} ${feed.items.length === 1 ? 'item' : 'items'} will be deleted for good. This cannot be undone.`}
+                confirmLabel="Delete all"
+                onConfirm={actions.emptyArchive}
+              />
             ) : null}
           </div>
         ) : null}
