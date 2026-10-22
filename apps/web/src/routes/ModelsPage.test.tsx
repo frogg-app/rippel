@@ -1160,6 +1160,29 @@ describe('ModelsPage', () => {
       expect(screen.queryByRole('button', { name: 'Remove tag film' })).not.toBeInTheDocument();
     });
 
+    it('keeps a bare word a name search on Enter, even with suggestions open', async () => {
+      const api = makeStubApi();
+      renderPage(api);
+      await ready();
+      const user = await openTab(/Discover/);
+      await user.click(screen.getByRole('button', { name: /^Everything/ }));
+
+      const box = screen.getByRole('combobox', { name: 'Search the catalogue' });
+      await user.type(box, 'film');
+      // "film" matches a tag, so the list is open, but nothing is chosen yet.
+      const list = await screen.findByRole('listbox', { name: 'Matching tags' });
+      expect(within(list).queryByRole('option', { selected: true })).toBeNull();
+      await user.keyboard('{Enter}');
+
+      expect(box).toHaveValue('film');
+      expect(screen.queryByRole('button', { name: 'Remove tag film' })).not.toBeInTheDocument();
+
+      // The arrows still reach the suggestions.
+      await user.click(box);
+      await user.keyboard('{ArrowDown}{Enter}');
+      expect(screen.getByRole('button', { name: 'Remove tag film' })).toBeInTheDocument();
+    });
+
     it('excludes a tag typed with a minus', async () => {
       const api = makeStubApi();
       renderPage(api);

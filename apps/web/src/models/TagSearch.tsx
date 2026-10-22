@@ -12,7 +12,10 @@
  *
  *   ArrowUp/Down   move through the suggestions
  *   Enter          take the highlighted suggestion; with none, turn every
- *                  tag-shaped word typed so far into a token
+ *                  tag-shaped word typed so far into a token. A bare word
+ *                  starts with nothing highlighted, so Enter keeps it the
+ *                  name search it already is rather than picking the top
+ *                  suggestion; a tag-shaped word starts on its best match
  *   Escape         close the suggestions, keep the text
  *   Backspace      on an empty box, remove the last token (excludes first,
  *                  since they are the ones drawn last)
@@ -67,7 +70,8 @@ export function TagSearch({
 }: TagSearchProps) {
   const listId = useId();
   const [open, setOpen] = useState(false);
-  const [highlight, setHighlight] = useState(0);
+  // -1 is "nothing highlighted".
+  const [highlight, setHighlight] = useState(-1);
 
   // The word under the cursor is the last one; earlier words are either text
   // or tags waiting for Enter.
@@ -88,7 +92,7 @@ export function TagSearch({
         : { include: [suggestion.key], exclude: [] },
       before,
     );
-    setHighlight(0);
+    setHighlight(-1);
     setOpen(false);
   }
 
@@ -142,7 +146,8 @@ export function TagSearch({
         placeholder={tokens.length ? '' : placeholder}
         onChange={(event) => {
           onQ(event.target.value);
-          setHighlight(0);
+          const typed = event.target.value.split(/\s+/).pop() ?? '';
+          setHighlight(typed.startsWith('-') || typed.includes(':') ? 0 : -1);
           setOpen(true);
         }}
         onFocus={() => setOpen(true)}
@@ -156,10 +161,14 @@ export function TagSearch({
             event.preventDefault();
             setOpen(true);
             const step = event.key === 'ArrowDown' ? 1 : -1;
-            setHighlight((current) => (current + step + suggestions.length) % suggestions.length);
+            setHighlight((current) =>
+              current < 0
+                ? step > 0 ? 0 : suggestions.length - 1
+                : (current + step + suggestions.length) % suggestions.length,
+            );
           } else if (event.key === 'Enter') {
             event.preventDefault();
-            const chosen = showList ? suggestions[highlight] : undefined;
+            const chosen = showList && highlight >= 0 ? suggestions[highlight] : undefined;
             if (chosen) pick(chosen);
             else commitTyped();
           } else if (event.key === 'Escape') {
