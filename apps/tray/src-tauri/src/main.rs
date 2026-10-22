@@ -25,6 +25,8 @@ const ALLOWED: &[(&str, &str)] = &[
     ("POST", "/engine/start"),
     ("POST", "/engine/stop"),
     ("POST", "/engine/restart"),
+    ("POST", "/update"),
+    ("POST", "/update/check"),
     ("POST", "/quit"),
 ];
 

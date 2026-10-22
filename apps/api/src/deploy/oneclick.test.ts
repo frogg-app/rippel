@@ -13,6 +13,7 @@
  * failed for that reason would teach people to ignore it.
  */
 
+import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { chmod, copyFile, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -234,6 +235,23 @@ describe.skipIf(!canRun)('a real agent pairs with a real rippel', () => {
       await chmod(saved, 0o755);
       const { stdout } = await run(saved, ['version'], { timeout: 30_000 });
       expect(stdout).toContain('rippel-agent');
+    } finally {
+      await app.close();
+    }
+  }, 60_000);
+
+  it('serves a paired agent its update, with a digest it can check it against', async () => {
+    const { app } = await rippel(generateCode());
+    try {
+      // The address update.go asks for: same bytes as the public download.
+      const res = await app.inject({ method: 'GET', url: '/api/deployments/some-deployment/agent/linux-amd64' });
+      expect(res.statusCode).toBe(200);
+      const latest = await app.inject({ method: 'GET', url: '/api/deployments/agent/linux-amd64/latest' });
+      expect(latest.statusCode).toBe(200);
+      const body = latest.json() as { version: string | null; sha256: string; sizeBytes: number };
+      expect(body.sha256).toBe(createHash('sha256').update(res.rawPayload).digest('hex'));
+      expect(body.sizeBytes).toBe(res.rawPayload.length);
+      expect(body.version).toMatch(/^\d+\.\d+\.\d+/);
     } finally {
       await app.close();
     }

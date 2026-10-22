@@ -534,3 +534,36 @@ html.preview #root {
   box-shadow: var(--shadow-pop);
   overflow: hidden;
 }
+
+/* ---------------------------------------------------------------- update */
+
+.updateReady {
+  border-color: var(--accent-line);
+  background:
+    linear-gradient(180deg, var(--accent-tint) 0%, transparent 70%),
+    var(--surface-2);
+}
+.updateLine {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 4px;
+}
+.linkButton {
+  flex: none;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: var(--accent);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+.linkButton:hover:not(:disabled) {
+  color: var(--accent-hover);
+  text-decoration: underline;
+}
+.linkButton:disabled {
+  opacity: 0.5;
+  cursor: default;
+}

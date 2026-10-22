@@ -105,7 +105,7 @@ func (a *Agent) desktopStatus(w http.ResponseWriter) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"paused": paused, "connection": state, "checkin": connection, "server": cfg.ServerURL,
 		"hostname": hostname(), "tasks": tasks, "queue": queue, "queueError": queueError,
-		"agentVersion": AgentVersion, "engine": ComfyStatus(cfg),
+		"agentVersion": AgentVersion, "engine": ComfyStatus(cfg), "update": a.updates.snapshot(),
 		"observedAt": time.Now().UTC(),
 	})
 }

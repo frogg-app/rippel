@@ -21,7 +21,7 @@
  */
 
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs';
+import { mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -135,6 +135,9 @@ function main() {
     built.push({ ...target, size });
     console.log(`${target.name}  ${megabytes(size)}`);
   }
+  // The rippel serving these reads this to tell agents an update is available;
+  // the binaries themselves cannot be asked without running them.
+  writeFileSync(join(distDir, 'version.txt'), `${version}\n`);
 
   console.log(`\nWrote ${built.length} file${built.length === 1 ? '' : 's'} to ${distDir}`);
   console.log('Each one is the whole agent. There is nothing else to ship beside it.');

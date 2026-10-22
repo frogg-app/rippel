@@ -7,7 +7,7 @@ import { call, type AgentLogs, type AgentStatus, type AgentTask, type EngineStat
 /** How often the panel asks the agent for its state while it is open. */
 const POLL_MS = 2000;
 
-type Busy = null | 'pause' | 'resume' | 'start' | 'stop' | 'restart' | 'quit';
+type Busy = null | 'pause' | 'resume' | 'start' | 'stop' | 'restart' | 'update' | 'check' | 'quit';
 
 export function App() {
   const [status, setStatus] = useState<AgentStatus | null>(null);
@@ -68,6 +68,12 @@ export function App() {
       ) : (
         <main className="body">
           <Connection status={status} stale={reachError} />
+          <Update
+            status={status}
+            busy={busy}
+            onUpdate={() => void act('update', 'POST /update')}
+            onCheck={() => void act('check', 'POST /update/check')}
+          />
           <Engine
             engine={status.engine}
             busy={busy}
@@ -152,6 +158,85 @@ function Connection({ status, stale }: { status: AgentStatus; stale: string | nu
         </button>
       ) : null}
     </section>
+  );
+}
+
+// ---------------------------------------------------------------- update
+
+function Update({
+  status,
+  busy,
+  onUpdate,
+  onCheck,
+}: {
+  status: AgentStatus;
+  busy: Busy;
+  onUpdate: () => void;
+  onCheck: () => void;
+}) {
+  const update = status.update;
+  if (!update) return null;
+  const task = status.tasks.find((t) => t.kind === 'update-agent' && (t.status === 'running' || recent(t)));
+
+  if (task && task.status !== 'failed') {
+    // Once the download is in, the agent swaps itself out and this panel goes
+    // with it; the new agent opens a fresh one a few seconds later.
+    const done = task.status !== 'running' || (task.bytesTotal > 0 && task.bytesReceived >= task.bytesTotal);
+    const fraction = task.bytesTotal > 0 ? task.bytesReceived / task.bytesTotal : null;
+    return (
+      <section className="card update">
+        <div className="cardHead">
+          <p className="label">Updating the agent</p>
+          <span className="chip chip-ok">{update.latest ? `v${update.latest}` : 'new version'}</span>
+        </div>
+        <div className="disk">
+          <div className="diskBar">
+            <div
+              className={fraction === null || done ? 'diskFill indeterminate' : 'diskFill'}
+              style={fraction === null || done ? undefined : { width: `${Math.round(fraction * 100)}%` }}
+            />
+          </div>
+          <span className="diskText">
+            {done
+              ? 'Restarting with the new version. ComfyUI keeps running.'
+              : fraction === null
+                ? 'Downloading…'
+                : `Downloading… ${bytes(task.bytesReceived)} of ${bytes(task.bytesTotal)}`}
+          </span>
+        </div>
+      </section>
+    );
+  }
+
+  if (update.available) {
+    return (
+      <section className="card update updateReady">
+        <div className="cardHead">
+          <p className="label">Update available</p>
+          <span className="chip chip-ok">v{update.latest}</span>
+        </div>
+        <p className="small muted">
+          You have v{update.current}. Updating takes a few seconds; ComfyUI and anything it is generating keep running.
+        </p>
+        {task?.error ? <p className="taskError">The last attempt failed: {task.error}</p> : null}
+        <button className="action actionPrimary" disabled={busy !== null} onClick={onUpdate}>
+          {busy === 'update' ? 'Starting…' : 'Update now'}
+        </button>
+      </section>
+    );
+  }
+
+  return (
+    <p className="updateLine small muted">
+      {update.error
+        ? `Couldn't check for updates: ${update.error}`
+        : update.checkedAt
+          ? `Agent is up to date · checked ${ago(update.checkedAt)}`
+          : 'Checking for updates…'}
+      <button className="linkButton" disabled={busy !== null} onClick={onCheck}>
+        {busy === 'check' ? 'Checking…' : 'Check now'}
+      </button>
+    </p>
   );
 }
 

@@ -13,6 +13,16 @@ export interface AgentStatus {
   queue: { running: string[]; pending: string[] } | null;
   queueError: string;
   observedAt: string;
+  /** Absent from agents older than 0.4.5. */
+  update?: UpdateInfo;
+}
+
+export interface UpdateInfo {
+  current: string;
+  latest: string | null;
+  available: boolean;
+  checkedAt: string | null;
+  error: string;
 }
 
 export interface EngineState {
@@ -53,6 +63,8 @@ type Path =
   | 'POST /engine/start'
   | 'POST /engine/stop'
   | 'POST /engine/restart'
+  | 'POST /update'
+  | 'POST /update/check'
   | 'POST /quit';
 
 export function call<T = unknown>(route: Path): Promise<T> {
@@ -101,6 +113,7 @@ const sample: AgentStatus = {
   queue: { running: ['job-1'], pending: ['job-2', 'job-3'] },
   queueError: '',
   observedAt: new Date().toISOString(),
+  update: { current: '0.4.2', latest: '0.4.5', available: true, checkedAt: new Date().toISOString(), error: '' },
 };
 
 async function preview(route: Path): Promise<unknown> {
@@ -118,6 +131,18 @@ async function preview(route: Path): Promise<unknown> {
     case 'POST /engine/restart':
       sample.engine.running = true;
       return {};
+    case 'POST /update/check':
+      sample.update!.checkedAt = new Date().toISOString();
+      return sample.update;
+    case 'POST /update': {
+      const task = { id: 'u1', kind: 'update-agent', status: 'running', startedAt: new Date().toISOString(), finishedAt: null, bytesReceived: 0, bytesTotal: 11_658_240, error: null };
+      sample.tasks = [task, ...sample.tasks];
+      const timer = setInterval(() => {
+        task.bytesReceived = Math.min(task.bytesTotal, task.bytesReceived + 1_400_000);
+        if (task.bytesReceived === task.bytesTotal) clearInterval(timer);
+      }, 400);
+      return { task };
+    }
     case 'POST /quit':
       throw 'Wait for maintenance tasks to finish before quitting.';
     case 'GET /logs':

@@ -37,7 +37,9 @@ func agentUpdateURL(cfg *Config) (string, error) {
 	base.Path = strings.TrimRight(base.Path, "/") + "/api/deployments/" + url.PathEscape(cfg.DeploymentID) + "/agent/" + platform + "-" + runtime.GOARCH
 	return base.String(), nil
 }
-func stageAgentUpdate(cfg *Config, request AgentUpdateRequest, client *http.Client) (string, error) {
+
+// progress, when set, is told how much of the binary has arrived.
+func stageAgentUpdate(cfg *Config, request AgentUpdateRequest, client *http.Client, progress func(received, total int64)) (string, error) {
 	digest, err := hex.DecodeString(request.SHA256)
 	if err != nil || len(digest) != sha256.Size {
 		return "", fmt.Errorf("A file SHA-256 is required")
@@ -87,7 +89,11 @@ func stageAgentUpdate(cfg *Config, request AgentUpdateRequest, client *http.Clie
 		}
 	}()
 	hash := sha256.New()
-	count, err := io.Copy(io.MultiWriter(file, hash), io.LimitReader(response.Body, maxAgentUpdateBytes+1))
+	var sink io.Writer = io.MultiWriter(file, hash)
+	if progress != nil {
+		sink = &progressWriter{inner: sink, total: response.ContentLength, report: progress}
+	}
+	count, err := io.Copy(sink, io.LimitReader(response.Body, maxAgentUpdateBytes+1))
 	if err != nil {
 		return "", err
 	}
@@ -207,9 +213,15 @@ func (a *Agent) updateAgent(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 400, "bad_request", err.Error())
 		return
 	}
+	a.beginAgentUpdate(w, request)
+}
+
+// beginAgentUpdate downloads, verifies and switches to the binary with the
+// given digest, as a task whose byte counts show the download's progress.
+func (a *Agent) beginAgentUpdate(w http.ResponseWriter, request AgentUpdateRequest) {
 	a.begin(w, "update-agent", func(task *Task) error {
 		cfg := a.config()
-		staged, err := stageAgentUpdate(cfg, request, &http.Client{Timeout: 5 * time.Minute})
+		staged, err := stageAgentUpdate(cfg, request, &http.Client{Timeout: 5 * time.Minute}, task.setBytes)
 		if err != nil {
 			return err
 		}
@@ -220,4 +232,18 @@ func (a *Agent) updateAgent(w http.ResponseWriter, r *http.Request) {
 		}
 		return nil
 	})
+}
+
+type progressWriter struct {
+	inner    io.Writer
+	total    int64
+	received int64
+	report   func(received, total int64)
+}
+
+func (p *progressWriter) Write(b []byte) (int, error) {
+	n, err := p.inner.Write(b)
+	p.received += int64(n)
+	p.report(p.received, max(p.total, 0))
+	return n, err
 }

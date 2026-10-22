@@ -16,7 +16,8 @@
  */
 
 import { createReadStream } from 'node:fs';
-import { readdir, stat } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { readFile, readdir, stat } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { AgentPlatform } from '@comfy/shared';
@@ -168,4 +169,34 @@ export function readBinary(binary: FoundBinary): NodeJS.ReadableStream {
  */
 export function binaryDownloadPath(target: string): string {
   return `/api/deployments/agent/${target}`;
+}
+
+export interface LatestBinary {
+  version: string | null;
+  sha256: string;
+  sizeBytes: number;
+}
+
+const digests = new Map<string, { mtimeMs: number; sha256: string }>();
+
+/**
+ * What an agent on this platform should be running: the build's version (from
+ * the version.txt the release script writes beside the binaries) and its
+ * SHA-256, which is what the agent verifies an update against. The digest is
+ * cached per file until the file changes, since agents ask on a timer.
+ */
+export async function latestBinary(binary: FoundBinary): Promise<LatestBinary> {
+  const info = await stat(binary.path);
+  let entry = digests.get(binary.path);
+  if (!entry || entry.mtimeMs !== info.mtimeMs) {
+    entry = { mtimeMs: info.mtimeMs, sha256: createHash('sha256').update(await readFile(binary.path)).digest('hex') };
+    digests.set(binary.path, entry);
+  }
+  let version: string | null = null;
+  try {
+    version = (await readFile(join(dirname(binary.path), 'version.txt'), 'utf8')).trim() || null;
+  } catch {
+    // Built before the release script wrote one.
+  }
+  return { version, sha256: entry.sha256, sizeBytes: info.size };
 }

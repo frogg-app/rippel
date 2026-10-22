@@ -22,7 +22,7 @@ func TestAgentUpdateOnlyFetchesConfiguredServerWithHash(t *testing.T) {
 	cfg := testConfig(t)
 	cfg.ServerURL = server.URL
 	cfg.DeploymentID = "enrolled"
-	path, err := stageAgentUpdate(cfg, AgentUpdateRequest{SHA256: fmt.Sprintf("%x", sha256.Sum256(data))}, server.Client())
+	path, err := stageAgentUpdate(cfg, AgentUpdateRequest{SHA256: fmt.Sprintf("%x", sha256.Sum256(data))}, server.Client(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -31,7 +31,7 @@ func TestAgentUpdateOnlyFetchesConfiguredServerWithHash(t *testing.T) {
 		t.Fatal("wrong staged bytes")
 	}
 	os.Remove(path)
-	if _, err := stageAgentUpdate(cfg, AgentUpdateRequest{SHA256: strings.Repeat("0", 64)}, server.Client()); err == nil {
+	if _, err := stageAgentUpdate(cfg, AgentUpdateRequest{SHA256: strings.Repeat("0", 64)}, server.Client(), nil); err == nil {
 		t.Fatal("accepted bad hash")
 	}
 	files, _ := os.ReadDir(cfg.Home)
@@ -47,7 +47,7 @@ func TestAgentUpdateRefusesRedirectAndMissingEnrollment(t *testing.T) {
 	cfg := testConfig(t)
 	cfg.ServerURL = source.URL
 	cfg.DeploymentID = "enrolled"
-	if _, err := stageAgentUpdate(cfg, AgentUpdateRequest{SHA256: strings.Repeat("a", 64)}, source.Client()); err == nil {
+	if _, err := stageAgentUpdate(cfg, AgentUpdateRequest{SHA256: strings.Repeat("a", 64)}, source.Client(), nil); err == nil {
 		t.Fatal("followed redirect")
 	}
 	cfg.DeploymentID = ""

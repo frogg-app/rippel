@@ -43,6 +43,7 @@ import {
   binaryDownloadPath,
   binaryFor,
   findBinary,
+  latestBinary,
   readBinary,
 } from './binaries.js';
 import {
@@ -245,7 +246,7 @@ export function makeDeploymentRoutes(deps: DeployDeps = {}) {
      * not be mirrored, and stopped working the moment anything renamed it. A
      * machine is paired by a code now, so the file itself is just a file.
      */
-    app.get<{ Params: { target: string } }>('/deployments/agent/:target', async (req, reply) => {
+    const serveBinary = async (req: FastifyRequest<{ Params: { target: string } }>, reply: FastifyReply) => {
       const binary = await findBinary(req.params.target);
       if (!binary) {
         const known = AGENT_BINARIES.map((b) => b.target).join(', ');
@@ -265,6 +266,17 @@ export function makeDeploymentRoutes(deps: DeployDeps = {}) {
         // build, so it is stated in a header rather than left implied.
         .header('cache-control', 'public, max-age=300')
         .send(readBinary(binary));
+    };
+    app.get('/deployments/agent/:target', serveBinary);
+    // Where a paired agent fetches its own update from (update.go). Same public
+    // bytes; the agent checks them against the SHA-256 it was given.
+    app.get('/deployments/:id/agent/:target', serveBinary);
+
+    /** The version and digest an agent compares itself against to offer an update. */
+    app.get<{ Params: { target: string } }>('/deployments/agent/:target/latest', async (req, reply) => {
+      const binary = await findBinary(req.params.target);
+      if (!binary) return reply.code(404).send({ error: 'not_found', message: `This rippel has no ${req.params.target} agent built.` });
+      return reply.header('cache-control', 'no-store').send(await latestBinary(binary));
     });
 
     // ------------------------------------------------------------ agent-facing
@@ -761,7 +773,7 @@ export function makeDeploymentRoutes(deps: DeployDeps = {}) {
         if (!target) return reply.code(422).send({ message: 'Automatic updates need an explicitly known platform and architecture.' });
         const binary = await findBinary(target);
         if (!binary) return reply.code(404).send({ message: `Build the ${target} agent on this rippel server first.` });
-        const sha256 = createHash('sha256').update(await readFile(binary.path)).digest('hex');
+        const { sha256 } = await latestBinary(binary);
         return { task: await agent.updateAgent(targetOf(row),sha256) };
       } catch (cause) { return agentFailure(reply,cause); }
     });

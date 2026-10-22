@@ -40,6 +40,7 @@ type Agent struct {
 	cfg         *Config
 	tasks       *Tasks
 	onChange    func()
+	updates     updateChecker
 }
 
 func NewAgent(cfg *Config, onChange func()) *Agent {

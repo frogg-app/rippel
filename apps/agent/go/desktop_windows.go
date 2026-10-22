@@ -126,6 +126,11 @@ func startDesktop(a *Agent, quit func()) (func(), error) {
 			// The owner at the keyboard, so pause does not apply: it stops remote
 			// management, not the person the machine belongs to.
 			a.power(w, strings.TrimPrefix(r.URL.Path, "/engine/"))
+		case r.Method == "POST" && r.URL.Path == "/update/check":
+			writeJSON(w, 200, a.checkForUpdate(&http.Client{Timeout: 10 * time.Second}))
+		case r.Method == "POST" && r.URL.Path == "/update":
+			// The owner asked from the tray, so this is not subject to pause either.
+			a.desktopUpdate(w)
 		case r.Method == "POST" && r.URL.Path == "/quit":
 			a.control.Lock()
 			defer a.control.Unlock()
@@ -145,6 +150,7 @@ func startDesktop(a *Agent, quit func()) (func(), error) {
 	server := &http.Server{Handler: handler, ReadHeaderTimeout: 5 * time.Second}
 	go server.Serve(listener)
 	stop := make(chan struct{})
+	go a.watchForUpdates(stop)
 	var processMu sync.Mutex
 	var process *os.Process
 	go func() {
