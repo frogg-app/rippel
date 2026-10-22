@@ -302,9 +302,25 @@ export function SurfaceStage({ children }: { children: ReactNode }) {
           <RippleBackdrop className={styles.canvas} water={surface.water()} interactive={false} />
         </div>
       ) : null}
+      {/* In sRGB, not SVG's default linearRGB: a filter in linearRGB converts
+          every pixel to linear light and back at 8 bits, which on this dark
+          palette crushes the shadows into visible bands and shifts their tone,
+          even with the warp and blur at zero. The app then wore that cast
+          until the filter came off at the end of the rise, and the whole
+          screen, background first, jumped to its real colours. In sRGB a
+          resting filter passes the app through unchanged, so taking it off
+          changes nothing. */}
       <svg className={styles.defs} aria-hidden>
         {[SINK_FILTER, RISE_FILTER].map((id) => (
-          <filter key={id} id={id} x="-10%" y="-10%" width="120%" height="120%">
+          <filter
+            key={id}
+            id={id}
+            x="-10%"
+            y="-10%"
+            width="120%"
+            height="120%"
+            colorInterpolationFilters="sRGB"
+          >
             <feTurbulence
               type="fractalNoise"
               baseFrequency="0.008 0.016"
