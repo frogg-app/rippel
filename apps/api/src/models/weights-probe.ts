@@ -14,6 +14,7 @@
 import type { Uuid } from '@comfy/shared';
 import { query } from '../db.js';
 import { knownLayouts } from './url-layout.js';
+import { UNLOADABLE_REASON } from './install-guard.js';
 import { classifyWeightKeys, readSafetensorsKeys, WEIGHTS_LAYOUTS, type WeightsLayout } from './weights-layout.js';
 
 const FAILED_PROBE_TTL_MS = 10 * 60_000;
@@ -47,10 +48,11 @@ export async function weightsLayouts(ids: readonly Uuid[], budgetMs = 6_000): Pr
   const rows = await query<{ id: Uuid; type: string; filename: string; layout: string | null; url: string | null }>(
     `SELECT m.id, m.type, m.filename, m.metadata->>'weightsLayout' AS layout,
             (SELECT mi.url FROM model_installs mi
-              WHERE mi.filename = m.filename AND mi.status = 'complete' AND mi.url LIKE 'https://%'
+              WHERE mi.filename = m.filename AND mi.url LIKE 'https://%'
+                AND (mi.status = 'complete' OR (mi.status = 'failed' AND mi.error = $2))
               ORDER BY mi.finished_at DESC NULLS LAST LIMIT 1) AS url
        FROM models m WHERE m.id = ANY($1::uuid[])`,
-    [ids],
+    [ids, UNLOADABLE_REASON],
   );
 
   const pending: Promise<void>[] = [];

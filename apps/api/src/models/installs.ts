@@ -26,6 +26,7 @@ import { AgentModelTransport } from './transports/agent.js';
 import { ComfyManagerTransport } from './transports/comfy-manager.js';
 import type { InstallRequest, ModelTransport } from './transport.js';
 import { TransportError, TransportUnavailable } from './transport.js';
+import { assertInstallable, UnloadableFile, UNLOADABLE_REASON, unloadableAfterDownload } from './install-guard.js';
 
 export interface InstallRow {
   approval_required?: { hostname: string } | null;
@@ -290,7 +291,7 @@ export async function refreshInstall(row: InstallRow, baseUrl: string): Promise<
     const folder = folderForRow(row);
     try {
       if (folder && (await backendHasFile(baseUrl, folder, row.filename))) {
-        return finish(row.id, 'complete', 'Installed and visible to ComfyUI', bytesReceived);
+        return complete(row, bytesReceived);
       }
     } catch {
       // Unreachable: leave it in flight and try again next tick.
@@ -315,7 +316,7 @@ export async function refreshInstall(row: InstallRow, baseUrl: string): Promise<
   if (folder) {
     try {
       if (await backendHasFile(baseUrl, folder, row.filename)) {
-        return finish(row.id, 'complete', 'Installed and visible to ComfyUI', bytesReceived);
+        return complete(row, bytesReceived);
       }
     } catch {
       // Backend unreachable; try again next tick rather than inventing a state.
@@ -356,6 +357,16 @@ async function update(
     [row.id, status, detail, bytesReceived, JSON.stringify(approval)],
   );
   return toModelInstall(rows[0] ?? row);
+}
+
+/**
+ * The file has landed. When its header could not be read before the download,
+ * it is read now; an unloadable file fails the install instead of becoming a
+ * model anyone is offered (see install-guard.ts).
+ */
+async function complete(row: InstallRow, bytesReceived: number | null): Promise<ModelInstall> {
+  if (await unloadableAfterDownload(row.url)) return fail(row.id, UNLOADABLE_REASON);
+  return finish(row.id, 'complete', 'Installed and visible to ComfyUI', bytesReceived);
 }
 
 async function finish(
@@ -404,6 +415,10 @@ export async function createInstall(params: {
   /** Recorded as `waiting` behind this install rather than started now. */
   after?: Uuid;
 }): Promise<InstallRow> {
+  // Every install record is made here, so this is where a file no ComfyUI
+  // loader can read is refused, whichever button asked for it.
+  await assertInstallable(params.entry.url);
+
   // The catalogue ref is "<save_path>/<filename>" — the exact tuple the
   // transport's whitelist matches on. Splitting it back out here keeps the
   // save_path out of the API surface while preserving it for the request.
@@ -502,7 +517,20 @@ export async function startInstall(params: {
  * Hand a recorded install to its transport. Shared by `startInstall` and by
  * the poller, which starts waiting installs when their turn comes.
  */
-async function dispatchInstall(row: InstallRow, transport: ModelTransport): Promise<ModelInstall> {
+async function dispatchInstall(
+  row: InstallRow,
+  /** Or how to get one, so a refused file never wakes the backend. */
+  transportOr: ModelTransport | (() => Promise<ModelTransport>),
+): Promise<ModelInstall> {
+  // Again at the hand-off: a waiting part, a retry, or a row queued before the
+  // check existed has not been through createInstall's guard (or not lately).
+  try {
+    await assertInstallable(row.url);
+  } catch (err) {
+    if (err instanceof UnloadableFile) await fail(row.id, UNLOADABLE_REASON);
+    throw err;
+  }
+  const transport = typeof transportOr === 'function' ? await transportOr() : transportOr;
   // The exact size, asked once, before anything is downloading. It is a HEAD
   // against the model host, so it costs a round trip and can fail in every way
   // a network call can — and none of those failures may stop an install. A null
@@ -588,8 +616,7 @@ export async function dispatchWaitingInstalls(log: (msg: string) => void = () =>
     );
     if (!claimed) continue;
     try {
-      const transport = await requireTransport(row.base_url, row.backend_id);
-      await dispatchInstall(claimed, transport);
+      await dispatchInstall(claimed, () => requireTransport(row.base_url, row.backend_id));
       log(`[installs] ${row.filename} on ${row.backend_id}: waiting -> queued`);
     } catch (err) {
       // dispatchInstall marks a transport refusal failed itself; this is for a

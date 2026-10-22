@@ -63,7 +63,12 @@ export async function knownLayouts(urls: readonly string[]): Promise<Map<string,
  * `budgetMs` keeps running (its answer is stored for next time) and reads
  * `unknown` now.
  */
-export async function layoutsForUrls(urls: readonly string[], budgetMs = 6_000): Promise<Map<string, WeightsLayout>> {
+export async function layoutsForUrls(
+  urls: readonly string[],
+  budgetMs = 6_000,
+  /** Read again a URL whose last read failed this long ago (default: 10 minutes). */
+  retryFailedAfterMs = FAILED_PROBE_TTL_MS,
+): Promise<Map<string, WeightsLayout>> {
   const out = await knownLayouts(urls);
   const todo = [...new Set(urls.filter(probeable))].filter((url) => !out.has(url));
   for (const url of todo) out.set(url, 'unknown');
@@ -74,7 +79,7 @@ export async function layoutsForUrls(urls: readonly string[], budgetMs = 6_000):
     while (next < todo.length) {
       const url = todo[next++]!;
       const failed = failedAt.get(url);
-      if (failed && Date.now() - failed < FAILED_PROBE_TTL_MS) continue;
+      if (failed && Date.now() - failed < retryFailedAfterMs) continue;
       let probe = inFlight.get(url);
       if (!probe) {
         probe = learn(url).finally(() => inFlight.delete(url));
@@ -98,9 +103,13 @@ export async function layoutsForUrls(urls: readonly string[], budgetMs = 6_000):
   return new Map(out);
 }
 
-export async function layoutForUrl(url: string | null | undefined, budgetMs?: number): Promise<WeightsLayout> {
+export async function layoutForUrl(
+  url: string | null | undefined,
+  budgetMs?: number,
+  retryFailedAfterMs?: number,
+): Promise<WeightsLayout> {
   if (!probeable(url)) return 'unknown';
-  return (await layoutsForUrls([url], budgetMs)).get(url) ?? 'unknown';
+  return (await layoutsForUrls([url], budgetMs, retryFailedAfterMs)).get(url) ?? 'unknown';
 }
 
 async function learn(url: string): Promise<WeightsLayout> {

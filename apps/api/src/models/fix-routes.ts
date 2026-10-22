@@ -9,6 +9,7 @@ import { findTemplateById } from '../workflows/registry.js';
 import { buildFixPlan } from './fix-plan.js';
 import { runnabilityFor } from './runnability.js';
 import { weightsLayoutOf } from './weights-probe.js';
+import { UnloadableFile } from './install-guard.js';
 import { planOperation, startOperation, getOperation, type ModelOperation } from './operations.js';
 export default async function fixRoutes(app: FastifyInstance) {
   app.get<{ Params: { id: string } }>('/model-operations/:id', { onRequest: [app.requireAdmin] }, async (req, reply) => {
@@ -44,6 +45,11 @@ export default async function fixRoutes(app: FastifyInstance) {
     if (!template) return reply.code(422).send({ message: 'No workflow can fix this model. Choose one from the workflow library.' });
     const plan = await buildFixPlan({ template, filename: model.filename, info });
     if (!plan.steps.length) return reply.code(422).send({ message: plan.unavailable.join(' ') || 'No automatic file fix is available. Custom-node installation is pending design approval.' });
-    return { operation: await planOperation({ backendId: backend.id, modelId: req.params.id, actorId: req.user!.id, steps: plan.steps }), unavailable: plan.unavailable };
+    try {
+      return { operation: await planOperation({ backendId: backend.id, modelId: req.params.id, actorId: req.user!.id, steps: plan.steps }), unavailable: plan.unavailable };
+    } catch (error) {
+      if (error instanceof UnloadableFile) return reply.code(422).send({ message: error.message });
+      throw error;
+    }
   });
 }

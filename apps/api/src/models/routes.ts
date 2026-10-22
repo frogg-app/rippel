@@ -40,9 +40,10 @@ import {
 } from './installs.js';
 import { readinessFor } from './readiness.js';
 import { weightsLayoutOf } from './weights-probe.js';
-import { knownLayouts, layoutForUrl, layoutsForUrls } from './url-layout.js';
+import { knownLayouts, layoutsForUrls } from './url-layout.js';
 import { workingBuildFor } from './working-builds.js';
 import { planOperation, startOperation } from './operations.js';
+import { assertInstallable, UnloadableFile } from './install-guard.js';
 import { folderOfInstalled } from '../workflows/folders.js';
 import { TransportBusy, TransportError, TransportUnavailable, type ModelTransport } from './transport.js';
 
@@ -276,9 +277,8 @@ export default async function modelInstallRoutes(app: FastifyInstance) {
         }
         // The header says no ComfyUI loader can read it: refuse before a
         // multi-gigabyte download rather than after.
-        if ((await layoutForUrl(entry.url, 5_000)) === 'diffusers') {
-          return reply.code(422).send({ error: 'unloadable', message: 'Won’t run in ComfyUI. Pick another file.' });
-        }
+        // (startInstall checks too; this answers before companions are looked at.)
+        await assertInstallable(entry.url);
         // Recording the row, telling the backend to start, and the two 409s
         // now live in `startInstall` — the single download path, shared with
         // the readiness route below.
@@ -508,7 +508,7 @@ export default async function modelInstallRoutes(app: FastifyInstance) {
               skipped.push({ ref: entry.ref, filename: entry.filename, reason: err.message });
               continue;
             }
-            if (err instanceof TransportError) {
+            if (err instanceof TransportError || err instanceof UnloadableFile) {
               skipped.push({ ref: entry.ref, filename: entry.filename, reason: err.message });
               continue;
             }
@@ -721,6 +721,9 @@ async function resolveSubject(
  * its own status rather than being flattened into a 502.
  */
 function transportFailure(reply: import('fastify').FastifyReply, err: unknown) {
+  if (err instanceof UnloadableFile) {
+    return reply.code(422).send({ error: 'unloadable', message: err.message });
+  }
   if (err instanceof TransportBusy) {
     return reply.code(409).send({ error: 'conflict', message: err.message });
   }

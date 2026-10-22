@@ -5,6 +5,7 @@ import { query, queryOne, transaction } from '../db.js';
 import { AgentError, agentClient, type ModelDownloadRequest, type ModelMoveRequest } from '../deploy/agent-client.js';
 import { clearObjectInfoCache } from '../orchestrator/preflight.js';
 import { pollBackendNow } from '../lib/backend-poller.js';
+import { assertInstallable, assertStepsInstallable, UnloadableFile, UNLOADABLE_REASON, unloadableAfterDownload } from './install-guard.js';
 export type ModelOperationStep = { kind: 'move'; request: ModelMoveRequest } | { kind: 'download'; request: ModelDownloadRequest };
 export interface ModelOperation {
   id: string; backend_id: string | null; model_id: string | null; workflow_id: string | null;
@@ -13,6 +14,8 @@ export interface ModelOperation {
 }
 export async function planOperation(input: { backendId: string; modelId?: string; workflowId?: string; actorId: string; steps: ModelOperationStep[] }) {
   if (!input.steps.length) throw new Error('There are no file operations to perform.');
+  // Every agent download is planned here: refuse a file no ComfyUI loader reads.
+  await assertStepsInstallable(input.steps);
   return queryOne<ModelOperation>(`INSERT INTO model_operations (backend_id,model_id,workflow_id,actor_id,steps)
     VALUES ($1,$2,$3,$4,$5::jsonb) RETURNING *`,
   [input.backendId, input.modelId ?? null, input.workflowId ?? null, input.actorId, JSON.stringify(input.steps)]);
@@ -51,11 +54,17 @@ async function dispatchStep(operation: ModelOperation, queue = false) {
     if (!operation.backend_id) throw new Error('This backend has been removed.');
     const step = operation.steps[operation.step_index];
     if (!step) throw new Error('Operation has no current step.');
+    // And again as it is sent: plans made before the check existed, or queued.
+    if (step.kind === 'download') await assertInstallable(step.request.url);
     const host = await agentTarget(operation.backend_id);
     const task = step.kind === 'move' ? await agentClient.moveModel(host, step.request) : await agentClient.downloadModel(host, step.request);
     await query(`UPDATE model_operations SET status = 'running', agent_task_id = $2, progress = $3::jsonb, updated_at = now() WHERE id = $1`,
       [operation.id, task.id, JSON.stringify(task)]);
   } catch (error) {
+    if (error instanceof UnloadableFile) {
+      await query(`UPDATE model_operations SET status = 'failed', error = $2, updated_at = now() WHERE id = $1`, [operation.id, UNLOADABLE_REASON]);
+      return;
+    }
     // A definite busy refusal means nothing started. Keep queued downloads
     // durable until the agent's other task ends; never replay lost responses.
     if (queue && error instanceof AgentError && error.kind === 'busy' && operation.steps[operation.step_index]?.kind === 'download') {
@@ -90,6 +99,14 @@ export async function pollOperation(operation: ModelOperation) {
   }
   if (task.status === 'running') {
     await query('UPDATE model_operations SET progress = $2::jsonb, updated_at = now() WHERE id = $1', [operation.id, JSON.stringify(task)]);
+    return;
+  }
+  // A file whose header could not be read beforehand is read once it lands.
+  const landed = operation.steps[operation.step_index];
+  if (task.status === 'done' && landed?.kind === 'download' && (await unloadableAfterDownload(landed.request.url))) {
+    await query(`UPDATE model_operations SET status='failed', progress=$3::jsonb, error=$4, agent_task_id=NULL, updated_at=now()
+      WHERE id=$1 AND status='running' AND agent_task_id=$2`, [operation.id, task.id, JSON.stringify(task), UNLOADABLE_REASON]);
+    await recheck(operation.backend_id).catch(() => {});
     return;
   }
   const next = await transaction(async (client) => {
