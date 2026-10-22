@@ -364,7 +364,8 @@ const TASK_LABEL: Record<string, string> = {
 function Activity({ status }: { status: AgentStatus }) {
   const running = status.queue?.running.length ?? 0;
   const pending = status.queue?.pending.length ?? 0;
-  const tasks = status.tasks.filter((t) => t.status === 'running' || recent(t));
+  // The agent's own update has its card above; listing it here too doubled it.
+  const tasks = status.tasks.filter((t) => t.kind !== 'update-agent' && (t.status === 'running' || recent(t)));
 
   return (
     <section className="card">
