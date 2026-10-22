@@ -61,6 +61,14 @@ type ComfyState struct {
 	GPUMemory *int64 `json:"gpuMemory"`
 	// Whether torch can run on the GPU, from the agent's own test.
 	GPUHealth *GPUHealth `json:"gpuHealth,omitempty"`
+	// What ComfyUI reports while it runs, for the tray: the device it uses
+	// (the pinned one, not whichever card is largest) and its memory in use,
+	// with the total capped at the card's own size as above.
+	GPUName   string `json:"gpuName,omitempty"`
+	VRAMTotal *int64 `json:"vramTotal,omitempty"`
+	VRAMFree  *int64 `json:"vramFree,omitempty"`
+	RAMTotal  *int64 `json:"ramTotal,omitempty"`
+	RAMFree   *int64 `json:"ramFree,omitempty"`
 }
 
 func exists(path string) bool {
@@ -177,6 +185,52 @@ func comfyVersion(stats map[string]any) *string {
 	return &version
 }
 
+// applyStats reads memory from /system_stats: the first non-CPU device is the
+// one ComfyUI uses, as the API's poller also assumes.
+func (s *ComfyState) applyStats(stats map[string]any) {
+	num := func(m map[string]any, key string) *int64 {
+		if v, ok := m[key].(float64); ok && v > 0 {
+			n := int64(v)
+			return &n
+		}
+		return nil
+	}
+	if system, ok := stats["system"].(map[string]any); ok {
+		s.RAMTotal, s.RAMFree = num(system, "ram_total"), num(system, "ram_free")
+	}
+	devices, _ := stats["devices"].([]any)
+	var device map[string]any
+	for _, d := range devices {
+		if m, ok := d.(map[string]any); ok {
+			if device == nil {
+				device = m
+			}
+			if m["type"] != "cpu" {
+				device = m
+				break
+			}
+		}
+	}
+	if device == nil {
+		return
+	}
+	if name, ok := device["name"].(string); ok {
+		s.GPUName = name
+	}
+	total, free := num(device, "vram_total"), num(device, "vram_free")
+	if total != nil && s.GPUMemory != nil && *total > *s.GPUMemory {
+		// The reported budget pools host RAM; keep what is in use, on the card's size.
+		capped := *s.GPUMemory
+		if free != nil {
+			used := max(0, *total-*free)
+			f := max(0, capped-used)
+			free = &f
+		}
+		total = &capped
+	}
+	s.VRAMTotal, s.VRAMFree = total, free
+}
+
 // ComfyStatus is the whole picture of the managed ComfyUI, as one object.
 //
 // "Running" is answered by asking the port, not by the pid file: a pid file
@@ -213,6 +267,7 @@ func ComfyStatus(cfg *Config) ComfyState {
 	}
 	if stats != nil {
 		state.Version = comfyVersion(stats)
+		state.applyStats(stats)
 	}
 	return state
 }

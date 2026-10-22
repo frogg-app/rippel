@@ -3,6 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { Lockup, Mark } from '@web/components/Mark';
+import { ChipIcon, DriveIcon, RamIcon } from '@web/library/icons';
 import { call, type AgentLogs, type AgentStatus, type AgentTask, type EngineState } from './agent';
 
 /** How often the panel asks the agent for its state while it is open. */
@@ -287,6 +288,51 @@ function Update({
 
 // ---------------------------------------------------------------- engine
 
+/** "used/total" in GB (the unit is written beside it): one decimal, whole numbers once both are 100 GB or more. */
+function usedOf(total: number, free: number | null | undefined): string {
+  const used = free == null ? null : Math.max(0, total - free);
+  const fmt = (n: number) => (total >= 100 * 1024 ** 3 ? Math.round(n / 1024 ** 3) : (n / 1024 ** 3).toFixed(1));
+  return used === null ? `${fmt(total)}` : `${fmt(used)}/${fmt(total)}`;
+}
+
+/**
+ * GPU memory and RAM in one row, as the web machine card shows them (disk is
+ * left out: it said little here). GPU memory is the device ComfyUI runs on, so
+ * it needs ComfyUI up; until then the card's own size is shown.
+ */
+function Resources({ engine }: { engine: EngineState }) {
+  const vramTotal = engine.vramTotal ?? engine.gpuMemory ?? null;
+  const vramFree = engine.vramTotal ? engine.vramFree : null;
+  const gpuUsed = vramTotal && vramFree != null ? Math.min(1, Math.max(0, 1 - vramFree / vramTotal)) : null;
+  const device = engine.gpuName || engine.gpuHealth?.device || '';
+  if (!vramTotal && !engine.ramTotal) return null;
+  return (
+    <div className="resourceRow">
+      {vramTotal ? (
+        <span className="gpu" title={device ? `GPU memory in use on ${device}` : 'GPU memory in use'}>
+          <span className="resource">
+            <ChipIcon size={13} />
+            <span className="mono">{usedOf(vramTotal, vramFree)}</span>
+            <span>GB GPU</span>
+          </span>
+          {gpuUsed !== null ? (
+            <span className="diskBar gpuBar">
+              <span className="diskFill" style={{ width: `${Math.round(gpuUsed * 100)}%` }} />
+            </span>
+          ) : null}
+        </span>
+      ) : null}
+      {engine.ramTotal ? (
+        <span className="resource" title="System memory in use, of the machine's total">
+          <RamIcon size={13} />
+          <span className="mono">{usedOf(engine.ramTotal, engine.ramFree)}</span>
+          <span>GB RAM</span>
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
 function Engine({
   engine,
   busy,
@@ -302,7 +348,6 @@ function Engine({
 }) {
   const state = !engine.installed ? 'Not installed' : engine.running ? 'Running' : 'Stopped';
   const working = busy === 'start' || busy === 'stop' || busy === 'restart';
-  const used = engine.diskTotal && engine.diskFree !== null ? 1 - engine.diskFree / engine.diskTotal : null;
 
   return (
     <section className="card">
@@ -319,14 +364,7 @@ function Engine({
         {engine.installed ? <span>port {engine.port}</span> : null}
         {engine.memoryMode ? <span>{engine.memoryMode}</span> : null}
       </div>
-      {used !== null ? (
-        <div className="disk">
-          <div className="diskBar">
-            <div className="diskFill" style={{ width: `${Math.round(used * 100)}%` }} />
-          </div>
-          <span className="diskText">{bytes(engine.diskFree!)} free of {bytes(engine.diskTotal!)}</span>
-        </div>
-      ) : null}
+      <Resources engine={engine} />
       {engine.installed ? (
         <div className="row">
           {engine.running ? (

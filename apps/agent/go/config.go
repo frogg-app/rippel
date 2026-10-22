@@ -14,7 +14,7 @@ import (
 // AgentVersion is reported on every ping and check-in. rippel stores it against
 // the deployment, so it is the one string an operator sees when asking "what is
 // actually running on that box".
-const AgentVersion = "0.4.14"
+const AgentVersion = "0.4.15"
 
 // Config is the agent's settings, and the directory they came from.
 //
