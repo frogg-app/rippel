@@ -9,7 +9,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { JobKind, Uuid } from '@comfy/shared';
-import { request } from '../lib/api';
+import { request, messageOr } from '../lib/api';
 import { formatBytes } from './catalogue';
 import { WorkflowIcon } from './icons';
 import panels from './ModelsPanels.module.css';
@@ -163,7 +163,7 @@ export function WorkflowSuggestions({
       );
       if (result.added.phase === 'ready') onReady?.();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Could not add this workflow.');
+      setError(messageOr(cause, 'Could not add this workflow.'));
     } finally {
       setAdding(null);
     }

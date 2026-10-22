@@ -16,7 +16,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { Backend, BackendStorage, StorageFile, StorageFolder } from '@comfy/shared';
 import { Mark } from '../components/Mark';
-import { ApiRequestError } from '../lib/api';
+import { ApiRequestError, messageOr } from '../lib/api';
 import { ageLabel, formatBytes, type StorageApi } from '../lib/api-storage';
 import { Notice } from './Notice';
 import { TrashIcon } from '../library/icons';
@@ -40,7 +40,7 @@ export function StoragePanel({ api, backend }: { api: StorageApi; backend: Backe
         if (!signal?.aborted) setData(next);
       } catch (cause) {
         if (signal?.aborted) return;
-        setError(cause instanceof Error ? cause.message : 'Could not read the backend.');
+        setError(messageOr(cause, 'Could not read the backend.'));
       } finally {
         if (!signal?.aborted) setLoading(false);
       }

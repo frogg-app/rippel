@@ -20,7 +20,7 @@
  */
 import { useContext, useEffect, useState, type ReactNode } from 'react';
 import type { JobKind, Model, ModelFileOperation, ModelFileProblem, ModelInstall } from '@comfy/shared';
-import { ApiRequestError } from '../lib/api';
+import { ApiRequestError, messageOr } from '../lib/api';
 import { type MissingPart, type ModelReadiness, readinessApi } from '../lib/api-jobs';
 import { modelsApi } from '../lib/api-models';
 import { AuthContext } from '../auth/context';
@@ -259,7 +259,7 @@ type FixState =
 
 function errorText(cause: unknown, fallback: string): string {
   if (cause instanceof ApiRequestError && cause.status === 403) return 'Only an admin can do this.';
-  return cause instanceof Error ? cause.message : fallback;
+  return messageOr(cause, fallback);
 }
 
 /**

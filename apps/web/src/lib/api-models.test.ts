@@ -9,6 +9,6 @@ it('preserves the busy-machine explanation when retrying an install', async () =
 it('explains a gateway failure even when the response is not JSON', async () => {
   vi.stubGlobal('fetch', vi.fn(async () => new Response('<html>Bad Gateway</html>', { status: 502 })));
   await expect(modelsApi.install('backend', 'checkpoints/svd.safetensors')).rejects.toMatchObject({
-    status: 502, message: 'The rippel server could not complete the request. Try again shortly.',
+    status: 502, message: 'rippel’s server didn’t answer. Try again in a moment.',
   });
 });

@@ -27,6 +27,7 @@
  * generation counter so a response for filters the user has already changed is
  * dropped rather than painted.
  */
+import { messageOr } from '../lib/api';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { LibraryApi, LibraryAsset, LibraryFilters } from '../lib/api-library';
 import { libraryApi as defaultApi } from '../lib/api-library';
@@ -178,7 +179,7 @@ export function useLibraryFeed({
           ...prev,
           loading: false,
           loadingMore: false,
-          error: cause instanceof Error ? cause.message : 'Could not load your library.',
+          error: messageOr(cause, 'Could not load your library.'),
         }));
       } finally {
         if (generation.current === mine) inFlight.current = false;

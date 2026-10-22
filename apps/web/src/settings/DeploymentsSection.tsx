@@ -13,7 +13,7 @@ import { CheckIcon, ChipIcon, CopyIcon, DownloadIcon, DriveIcon, PlusIcon, RamIc
 import { Mark } from '../components/Mark';
 import { DeleteButton } from '../components/ConfirmDelete';
 import { gb, memoryReading } from '../lib/format';
-import { ApiRequestError } from '../lib/api';
+import { ApiRequestError, errorDetail, errorLine, messageOr } from '../lib/api';
 import {
   deploymentsApi as defaultApi,
   type DeploymentsApi,
@@ -41,7 +41,9 @@ export function DeploymentsSection({ api = defaultApi }: { api?: DeploymentsApi 
   const [failed, setFailed] = useState<string | null>(null);
   const [adding, setAdding] = useState<null | 'ssh' | 'manual' | 'command'>(null);
   const [installMethods, setInstallMethods] = useState<Record<string, 'manual' | 'command'>>({});
-  const [toast, setToast] = useState<string | null>(null);
+  // `detail` is the raw failure, kept for the hover; the line is what people read.
+  const [toast, setToast] = useState<{ text: string; detail?: string } | null>(null);
+  const showToast = useCallback((text: string, detail?: string) => setToast({ text, detail }), []);
   const deploymentRevision = useRef(0);
   // Memory comes from the linked backend, which is what ComfyUI reports it to.
   const { backends } = useBackends();
@@ -56,7 +58,7 @@ export function DeploymentsSection({ api = defaultApi }: { api?: DeploymentsApi 
         setFailed(null);
       } catch (cause) {
         if (signal?.aborted || revision !== deploymentRevision.current) return;
-        setFailed(cause instanceof Error ? cause.message : 'Could not load backends.');
+        setFailed(messageOr(cause, 'Could not load backends.'));
       }
     },
     [api],
@@ -125,7 +127,7 @@ export function DeploymentsSection({ api = defaultApi }: { api?: DeploymentsApi 
               deploymentRevision.current++;
               setDeployments((prev) => (prev ?? []).filter((d) => d.id !== deployment.id));
             }}
-            onError={setToast}
+            onError={showToast}
           />
         ))}
       </ul>
@@ -151,7 +153,7 @@ export function DeploymentsSection({ api = defaultApi }: { api?: DeploymentsApi 
           api={api}
           onCancel={() => setAdding(null)}
           onCreated={deployment => { setInstallMethods(previous => ({...previous, [deployment.id]: adding})); onCreated(deployment); }}
-          onError={setToast}
+          onError={showToast}
         />
       ) : (
         <div className={styles.addRow}>
@@ -170,8 +172,8 @@ export function DeploymentsSection({ api = defaultApi }: { api?: DeploymentsApi 
       )}
 
       {toast ? (
-        <div className={`${shared.toast} pop`} role="status">
-          {toast}
+        <div className={`${shared.toast} pop`} role="status" title={toast.detail}>
+          {toast.text}
         </div>
       ) : null}
     </div>
@@ -206,7 +208,7 @@ function DeploymentCard({
   api: DeploymentsApi;
   onChange: (next: Deployment) => void;
   onRemoved: () => void;
-  onError: (message: string) => void;
+  onError: (message: string, detail?: string) => void;
 }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [task, setTask] = useState<AgentTask | null>(null);
@@ -262,7 +264,7 @@ function DeploymentCard({
           setTask({
             ...current,
             status: 'failed',
-            error: cause instanceof Error ? cause.message : 'Lost contact with the agent.',
+            error: messageOr(cause, 'Lost contact with the agent.'),
           });
           return;
         }
@@ -278,20 +280,20 @@ function DeploymentCard({
     try {
       await fn();
     } catch (cause) {
-      onError(cause instanceof Error ? cause.message : `Could not ${label}.`);
+      onError(errorLine(cause, label), errorDetail(cause));
     } finally {
       setBusy(null);
     }
   };
 
   const refresh = () =>
-    act('read the machine', async () => {
+    act(`read ${deployment.name}`, async () => {
       const status = await api.status(deployment.id);
       onChange({ ...deployment, comfy: status.comfy, status: 'online' });
     });
 
   const test = () =>
-    act('test the agent', async () => {
+    act(`test ${deployment.name}`, async () => {
       setProbe(null);
       const result = await api.probe(deployment.id);
       setProbe(result);
@@ -314,8 +316,9 @@ function DeploymentCard({
         const status = await api.status(deployment.id);
         onChange({ ...next, comfy: status.comfy });
       } catch (cause) {
-        const detail = cause instanceof Error ? ` ${cause.message}` : '';
-        onError(`The agent answered, but its engine status could not be refreshed.${detail}`);
+        const line = errorLine(cause, 'read it');
+        const reason = line.startsWith('Couldn’t') ? ' Try Refresh.' : ` ${line}`;
+        onError(`The agent answered, but its engine status could not be refreshed.${reason}`, errorDetail(cause));
       }
     });
 
@@ -458,7 +461,7 @@ function DeploymentCard({
     try {
       await api.remove(deployment.id);
     } catch (cause) {
-      throw new Error(cause instanceof Error ? cause.message : 'Could not remove the backend.');
+      throw new Error(messageOr(cause, 'Could not remove the backend.'));
     }
     onRemoved();
     refreshBackends();
@@ -502,8 +505,9 @@ function DeploymentCard({
             </label>
             <p className={styles.memoryNote}>{comfy.memoryMode ? 'Off by default · May be slower' : 'Update the agent to change memory usage.'}</p>
             <button className={shared.action} type="button" onClick={() => void applyMemory()}
+              aria-label={comfy.running ? 'Apply memory and restart' : 'Apply memory'}
               disabled={!comfy.memoryMode || !online || busy !== null || memory === comfy.memoryMode}>
-              {busy === 'apply memory settings' ? 'Applying…' : comfy.running ? 'Apply memory and restart' : 'Apply memory'}
+              {busy === 'apply memory settings' ? 'Applying…' : comfy.running ? 'Apply and restart' : 'Apply'}
             </button>
           </div>
           <div className={styles.computeSetting}>
@@ -514,8 +518,10 @@ function DeploymentCard({
             </label>
             <p className={styles.memoryNote}>{typeof comfy.vaeOnGpu === 'boolean' ? 'On by default · CPU when off' : 'Update the agent to choose where images are decoded.'}</p>
             <button className={shared.action} type="button" onClick={() => void applyVAE()}
+              aria-label={comfy.running ? 'Apply decoder setting and restart' : 'Apply decoder setting'}
               disabled={typeof comfy.vaeOnGpu !== 'boolean' || !online || busy !== null || vaeOnGpu === comfy.vaeOnGpu}>
-              {busy === 'apply VAE settings' ? 'Applying…' : comfy.running ? 'Apply decoder setting and restart' : 'Apply decoder setting'}
+              {/* Short, so it fits its column; the row says what is applied. */}
+              {busy === 'apply VAE settings' ? 'Applying…' : comfy.running ? 'Apply and restart' : 'Apply'}
             </button>
           </div>
           {busy === 'apply memory settings' || busy === 'apply VAE settings' ? <div className={shared.loading} role="status"><Mark size={16} ripple="loop" />Applying backend settings…</div> : null}
@@ -920,7 +926,7 @@ function PairingPanel({
         }
         setState({
           kind: 'error',
-          message: cause instanceof Error ? cause.message : 'Could not get a pairing code.',
+          message: messageOr(cause, 'Could not get a pairing code.'),
         });
       }
     },
@@ -1180,7 +1186,7 @@ function InstallInstructionsPanel({
       .then(setData)
       .catch((cause: unknown) => {
         if (controller.signal.aborted) return;
-        setFailed(cause instanceof Error ? cause.message : 'Could not build the install command.');
+        setFailed(messageOr(cause, 'Could not build the install command.'));
       });
     return () => controller.abort();
   }, [api, deployment.id]);
@@ -1332,7 +1338,7 @@ function ManualInstall({
   api: DeploymentsApi;
   onCancel: () => void;
   onCreated: (deployment: Deployment) => void;
-  onError: (message: string) => void;
+  onError: (message: string, detail?: string) => void;
 }) {
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
@@ -1352,7 +1358,7 @@ function ManualInstall({
       if (cause instanceof ApiRequestError) {
         setError({ field: (cause as ApiRequestError & { field?: string }).field, message: cause.message });
       } else {
-        onError(cause instanceof Error ? cause.message : 'Could not add the backend.');
+        onError(errorLine(cause, 'add the backend'), errorDetail(cause));
       }
     } finally {
       setBusy(false);
@@ -1474,7 +1480,7 @@ function SshInstallForm({
       if (cause instanceof ApiRequestError) {
         setError({ field: (cause as ApiRequestError & { field?: string }).field, message: cause.message });
       } else {
-        setError({ message: cause instanceof Error ? cause.message : 'The install could not start.' });
+        setError({ message: messageOr(cause, 'The install could not start.') });
       }
     } finally {
       setBusy(false);

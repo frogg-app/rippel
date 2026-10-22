@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { JobKind } from '@comfy/shared';
-import { request } from '../lib/api';
+import { request, messageOr } from '../lib/api';
 import { Dropdown } from '../components/Dropdown';
 import styles from './ModelsPanels.module.css';
 interface Entry { name: string; title: string; description: string; models: string[]; tags: string[] }
@@ -40,7 +40,7 @@ function OfficialEntry({entry,backendId,version,family}:{entry:Entry;backendId:s
   if(action==='test'){await request(`/workflow-library/${importId}/test`,{method:'POST',body:{backendId}});setMessage('Test queued on this backend. The workflow becomes available after the test produces an output.');}
   else if(action==='import'){const result=await request<{imported:{id:string}}>(`/workflow-library/import`,{method:'POST',body});setImportId(result.imported.id);setMessage('Imported for setup. A successful test is required before generation.');}
   else {setCheck(await request<Check>('/workflow-library/check',{method:'POST',body}));}
- }catch(e){setError(e instanceof Error ? e.message : 'Could not check workflow.');}finally{setBusy(false);}}
+ }catch(e){setError(messageOr(e, 'Could not check workflow.'));}finally{setBusy(false);}}
  return <li className={styles.sheetOption}><div className={styles.sheetOptionBody}>
   <button className={styles.workflowHeading} type="button" aria-expanded={open} onClick={()=>setOpen(!open)}>{entry.title}</button>
   <p className={styles.sheetOptionDesc}>{entry.description}</p>
