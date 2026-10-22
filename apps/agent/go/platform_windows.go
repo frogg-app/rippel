@@ -31,7 +31,7 @@ const (
 	stillActive             = 259
 	processQueryLimitedInfo = 0x1000
 	createNewProcessGroup   = 0x00000200
-	detachedProcess         = 0x00000008
+	createNoWindow          = 0x08000000
 )
 
 // diskSpace returns free and total bytes on the volume holding path.
@@ -105,14 +105,20 @@ func itoa(n int) string {
 	return string(digits)
 }
 
-// detach starts ComfyUI with no console and its own process group, so closing
-// the window the agent was started from does not take the GPU down with it.
+// detach starts ComfyUI in its own process group, so closing the window the
+// agent was started from does not take the GPU down with it.
+//
+// It gets a hidden console rather than none (CREATE_NO_WINDOW, not
+// DETACHED_PROCESS): a venv's Scripts\python.exe is a launcher that starts the
+// real interpreter as a child, and a console program started by a process with
+// no console is given a fresh, visible one. With a hidden console the child
+// inherits that instead.
 func detach(cmd *exec.Cmd) {
 	attr := cmd.SysProcAttr
 	if attr == nil {
 		attr = &syscall.SysProcAttr{}
 	}
-	attr.CreationFlags |= createNewProcessGroup | detachedProcess
+	attr.CreationFlags |= createNewProcessGroup | createNoWindow
 	cmd.SysProcAttr = attr
 }
 
