@@ -6,6 +6,7 @@ import (
 	"bufio"
 	"bytes"
 	"crypto/rand"
+	"crypto/sha256"
 	"embed"
 	"encoding/hex"
 	"encoding/json"
@@ -234,12 +235,24 @@ func prepareForeground(command string, argc int) {
 // start it: the Tauri app when embedded, otherwise the PowerShell script.
 func trayLauncher(home string) (func() *exec.Cmd, error) {
 	if exe, err := trayBin.ReadFile("traybin/rippel-tray.exe"); err == nil {
-		path := filepath.Join(home, "rippel-tray.exe")
-		// Rewritten only when it differs: the old copy may still be running
-		// during an update, and Windows will not replace a running executable.
+		// Named by content: during an update the previous agent's tray can still
+		// be running from the old file, and Windows will not overwrite a running
+		// executable. A fixed name made that write fail, and the new agent then
+		// came up with no tray at all.
+		sum := sha256.Sum256(exe)
+		path := filepath.Join(home, "rippel-tray-"+hex.EncodeToString(sum[:4])+".exe")
 		if current, err := os.ReadFile(path); err != nil || !bytes.Equal(current, exe) {
 			if err := os.WriteFile(path, exe, 0700); err != nil {
 				return nil, err
+			}
+		}
+		// Older copies are removed when nothing is running them; one still in
+		// use fails to delete and goes on the next start.
+		if old, err := filepath.Glob(filepath.Join(home, "rippel-tray*.exe")); err == nil {
+			for _, stale := range old {
+				if stale != path {
+					_ = os.Remove(stale)
+				}
 			}
 		}
 		return func() *exec.Cmd { return exec.Command(path) }, nil

@@ -164,6 +164,7 @@ func runAgent() error {
 	}
 	if closeDesktop != nil {
 		defer closeDesktop()
+		releaseDesktop = closeDesktop
 	}
 
 	serviceLog("v%s on %s listening on %s", AgentVersion, hostname(), address)

@@ -21,6 +21,11 @@ import (
 
 const maxAgentUpdateBytes int64 = 64 << 20
 
+// releaseDesktop closes the tray before the agent exits for an update. os.Exit
+// skips the run loop's deferred cleanup, which left the old tray showing "Lost
+// the agent" beside the new one. Set by run once the desktop is up.
+var releaseDesktop = func() {}
+
 type AgentUpdateRequest struct {
 	SHA256 string `json:"sha256"`
 }
@@ -153,7 +158,7 @@ func launchAgentUpdate(cfg *Config, staged string) error {
 		return err
 	}
 	_ = helper.Process.Release()
-	go func() { time.Sleep(time.Second); os.Exit(0) }()
+	go func() { time.Sleep(time.Second); releaseDesktop(); os.Exit(0) }()
 	return nil
 }
 
