@@ -226,7 +226,7 @@ export function InstalledDrawer({
                   {generates(model.type) ? 'Workflows' : 'What is this?'}
                 </button>
               ) : null}
-              {onRemove ? <RemoveButton model={model} onRemove={onRemove} /> : null}
+              {onRemove ? <RemoveButton model={model} machines={hosts} onRemove={onRemove} /> : null}
             </div>
           ) : null}
 

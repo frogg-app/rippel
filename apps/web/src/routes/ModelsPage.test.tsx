@@ -1148,7 +1148,8 @@ describe('ModelsPage', () => {
       const user = await openTab(/^Remove LTX-Video 2B$/);
       // Not yet: the first press only arms the confirm.
       expect(api.calls.filter((call) => call.startsWith('remove:'))).toEqual([]);
-      await user.click(screen.getByRole('button', { name: 'Confirm' }));
+      expect(screen.getByText('Delete LTX-Video 2B from desktop-6900xt?')).toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: 'Delete' }));
 
       await waitFor(() => expect(api.calls).toContain('remove:ltx'));
       await waitFor(() => expect(screen.queryByText('LTX-Video 2B')).not.toBeInTheDocument());

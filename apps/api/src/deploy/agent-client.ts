@@ -54,6 +54,8 @@ export interface AgentClient {
   setMemoryMode(target: AgentTarget, mode: 'auto' | 'ram'): Promise<AgentTask>;
   updateAgent(target: AgentTarget, sha256: string): Promise<AgentTask>;
   moveModel(target: AgentTarget, body: ModelMoveRequest): Promise<AgentTask>;
+  /** Deletes one file under models/; answers only once it is gone (or was never there). */
+  deleteModel(target: AgentTarget, path: string): Promise<{ deleted: string; missing: boolean }>;
   downloadModel(target: AgentTarget, body: ModelDownloadRequest): Promise<AgentTask>;
   ping(target: AgentTarget): Promise<AgentPingResult>;
   status(target: AgentTarget): Promise<AgentStatusResult>;
@@ -138,6 +140,7 @@ export function makeAgentClient(opts: { fetchImpl?: typeof fetch; timeoutMs?: nu
     updateAgent: async (target, sha256) => (await call<{ task: AgentTask }>(target, '/agent/update', { method: 'POST', body: { sha256 } })).task,
     moveModel: async (target, body) =>
       (await call<{ task: AgentTask }>(target, '/agent/models/move', { method: 'POST', body })).task,
+    deleteModel: (target, path) => call(target, '/agent/models/delete', { method: 'POST', body: { path } }),
     downloadModel: async (target, body) =>
       (await call<{ task: AgentTask }>(target, '/agent/models/download', { method: 'POST', body })).task,
     ping: (target) => call<AgentPingResult>(target, '/agent/ping'),

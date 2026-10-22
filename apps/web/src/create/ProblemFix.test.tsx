@@ -12,7 +12,7 @@ vi.mock('../lib/api-jobs', async (importOriginal) => {
 });
 vi.mock('../lib/api-models', async (importOriginal) => {
   const original = await importOriginal<typeof import('../lib/api-models')>();
-  return { ...original, modelsApi: { ...original.modelsApi, installStatus: vi.fn(), removeModel: vi.fn() } };
+  return { ...original, modelsApi: { ...original.modelsApi, installStatus: vi.fn(), removeModel: vi.fn(), backends: vi.fn() } };
 });
 
 const { readinessApi } = await import('../lib/api-jobs');
@@ -58,7 +58,12 @@ describe('ProblemFix', () => {
     vi.mocked(modelsApi.removeModel).mockResolvedValue({ removed: true, removedFromDisk: false, note: 'n' });
     const { onChanged } = show(unloadable);
     expect(screen.getByRole('link', { name: 'Pick another model' })).toHaveAttribute('title', unloadable.detail);
+    vi.mocked(modelsApi.backends).mockResolvedValue([{ id: 'b1', name: 'desktop-6900xt' } as never]);
     fireEvent.click(screen.getByRole('button', { name: 'Remove this file' }));
+    // Asks first, naming the machine; nothing is deleted yet.
+    expect(await screen.findByText(/from desktop-6900xt\?/)).toBeInTheDocument();
+    expect(modelsApi.removeModel).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
     await waitFor(() => expect(onChanged).toHaveBeenCalled());
   });
 

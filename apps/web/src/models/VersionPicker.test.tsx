@@ -1,9 +1,11 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { useEffect } from 'react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ModelCatalogEntry, ModelVariant } from '@comfy/shared';
 import { versionTags } from './discover';
-import { useVariants, variantLabel, VersionPicker, type LoadVariants } from './VersionPicker';
+import { useUnloadableVariants, useVariants, variantLabel, VersionPicker, type LoadVariants } from './VersionPicker';
+import { layoutDeps, resetLayouts, variantUrl } from './weightsLayouts';
 
 const variants: ModelVariant[] = [
   { path: 'flux1-dev-Q8_0.gguf', filename: 'flux1-dev-Q8_0.gguf', kind: 'gguf', precision: 'Q8_0', distilled: false },
@@ -93,5 +95,58 @@ describe('versionTags', () => {
     expect(versionTags(entry)).toEqual(['gguf']);
     // Nothing installable, nothing to filter on.
     expect(versionTags({ ...entry, installBlockedReason: 'Access required' })).toEqual([]);
+  });
+});
+
+describe('versions that will not load', () => {
+  const realFetch = layoutDeps.fetch;
+  afterEach(() => {
+    layoutDeps.fetch = realFetch;
+    resetLayouts();
+  });
+
+  // The Muinez shape: a diffusers transformer beside a single-file build.
+  const repoEntry = {
+    ref: 'hugging-face:Muinez/ltxvideo-2b-nsfw',
+    filename: 'model_weights_0306.safetensors',
+    url: 'https://huggingface.co/Muinez/ltxvideo-2b-nsfw/resolve/main/model_weights_0306.safetensors',
+    variants: [
+      { path: 'transformer/model_weights_0306.safetensors', filename: 'model_weights_0306.safetensors', kind: 'full', precision: 'bf16', distilled: false },
+      { path: 'ltxv-2b-single.safetensors', filename: 'ltxv-2b-single.safetensors', kind: 'full', precision: null, distilled: false },
+    ],
+  } as ModelCatalogEntry;
+
+  function Checked() {
+    const versions = useVariants(repoEntry, undefined);
+    const { wont, fallback } = useUnloadableVariants(repoEntry.url, versions.variants, versions.chosen);
+    const { choose } = versions;
+    useEffect(() => {
+      if (fallback) choose(fallback);
+    }, [fallback, choose]);
+    return (
+      <VersionPicker variants={versions.variants} memoryBytes={null} loading={false} chosen={versions.chosen} onChoose={choose} backendName={null} unloadable={wont} />
+    );
+  }
+
+  it('reads each version by the same header check, dims the unloadable one and selects a loadable one', async () => {
+    const asked: string[][] = [];
+    layoutDeps.fetch = async (urls) => {
+      asked.push(urls);
+      return Object.fromEntries(urls.map((url) => [url, url.includes('/transformer/') ? 'diffusers' : 'bundled'])) as never;
+    };
+    render(<Checked />);
+    const broken = await screen.findByRole('radio', { name: /Won’t run in ComfyUI/ });
+    await waitFor(() => expect(broken).toHaveAttribute('aria-checked', 'false'));
+    expect(broken).toBeDisabled();
+    expect(broken).toHaveAttribute('title', expect.stringMatching(/diffusers format/));
+    expect(screen.getByRole('radio', { name: /ltxv-2b-single/ })).toHaveAttribute('aria-checked', 'true');
+    expect(asked.flat()).toContain('https://huggingface.co/Muinez/ltxvideo-2b-nsfw/resolve/main/transformer/model_weights_0306.safetensors');
+  });
+
+  it('builds a version URL in the same repo and revision', () => {
+    expect(variantUrl('https://huggingface.co/a/b/resolve/v1/x.safetensors', 'sub dir/y.safetensors')).toBe(
+      'https://huggingface.co/a/b/resolve/v1/sub%20dir/y.safetensors',
+    );
+    expect(variantUrl('https://civitai.com/api/download/1', 'y.safetensors')).toBeNull();
   });
 });

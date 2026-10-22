@@ -210,3 +210,67 @@ func TestModelHostsFollowHuggingFaceCDNMoves(t *testing.T) {
 		}
 	}
 }
+
+func TestModelDeleteStaysInsideModels(t *testing.T) {
+	cfg, _, root := modelTest(t)
+	file := filepath.Join(root, "checkpoints", "model.safetensors")
+	if err := os.WriteFile(file, []byte("weights"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	outside := t.TempDir()
+	private := filepath.Join(outside, "file")
+	if err := os.WriteFile(private, []byte("private"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	linked := os.Symlink(outside, filepath.Join(root, "escape")) == nil
+	refused := []string{"", "../file", "checkpoints/../../file", "/tmp/file", `C:\file`, "checkpoints", "model.safetensors", "escape/file"}
+	for _, path := range refused {
+		if err := deleteModel(cfg, ModelDelete{Path: path}); err == nil {
+			t.Errorf("deleted %q", path)
+		}
+	}
+	if linked {
+		if _, err := os.Stat(private); err != nil {
+			t.Fatal("deleted a file outside models", err)
+		}
+	}
+	if err := deleteModel(cfg, ModelDelete{Path: `checkpoints\model.safetensors`}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(file); !os.IsNotExist(err) {
+		t.Fatal("file still exists")
+	}
+}
+
+func TestModelDeleteRouteAnswersAfterDeleting(t *testing.T) {
+	cfg, _, root := modelTest(t)
+	if err := os.WriteFile(filepath.Join(root, "checkpoints", "a.safetensors"), []byte("w"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	agent := NewAgent(cfg, nil)
+	call := func(body string, token bool) *httptest.ResponseRecorder {
+		req := httptest.NewRequest("POST", "/agent/models/delete", strings.NewReader(body))
+		if token {
+			req.Header.Set("X-Rippel-Agent-Token", cfg.Token)
+		}
+		rec := httptest.NewRecorder()
+		agent.Handler().ServeHTTP(rec, req)
+		return rec
+	}
+	if rec := call(`{"path":"checkpoints/a.safetensors"}`, false); rec.Code != 401 {
+		t.Fatal("missing auth", rec.Code)
+	}
+	if rec := call(`{"path":"checkpoints/a.safetensors"}`, true); rec.Code != 200 {
+		t.Fatal(rec.Code, rec.Body.String())
+	}
+	if rec := call(`{"path":"checkpoints/a.safetensors"}`, true); rec.Code != 200 || !strings.Contains(rec.Body.String(), `"missing":true`) {
+		t.Fatal("second delete", rec.Code, rec.Body.String())
+	}
+	if rec := call(`{"path":"../config.json"}`, true); rec.Code != 400 {
+		t.Fatal("escape", rec.Code)
+	}
+	agent.tasks.Create("model-files")
+	if rec := call(`{"path":"checkpoints/b.safetensors"}`, true); rec.Code != 409 {
+		t.Fatal("busy", rec.Code)
+	}
+}

@@ -39,7 +39,8 @@ export async function startOperation(id: string, queue = false): Promise<ModelOp
   if (claimed) await dispatchStep(claimed, queue);
   return getOperation(id);
 }
-async function target(backendId: string) {
+/** How to reach a backend agent, from its latest deployment. */
+export async function agentTarget(backendId: string) {
   const row = await queryOne<{ host: string; agent_url?: string | null; agent_port: number; token: string }>(
     'SELECT host, agent_port, agent_url, token FROM deployments WHERE backend_id = $1 ORDER BY created_at DESC LIMIT 1', [backendId]);
   if (!row) throw new Error('This backend has no rippel agent.');
@@ -50,7 +51,7 @@ async function dispatchStep(operation: ModelOperation, queue = false) {
     if (!operation.backend_id) throw new Error('This backend has been removed.');
     const step = operation.steps[operation.step_index];
     if (!step) throw new Error('Operation has no current step.');
-    const host = await target(operation.backend_id);
+    const host = await agentTarget(operation.backend_id);
     const task = step.kind === 'move' ? await agentClient.moveModel(host, step.request) : await agentClient.downloadModel(host, step.request);
     await query(`UPDATE model_operations SET status = 'running', agent_task_id = $2, progress = $3::jsonb, updated_at = now() WHERE id = $1`,
       [operation.id, task.id, JSON.stringify(task)]);
@@ -65,7 +66,7 @@ async function dispatchStep(operation: ModelOperation, queue = false) {
       [operation.id, `Could not confirm the file operation: ${(error as Error).message} Re-check the backend before retrying.`]);
   }
 }
-async function recheck(backendId: string) {
+export async function recheck(backendId: string) {
   const host = await queryOne<{ base_url: string }>('SELECT base_url FROM backends WHERE id = $1', [backendId]);
   if (host) clearObjectInfoCache(host.base_url);
   await pollBackendNow(backendId);
@@ -74,7 +75,7 @@ export async function pollOperation(operation: ModelOperation) {
   if (!operation.agent_task_id || !operation.backend_id) return;
   let task;
   try {
-    ({ task } = await agentClient.task(await target(operation.backend_id), operation.agent_task_id, 0));
+    ({ task } = await agentClient.task(await agentTarget(operation.backend_id), operation.agent_task_id, 0));
   } catch (error) {
     if (!(error instanceof AgentError) || error.status !== 404) throw error;
     // Agent tasks are held in memory. After a restart an unknown task is a

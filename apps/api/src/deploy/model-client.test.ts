@@ -26,3 +26,11 @@ it('uses the public HTTPS origin and refuses redirects when sending the agent to
  await client.ping({...target,agentUrl:'https://agent.example.com:8443'});
  expect(fetchImpl).toHaveBeenCalledWith('https://agent.example.com:8443/agent/ping',expect.objectContaining({redirect:'error',headers:expect.objectContaining({'X-Rippel-Agent-Token':'secret'})}));
 });
+
+it('deletes one model file and keeps the 404 an old agent gives for the route', async () => {
+  const fetchImpl = vi.fn(async () => Response.json({ deleted: 'checkpoints/a.safetensors', missing: false }));
+  expect(await makeAgentClient({ fetchImpl }).deleteModel(target, 'checkpoints/a.safetensors')).toEqual({ deleted: 'checkpoints/a.safetensors', missing: false });
+  expect(fetchImpl).toHaveBeenCalledWith('http://gpu:8189/agent/models/delete', expect.objectContaining({ method: 'POST', body: JSON.stringify({ path: 'checkpoints/a.safetensors' }) }));
+  const old = makeAgentClient({ fetchImpl: async () => Response.json({ message: 'No such route.' }, { status: 404 }) });
+  await expect(old.deleteModel(target, 'checkpoints/a.safetensors')).rejects.toMatchObject({ kind: 'refused', status: 404 });
+});

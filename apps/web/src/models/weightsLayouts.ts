@@ -108,3 +108,20 @@ export function useLayoutsWhenSeen(target: RefObject<Element | null>, entries: r
     if (seen && urls) requestLayouts(urls.split('\n'));
   }, [seen, urls]);
 }
+
+/**
+ * The download URL of another file in the same Hugging Face repository and
+ * revision as `entryUrl`, so a version's header is read and cached exactly as a
+ * card's is. Null when the entry is not a Hugging Face resolve URL.
+ */
+export function variantUrl(entryUrl: string, path: string): string | null {
+  const base = /^(https:\/\/huggingface\.co\/[^/]+\/[^/]+\/resolve\/[^/]+\/)/.exec(entryUrl)?.[1];
+  return base ? base + path.split('/').map(encodeURIComponent).join('/') : null;
+}
+
+/** Look up a URL's learnt layout; re-renders as answers arrive. */
+export function useLayoutOf(): (url: string | null | undefined) => WeightsLayout | undefined {
+  const at = useSyncExternalStore(subscribe, () => version);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  return useMemo(() => (url) => (url ? known.get(url) : undefined), [at]);
+}

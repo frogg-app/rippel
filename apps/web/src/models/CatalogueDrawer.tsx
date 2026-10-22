@@ -43,7 +43,7 @@ import { CloseIcon, ExpandIcon, HeartIcon } from './icons';
 import { PreviewLightbox } from './PreviewLightbox';
 import { requestLayouts } from './weightsLayouts';
 import { UNLOADABLE_WORDS, unloadable } from './intents';
-import { useVariants, VersionPicker, type LoadVariants } from './VersionPicker';
+import { useUnloadableVariants, useVariants, VersionPicker, type LoadVariants } from './VersionPicker';
 import { TagChip } from './TagChip';
 import styles from './ModelsPanels.module.css';
 
@@ -94,6 +94,13 @@ export function CatalogueDrawer({
   const bytes = sizeBytesOf(entry);
   const fit = fitOf(entry, bytes, memoryBytes, SUPPORT_ROLES[entry.type].noun);
   const versions = useVariants(entry, loadVariants);
+  const versionLayouts = useUnloadableVariants(entry.url, versions.variants, versions.chosen);
+  // The chosen (or recommended) build won't load and another will: pick that one.
+  const { choose } = versions;
+  useEffect(() => {
+    if (versionLayouts.fallback) choose(versionLayouts.fallback);
+  }, [versionLayouts.fallback, choose]);
+  const chosenWont = versions.chosen ? versionLayouts.wont.has(versions.chosen) : false;
   const closeRef = useRef<HTMLButtonElement>(null);
   const restoreTo = useRef<Element | null>(null);
   const [enlarged, setEnlarged] = useState(false);
@@ -234,6 +241,7 @@ export function CatalogueDrawer({
               <div className={styles.versionList} role="radiogroup" aria-label="File">
                 {siblings.map((sibling) => {
                   const on = sibling.ref === entry.ref;
+                  const wont = unloadable(sibling);
                   const size = sizeBytesOf(sibling);
                   return (
                     <button
@@ -241,14 +249,15 @@ export function CatalogueDrawer({
                       type="button"
                       role="radio"
                       aria-checked={on}
-                      className={`${styles.versionRow} ${on ? styles.versionRowOn : ''}`}
+                      disabled={wont && !on}
+                      className={`${styles.versionRow} ${on ? styles.versionRowOn : ''} ${wont ? styles.versionRowWont : ''}`}
                       onClick={() => onPick?.(sibling)}
-                      title={sibling.name}
+                      title={wont ? UNLOADABLE_WORDS.detail : sibling.name}
                     >
                       <span className={styles.versionLabel}>
                         {basename(sibling.filename)}
                         {sibling.installed ? <span className={styles.versionBadge}>Installed</span> : null}
-                        {unloadable(sibling) ? <span className={styles.versionBadge} title={UNLOADABLE_WORDS.detail}>{UNLOADABLE_WORDS.pill}</span> : null}
+                        {wont ? <span className={styles.versionBadgeWont}>{UNLOADABLE_WORDS.pill}</span> : null}
                       </span>
                       <span className={`mono ${styles.versionFile}`}>{sibling.savePath || (sibling.ref.startsWith('hugging-face:') ? 'Hugging Face repo' : '—')}</span>
                       <span className={`mono ${styles.versionSize}`}>{size ? formatBytes(size) : ''}</span>
@@ -267,10 +276,11 @@ export function CatalogueDrawer({
               chosen={versions.chosen}
               onChoose={versions.choose}
               backendName={backendName}
+              unloadable={versionLayouts.wont}
             />
           ) : null}
 
-          {unloadable(entry) && !versions.chosen ? <p><UnloadablePill /></p> : null}
+          {(unloadable(entry) && !versions.chosen) || chosenWont ? <p><UnloadablePill /></p> : null}
           <CardVerdict entry={entry} onWorkflows={onWorkflows}>
             {isSupport ? <span className={styles.verdictWhere}> {role.where}</span> : null}
           </CardVerdict>
@@ -283,8 +293,8 @@ export function CatalogueDrawer({
 
           <div className={styles.drawerActions}>
             <InstallControls
-              // A chosen version is another file; the header read was of the default.
-              entry={versions.chosen ? { ...entry, weightsLayout: undefined } : entry}
+              // A chosen version is another file: judge it by its own header.
+              entry={versions.chosen ? { ...entry, weightsLayout: chosenWont ? 'diffusers' : undefined } : entry}
               {...install}
               onInstall={(chosen) => install.onInstall(chosen, versions.chosen ?? undefined)}
             />

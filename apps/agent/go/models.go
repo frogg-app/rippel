@@ -21,6 +21,9 @@ type ModelMove struct {
 	From string `json:"from"`
 	To   string `json:"to"`
 }
+type ModelDelete struct {
+	Path string `json:"path"`
+}
 type ModelDownload struct {
 	URL       string `json:"url"`
 	Path      string `json:"path"`
@@ -98,6 +101,33 @@ func moveModel(cfg *Config, task *Task, body ModelMove) error {
 		return fmt.Errorf("destination created but source retained: %w", err)
 	}
 	return nil
+}
+
+// deleteModel removes one regular file beneath the models directory. The path
+// is resolved through the same os.Root handle as moves and downloads, so "..",
+// absolute paths and symlinks leading out of models are refused, and a symlink
+// or directory is never followed or removed.
+func deleteModel(cfg *Config, body ModelDelete) error {
+	name, err := modelPath(body.Path)
+	if err != nil {
+		return err
+	}
+	if !strings.Contains(filepath.ToSlash(name), "/") {
+		return fmt.Errorf("model path must name a file inside a models folder")
+	}
+	root, err := modelRoot(cfg)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	info, err := root.Lstat(name)
+	if err != nil {
+		return err
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("only a regular model file can be deleted")
+	}
+	return root.Remove(name)
 }
 
 func allowedModelURL(raw string, redirect bool) error {
@@ -221,6 +251,33 @@ func downloadModel(cfg *Config, task *Task, body ModelDownload, client *http.Cli
 	}
 	task.Appendf("Verified and installed %s (%d bytes)", body.Path, received)
 	return nil
+}
+
+// modelDelete answers only once the file is gone, so the server can drop its
+// record on a 200 and keep it on anything else. It waits out no task: a move or
+// download in flight may be touching the same file, so it is refused instead.
+func (a *Agent) modelDelete(w http.ResponseWriter, r *http.Request) {
+	var body ModelDelete
+	if err := readBody(r, &body); err != nil {
+		writeError(w, 400, "bad_request", err.Error())
+		return
+	}
+	a.taskStartMu.Lock()
+	defer a.taskStartMu.Unlock()
+	if a.tasks.IsRunning("model-files") || a.tasks.IsRunning("set-memory") {
+		writeError(w, http.StatusConflict, "busy", "A model-files is already running on this machine.")
+		return
+	}
+	// Already gone is success: the caller wants it off the disk. A 404 is left
+	// to mean what older agents answer for this route: no delete here at all.
+	err := deleteModel(a.config(), body)
+	missing := errors.Is(err, os.ErrNotExist)
+	if err != nil && !missing {
+		writeError(w, 400, "bad_request", err.Error())
+		return
+	}
+	a.changed()
+	writeJSON(w, http.StatusOK, map[string]any{"deleted": body.Path, "missing": missing})
 }
 
 func (a *Agent) modelOperation(w http.ResponseWriter, r *http.Request, move bool) {

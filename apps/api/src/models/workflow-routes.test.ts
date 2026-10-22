@@ -315,6 +315,50 @@ describe('DELETE /models/:id', () => {
     expect(deleted).toEqual(['diffusion_models/ltx-video-2b-v0.9.1.safetensors']);
   });
 
+  it('deletes through the agent before the record goes', async () => {
+    const asked: string[] = [];
+    const { app, t } = await server(admin, tables(), {
+      deleteAgentFile: async (backendId, path) => {
+        asked.push(path);
+        expect(t.models.some((m) => m.id === LTX)).toBe(true);
+        return { missing: false };
+      },
+      deleteBackendFile: async () => {
+        throw new Error('the helper is not used when an agent answers');
+      },
+    });
+    const res = await app.inject({ method: 'DELETE', url: `/models/${LTX}` });
+    expect(res.statusCode).toBe(200);
+    expect((res.json() as { removal: ModelRemoval }).removal).toMatchObject({ removedFromDisk: true, note: null });
+    expect(asked).toEqual(['diffusion_models/ltx-video-2b-v0.9.1.safetensors']);
+    expect(t.models.some((m) => m.id === LTX)).toBe(false);
+  });
+
+  it('keeps the record and says so in one line when the agent is offline', async () => {
+    const { AgentError } = await import('../deploy/agent-client.js');
+    const { app, t } = await server(admin, tables(), {
+      deleteAgentFile: async () => {
+        throw new AgentError('unreachable', 'Could not reach the agent on 10.0.0.2:4100: ECONNREFUSED');
+      },
+    });
+    const res = await app.inject({ method: 'DELETE', url: `/models/${LTX}` });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().message).toBe('desktop-6900xt is offline, so ltx-video-2b-v0.9.1.safetensors was not deleted.');
+    expect(t.models.some((m) => m.id === LTX)).toBe(true);
+  });
+
+  it('asks for an agent update when the agent has no delete route', async () => {
+    const { AgentError } = await import('../deploy/agent-client.js');
+    const { app, t } = await server(admin, tables(), {
+      deleteAgentFile: async () => {
+        throw new AgentError('refused', 'No such route.', 404);
+      },
+    });
+    const res = await app.inject({ method: 'DELETE', url: `/models/${LTX}` });
+    expect(res.json().message).toBe('Update the agent on desktop-6900xt to delete files from it.');
+    expect(t.models.some((m) => m.id === LTX)).toBe(true);
+  });
+
   it('the default hook refuses, by design', async () => {
     await expect(
       (await import('./workflow-routes.js')).deleteBackendFile('http://x', 'checkpoints', 'a.safetensors', 'box'),

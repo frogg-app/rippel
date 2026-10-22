@@ -9,8 +9,10 @@
  * is selected until somebody chooses otherwise.
  */
 import { useEffect, useState } from 'react';
+import { requestLayouts, useLayoutOf, variantUrl } from './weightsLayouts';
 import type { ModelCatalogEntry, ModelVariant } from '@comfy/shared';
 import { formatBytes } from './catalogue';
+import { UNLOADABLE_WORDS } from './intents';
 import styles from './ModelsPanels.module.css';
 
 export type LoadVariants = (ref: string, signal?: AbortSignal) => Promise<{ variants: ModelVariant[]; memoryBytes: number | null }>;
@@ -81,6 +83,7 @@ export function VersionPicker({
   onChoose,
   backendName,
   disabled,
+  unloadable,
 }: {
   variants: ModelVariant[];
   memoryBytes: number | null;
@@ -89,6 +92,8 @@ export function VersionPicker({
   onChoose: (path: string) => void;
   backendName: string | null;
   disabled?: boolean;
+  /** Paths whose header says no ComfyUI loader reads them; shown, not choosable. */
+  unloadable?: ReadonlySet<string>;
 }) {
   if (variants.length === 0) return null;
   const selected = variants.find((variant) => variant.path === chosen) ?? variants[0]!;
@@ -107,20 +112,25 @@ export function VersionPicker({
       <div className={styles.versionList} role="radiogroup" aria-label="Version">
         {variants.map((variant) => {
           const on = variant.path === selected.path;
+          const wont = unloadable?.has(variant.path) ?? false;
           return (
             <button
               key={variant.path}
               type="button"
               role="radio"
               aria-checked={on}
-              disabled={disabled}
-              className={`${styles.versionRow} ${on ? styles.versionRowOn : ''}`}
+              disabled={disabled || (wont && !on)}
+              className={`${styles.versionRow} ${on ? styles.versionRowOn : ''} ${wont ? styles.versionRowWont : ''}`}
               onClick={() => onChoose(variant.path)}
-              title={variant.filename}
+              title={wont ? UNLOADABLE_WORDS.detail : variant.filename}
             >
               <span className={styles.versionLabel}>
                 {variantLabel(variant)}
-                {variant.recommended ? <span className={styles.versionBadge}>Recommended</span> : null}
+                {wont ? (
+                  <span className={styles.versionBadgeWont}>{UNLOADABLE_WORDS.pill}</span>
+                ) : variant.recommended ? (
+                  <span className={styles.versionBadge}>Recommended</span>
+                ) : null}
               </span>
               <span className={`mono ${styles.versionFile}`}>{variant.filename}</span>
               <span className={`mono ${styles.versionSize}`}>
@@ -133,4 +143,25 @@ export function VersionPicker({
       <p className={styles.versionNote}>{KIND_NOTE[selected.kind]}</p>
     </div>
   );
+}
+
+/**
+ * Which of these versions will not load, from the same cached header check as
+ * the cards, and a loadable path to fall back to when the chosen one is not.
+ * Asks for the headers it has not read yet.
+ */
+export function useUnloadableVariants(entryUrl: string, variants: readonly ModelVariant[], chosen: string | null) {
+  const layoutOf = useLayoutOf();
+  const urls = variants.map((variant) => variantUrl(entryUrl, variant.path));
+  const key = urls.join('\n');
+  useEffect(() => {
+    if (key) requestLayouts(key.split('\n'));
+  }, [key]);
+  const wont = new Set(variants.filter((_, i) => layoutOf(urls[i]) === 'diffusers').map((variant) => variant.path));
+  const pick = chosen ?? variants[0]?.path ?? null;
+  const fallback =
+    pick && wont.has(pick)
+      ? (variants.find((v) => v.recommended && !wont.has(v.path)) ?? variants.find((v) => !wont.has(v.path)))?.path ?? null
+      : null;
+  return { wont, fallback };
 }

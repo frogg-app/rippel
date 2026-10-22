@@ -52,6 +52,8 @@ import type {
 import { query as defaultQuery, queryOne as defaultQueryOne } from '../db.js';
 import { env } from '../env.js';
 import { HelperError, makeStorageHelper } from '../backends/storage.js';
+import { AgentError, agentClient } from '../deploy/agent-client.js';
+import { agentTarget, recheck } from './operations.js';
 import type { ObjectInfo } from '../lib/comfy.js';
 import { objectInfoFor as defaultObjectInfoFor } from '../orchestrator/preflight.js';
 import { folderOfInstalled, loaderFolderOf, loaderFoldersOf } from '../workflows/folders.js';
@@ -171,12 +173,38 @@ export async function deleteBackendFile(
   }
 }
 
+/**
+ * Delete one model file through the backend's rippel agent. Resolves false
+ * when the backend has no agent (the storage helper is then the only way),
+ * true once the agent says the file is gone; `missing` when it was not there.
+ * Any other answer throws, and the caller keeps the record.
+ */
+export async function deleteAgentFile(backendId: string, path: string): Promise<false | { missing: boolean }> {
+  const deployed = await defaultQueryOne('SELECT id FROM deployments WHERE backend_id = $1 LIMIT 1', [backendId]);
+  if (!deployed) return false;
+  const { missing } = await agentClient.deleteModel(await agentTarget(backendId), path);
+  // Rescan now, so the file list and free space are current without waiting a poll.
+  void recheck(backendId).catch(() => undefined);
+  return { missing };
+}
+
+/** One line for a person when the agent did not delete the file. */
+function agentDeleteFailure(err: unknown, machine: string, file: string): string {
+  if (err instanceof AgentError) {
+    if (err.kind === 'unreachable') return `${machine} is offline, so ${file} was not deleted.`;
+    if (err.kind === 'busy') return `${machine} is busy with another model file. Try again shortly.`;
+    if (err.status === 404) return `Update the agent on ${machine} to delete files from it.`;
+  }
+  return `${machine} did not delete ${file}: ${err instanceof Error ? err.message : String(err)}`;
+}
+
 export interface WorkflowRouteDeps {
   db?: WorkflowDb;
   readyImports?: () => Promise<ImportedWorkflow[]>;
   objectInfoFor?: (baseUrl: string) => Promise<ObjectInfo>;
   lookupOverride?: OverrideLookup;
   deleteBackendFile?: typeof deleteBackendFile;
+  deleteAgentFile?: typeof deleteAgentFile;
   /** Fetch one library workflow file from a backend. Injectable for tests. */
   fetchLibraryFile?: (baseUrl: string, name: string) => Promise<unknown>;
 }
@@ -261,6 +289,7 @@ export function makeWorkflowRoutes(deps: WorkflowRouteDeps = {}) {
       : overrideFor);
   const readyImports = deps.readyImports ?? (deps.db ? async () => [] : listReadyImports);
   const removeFile = deps.deleteBackendFile ?? deleteBackendFile;
+  const removeAgentFile = deps.deleteAgentFile ?? (deps.db ? async () => false as const : deleteAgentFile);
   const fetchLibrary = deps.fetchLibraryFile ?? fetchLibraryFile;
 
   async function modelOr404(id: string, reply: FastifyReply): Promise<ModelRow | null> {
@@ -557,8 +586,11 @@ export function makeWorkflowRoutes(deps: WorkflowRouteDeps = {}) {
               )
             : [];
 
-        // Try the disk first, per backend. Today this always refuses — see the
-        // hook — and the refusal is reported rather than hidden.
+        // The disk first, per backend; the record goes only after that. An
+        // agent is authoritative: if it cannot delete (offline, busy, too old)
+        // nothing is removed and the person is told in one line. A backend
+        // without an agent falls back to the storage helper, whose refusal is
+        // reported in the note rather than blocking the removal.
         const kept: string[] = [];
         let removedFromDisk = backends.length > 0;
         for (const backend of backends) {
@@ -568,7 +600,25 @@ export function makeWorkflowRoutes(deps: WorkflowRouteDeps = {}) {
           } catch {
             info = null;
           }
-          const folder = folderOfInstalled(info, model.filename) ?? folderForType(model.type) ?? 'checkpoints';
+          const found = folderOfInstalled(info, model.filename);
+          const folder = found ?? folderForType(model.type) ?? 'checkpoints';
+          const path = `${folder}/${model.filename.replace(/\\/g, '/')}`;
+          let viaAgent: false | { missing: boolean };
+          try {
+            viaAgent = await removeAgentFile(backend.id, path);
+          } catch (err) {
+            return reply.code(409).send({ error: 'conflict', message: agentDeleteFailure(err, backend.name, model.filename) });
+          }
+          if (viaAgent) {
+            // Not where the guess said, and ComfyUI could not say where it is.
+            if (viaAgent.missing && !found) {
+              return reply.code(409).send({
+                error: 'conflict',
+                message: `Start ComfyUI on ${backend.name} so rippel can find ${model.filename}.`,
+              });
+            }
+            continue;
+          }
           try {
             await removeFile(backend.base_url, folder, model.filename, backend.name);
           } catch (err) {

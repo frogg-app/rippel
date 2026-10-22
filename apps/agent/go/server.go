@@ -218,6 +218,10 @@ func (a *Agent) route(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if r.Method == http.MethodPost && path == "/agent/models/delete" {
+		a.modelDelete(w, r)
+		return
+	}
 	if r.Method == http.MethodPost && (path == "/agent/models/move" || path == "/agent/models/download") {
 		a.modelOperation(w, r, path == "/agent/models/move")
 		return

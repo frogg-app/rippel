@@ -218,15 +218,11 @@ export function ModelsPage({ api = modelsApi, storageApi: storage = storageApi }
         const removal = await api.removeModel(model.id);
         setRemovalNote(
           removal.note ??
-            (removal.removedFromDisk
-              ? `${model.displayName} was removed, file included.`
-              : `${model.displayName} was removed.`),
+            (removal.removedFromDisk ? `Deleted ${model.displayName}.` : `${model.displayName} was removed.`),
         );
       } catch (cause) {
         setRemovalNote(
-          cause instanceof ApiRequestError
-            ? `Could not remove ${model.displayName}: ${cause.message}`
-            : `Could not remove ${model.displayName}.`,
+          cause instanceof ApiRequestError ? cause.message : `Could not delete ${model.displayName}.`,
         );
         library.refresh();
       }

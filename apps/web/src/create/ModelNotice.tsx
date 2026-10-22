@@ -228,6 +228,7 @@ function PartRow({
 
 type FixState =
   | { kind: 'idle' }
+  | { kind: 'confirm'; machine: string }
   | { kind: 'starting' }
   | { kind: 'installing'; install: ModelInstall; filename: string }
   | { kind: 'moving'; operation: ModelFileOperation }
@@ -347,19 +348,43 @@ export function ProblemFix({
       .catch((cause: unknown) => setState({ kind: 'message', error: true, text: errorText(cause, 'Could not move the file.') }));
   };
 
+  // Remove deletes the file from the machine, so it asks first, by name.
+  const armRemove = () => {
+    setState({ kind: 'confirm', machine: 'this machine' });
+    modelsApi
+      .backends()
+      .then((list) => {
+        const name = list.find((b) => b.id === backendId)?.name;
+        if (name) setState((s) => (s.kind === 'confirm' ? { kind: 'confirm', machine: name } : s));
+      })
+      .catch(() => {});
+  };
+
   const remove = () => {
     setState({ kind: 'starting' });
     modelsApi
       .removeModel(model.id)
       .then((removal) => {
-        setState({ kind: 'message', text: removal.removedFromDisk ? 'Removed.' : 'Removed from rippel.' });
+        setState({ kind: 'message', text: removal.removedFromDisk ? 'Deleted.' : 'Removed from rippel.' });
         onChanged?.();
       })
-      .catch((cause: unknown) => setState({ kind: 'message', error: true, text: errorText(cause, 'Could not remove it.') }));
+      .catch((cause: unknown) => setState({ kind: 'message', error: true, text: errorText(cause, 'Could not delete it.') }));
   };
 
   let action: ReactNode;
-  if (state.kind === 'installing') action = <InstallProgress install={state.install} now={now} compact />;
+  if (state.kind === 'confirm') {
+    action = (
+      <span role="group" aria-label="Confirm delete" title={`Deletes ${model.filename} from disk.`}>
+        Delete {model.displayName} from {state.machine}?{' '}
+        <button type="button" className={styles.getIt} onClick={remove}>
+          Delete
+        </button>{' '}
+        <button type="button" className={styles.quietLink} onClick={() => setState({ kind: 'idle' })}>
+          Keep
+        </button>
+      </span>
+    );
+  } else if (state.kind === 'installing') action = <InstallProgress install={state.install} now={now} compact />;
   else if (state.kind === 'moving') action = <span>Moving…</span>;
   else if (state.kind === 'message') action = <span role={state.error ? 'alert' : undefined}>{state.text}</span>;
   else if (fix?.kind === 'replace') {
@@ -394,7 +419,7 @@ export function ProblemFix({
       {isAdmin && problem.kind === 'unloadable' && state.kind === 'idle' ? (
         <>
           {' '}
-          <button type="button" className={styles.quietLink} onClick={remove} title="Remove it from rippel">
+          <button type="button" className={styles.quietLink} onClick={armRemove} title="Delete it from the machine">
             Remove this file
           </button>
         </>

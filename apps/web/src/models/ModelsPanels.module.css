@@ -2558,6 +2558,19 @@ button.tagChipOn:hover {
   background: var(--surface-hover);
 }
 
+/* A file no ComfyUI loader reads: listed, so the pill explains it, but quiet. */
+.versionRowWont {
+  opacity: 0.55;
+}
+
+.versionBadgeWont {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--danger-tint);
+  color: var(--danger-text);
+  font-size: var(--text-xs);
+}
+
 .versionRowOn {
   border-color: var(--accent-line);
   background: var(--accent-tint);

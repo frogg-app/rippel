@@ -251,6 +251,7 @@ function fakeAgent(over: Partial<AgentClient> = {}): AgentClient {
     setMemoryMode: async () => task(),
     updateAgent: async () => task(),
     moveModel: async () => task(),
+    deleteModel: async () => ({ deleted: '', missing: false }),
     downloadModel: async () => task(),
     ...over,
   };

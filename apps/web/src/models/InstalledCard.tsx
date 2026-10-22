@@ -241,7 +241,7 @@ export function InstalledCard({
                 {generates(model.type) ? 'Workflows' : 'What is this?'}
               </button>
             ) : null}
-            {onRemove ? <RemoveButton model={model} onRemove={onRemove} /> : null}
+            {onRemove ? <RemoveButton model={model} machines={hosts} onRemove={onRemove} /> : null}
           </div>
         ) : null}
       </div>
@@ -261,11 +261,21 @@ export function InstalledCard({
 
 /**
  * Remove, in two steps and in place: the first press turns the button into
- * "Remove from rippel?" with a confirm, so a slip of the pointer over a card
- * cannot drop a model, and no browser dialog interrupts the page.
+ * "Delete <name> from <machine>?" with a confirm, so a slip of the pointer over
+ * a card cannot delete a file, and no browser dialog interrupts the page. It
+ * names the machine because the file itself goes, not only rippel's record.
  */
-export function RemoveButton({ model, onRemove }: { model: Model; onRemove: (model: Model) => void }) {
+export function RemoveButton({
+  model,
+  machines,
+  onRemove,
+}: {
+  model: Model;
+  machines: readonly { name: string }[];
+  onRemove: (model: Model) => void;
+}) {
   const [armed, setArmed] = useState(false);
+  const where = machines.length > 0 ? machines.map((m) => m.name).join(' and ') : 'rippel';
   if (!armed) {
     return (
       <button
@@ -280,8 +290,10 @@ export function RemoveButton({ model, onRemove }: { model: Model; onRemove: (mod
     );
   }
   return (
-    <span className={`${styles.rowConfirm} pop`} role="group" aria-label={`Remove ${model.displayName}?`}>
-      <span className={styles.rowConfirmText}>Remove from rippel?</span>
+    <span className={`${styles.rowConfirm} pop`} role="group" aria-label={`Delete ${model.displayName}?`}>
+      <span className={styles.rowConfirmText} title={`Deletes ${model.filename} from disk. This cannot be undone.`}>
+        Delete {model.displayName} from {where}?
+      </span>
       <button
         type="button"
         className={`${styles.rowAction} ${styles.rowActionDanger}`}
@@ -290,7 +302,7 @@ export function RemoveButton({ model, onRemove }: { model: Model; onRemove: (mod
           onRemove(model);
         }}
       >
-        Confirm
+        Delete
       </button>
       <button type="button" className={styles.rowAction} onClick={() => setArmed(false)}>
         Keep
