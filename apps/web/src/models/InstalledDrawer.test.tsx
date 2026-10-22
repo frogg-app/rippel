@@ -20,7 +20,7 @@ it('opens for a file with no known source, with its local facts and the actions'
     />,
   );
   const panel = screen.getByRole('dialog', { name: 'Details of Sd Xl Base 1.0' });
-  expect(panel).toHaveTextContent(/No source info/);
+  expect(panel).toHaveTextContent('Added by hand');
   expect(panel).toHaveTextContent('6.94 GB');
   expect(screen.queryByRole('link', { name: /View on Hugging Face/ })).not.toBeInTheDocument();
   expect(screen.getByText('desktop-6900xt')).toBeInTheDocument();

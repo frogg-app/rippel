@@ -26,7 +26,9 @@ import { PreviewLightbox } from './PreviewLightbox';
 import { TagChip } from './TagChip';
 import { CloseIcon, ExpandIcon, HeartIcon, WorkflowIcon } from './icons';
 import { expertFor } from './vocabulary';
+import { WorkflowSuggestions } from './WorkflowSuggestions';
 import styles from './ModelsPanels.module.css';
+import quiet from './workflowSuggestions.module.css';
 
 export interface InstalledDrawerProps {
   model: Model;
@@ -204,8 +206,21 @@ export function InstalledDrawer({
           ) : verdict ? (
             <div className={styles.verdict}>
               <NeedsPills verdict={verdict} />
-              <span className={styles.verdictText}>{verdict.detail ?? verdict.summary}</span>
+              {verdict.status === 'no-workflow' ? null : (
+                <span className={styles.verdictText} title={verdict.detail ?? undefined}>
+                  {verdict.summary}
+                </span>
+              )}
             </div>
+          ) : null}
+
+          {verdict?.status === 'no-workflow' && verdict.backendId && verdict.summary !== LAYOUT_UNLOADABLE ? (
+            <WorkflowSuggestions
+              modelId={model.id}
+              backendId={verdict.backendId}
+              onBrowse={onWorkflows ? () => onWorkflows(model) : undefined}
+              onReady={onFixed}
+            />
           ) : null}
 
           {verdict &&
@@ -220,7 +235,7 @@ export function InstalledDrawer({
 
           {onWorkflows || onRemove ? (
             <div className={styles.cardActions}>
-              {onWorkflows ? (
+              {onWorkflows && verdict?.status !== 'no-workflow' ? (
                 <button type="button" className={styles.rowAction} onClick={() => onWorkflows(model)}>
                   <WorkflowIcon size={13} />
                   {generates(model.type) ? 'Workflows' : 'What is this?'}
@@ -233,11 +248,16 @@ export function InstalledDrawer({
           {info?.description ? (
             <p className={styles.drawerDescription}>{info.description}</p>
           ) : !info ? (
-            <p className={styles.drawerNote}>
-              {source.url
-                ? 'No source info cached for this repo yet.'
-                : 'No source info. This file was not installed through rippel and matches nothing in the catalogue.'}
-            </p>
+            <span
+              className={quiet.pill}
+              title={
+                source.url
+                  ? 'Nothing cached about this repo yet.'
+                  : 'Not installed through rippel, and matches nothing in the catalogue.'
+              }
+            >
+              {source.url ? 'No source info yet' : 'Added by hand'}
+            </span>
           ) : null}
           {info?.baseModels?.length ? <p className={styles.drawerNote}>Built on {info.baseModels.join(', ')}.</p> : null}
 
@@ -281,6 +301,9 @@ export function InstalledDrawer({
     document.body,
   );
 }
+
+/** A file no loader can read: no workflow fixes that, so none is suggested. */
+const LAYOUT_UNLOADABLE = 'ComfyUI can’t load this file';
 
 function sameRepo(a: string | null, b: string | null): boolean {
   const key = (url: string | null) => /huggingface\.co\/([^/]+\/[^/?#]+)/i.exec(url ?? '')?.[1]?.toLowerCase() ?? null;

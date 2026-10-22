@@ -30,7 +30,8 @@ import { VOCABULARY } from '../models/vocabulary';
 import { WarningIcon } from './icons';
 import { familyWords } from './families';
 import { findModelsHref, findPartHref } from './discoverLinks';
-import { absentParts, joinParts } from './modelReasons';
+import { NOT_SUPPORTED, absentParts, joinParts } from './modelReasons';
+import { WorkflowSuggestions } from '../models/WorkflowSuggestions';
 import { modeOfKind } from './form';
 import { invalidateReadiness } from './useReadiness';
 import styles from './modelPicker.module.css';
@@ -67,9 +68,30 @@ export function ModelNotice({
 }) {
   const user = useContext(AuthContext)?.user ?? null;
   const backendId = model.backendIds[0] ?? null;
+  const isAdmin = !user || user.role === 'admin';
+
+  // Nothing built in runs it: offer the best library workflow, in one click.
+  if (answer?.state === 'no-template' && backendId) {
+    return (
+      <div className={styles.notice} role="status" aria-label="What this model needs">
+        <p className={styles.noticeHead} title={answer.summary ?? undefined}>
+          <WarningIcon size={12} className={styles.noteIcon} />
+          <strong className={styles.noteStrong}>{NOT_SUPPORTED}</strong>
+        </p>
+        <WorkflowSuggestions
+          modelId={model.id}
+          backendId={backendId}
+          compact
+          onReady={() => {
+            invalidateReadiness(backendId, model.id);
+            onChanged?.();
+          }}
+        />
+      </div>
+    );
+  }
   if (!answer || answer.state !== 'blocked' || !backendId) return null;
 
-  const isAdmin = !user || user.role === 'admin';
   const absent = absentParts(answer.missing);
   const misfiled = (answer.missing ?? []).filter((part) => part.misfiled);
   const mode = modeOfKind(kind);

@@ -1,0 +1,35 @@
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-xs);
+}
+
+.line {
+  color: var(--text-muted);
+}
+
+.status {
+  color: var(--text-muted);
+}
+
+.error {
+  color: var(--models-warn, var(--text-muted));
+}
+
+/* A quiet fact pill, its detail in the tooltip. */
+.pill {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--line-faint);
+  color: var(--text-4);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  cursor: help;
+}
