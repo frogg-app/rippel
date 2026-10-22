@@ -533,7 +533,7 @@ html.preview body {
 }
 html.preview #root {
   width: 380px;
-  height: 600px;
+  height: 760px;
   border-radius: var(--radius-lg);
   border: 1px solid var(--line-strong);
   box-shadow: var(--shadow-pop);
@@ -548,27 +548,32 @@ html.preview #root {
     linear-gradient(180deg, var(--accent-tint) 0%, transparent 70%),
     var(--surface-2);
 }
-.updateLine {
-  display: flex;
+/* The idle update state: one compact row, so it reads as part of the panel
+   rather than a loose line of text between the cards. */
+.updateIdle {
+  flex-direction: row;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 0 4px;
+  gap: 12px;
+  padding: 10px 12px 10px 16px;
 }
-.linkButton {
-  flex: none;
-  border: 0;
-  background: transparent;
-  padding: 0;
-  color: var(--accent);
+.updateText {
+  flex: 1;
+  min-width: 0;
+}
+.updateTitle {
+  margin: 0;
+  color: var(--text-2);
   font-size: var(--text-sm);
-  cursor: pointer;
 }
-.linkButton:hover:not(:disabled) {
-  color: var(--accent-hover);
-  text-decoration: underline;
+.updateDetail {
+  margin: 2px 0 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.linkButton:disabled {
-  opacity: 0.5;
-  cursor: default;
+.actionSmall {
+  flex: none;
+  height: 28px;
+  padding: 0 11px;
+  font-size: var(--text-sm);
 }

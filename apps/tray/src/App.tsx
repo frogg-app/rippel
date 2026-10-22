@@ -224,16 +224,22 @@ function Update({
   }
 
   return (
-    <p className="updateLine small muted">
-      {update.error
-        ? `Couldn't check for updates: ${update.error}`
-        : update.checkedAt
-          ? `Agent is up to date · checked ${ago(update.checkedAt)}`
-          : 'Checking for updates…'}
-      <button className="linkButton" disabled={busy !== null} onClick={onCheck}>
+    <section className="card updateIdle">
+      <span className={`dot ${update.error ? 'dot-warn' : update.checkedAt ? 'dot-ok' : 'dot-off'}`} />
+      <div className="updateText">
+        <p className="updateTitle">
+          {update.error ? "Couldn't check for updates" : update.checkedAt ? 'Agent is up to date' : 'Checking for updates…'}
+        </p>
+        {update.error || update.checkedAt ? (
+          <p className="small muted updateDetail">
+            {update.error || `Checked ${ago(update.checkedAt!)}`}
+          </p>
+        ) : null}
+      </div>
+      <button className="action actionSmall" disabled={busy !== null} onClick={onCheck}>
         {busy === 'check' ? 'Checking…' : 'Check now'}
       </button>
-    </p>
+    </section>
   );
 }
 
