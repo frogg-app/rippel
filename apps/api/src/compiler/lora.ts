@@ -97,6 +97,9 @@ export function applyLoraChain(
 
   const allocate = nextIdAllocator(next);
   const nodeClass = spec.nodeClass ?? 'LoraLoader';
+  // FLUX-style LoRAs change the model alone: no CLIP input, no CLIP output,
+  // and nothing downstream of the anchor's CLIP is rewired.
+  const modelOnly = nodeClass === 'LoraLoaderModelOnly';
   const nodeIds: string[] = [];
 
   // Build the chain first, each loader reading from the previous one. The head
@@ -108,20 +111,22 @@ export function applyLoraChain(
     const id = allocate();
     next[id] = {
       class_type: nodeClass,
-      inputs: {
-        lora_name: lora.filename,
-        // ComfyUI keeps model and clip strengths separate. We expose one weight
-        // in the UI because two sliders per LoRA is a worse product; sending the
-        // same number to both is what every front-end does.
-        strength_model: lora.weight,
-        strength_clip: lora.weight,
-        model: modelSource,
-        clip: clipSource,
-      },
+      inputs: modelOnly
+        ? { lora_name: lora.filename, strength_model: lora.weight, model: modelSource }
+        : {
+            lora_name: lora.filename,
+            // ComfyUI keeps model and clip strengths separate. We expose one weight
+            // in the UI because two sliders per LoRA is a worse product; sending the
+            // same number to both is what every front-end does.
+            strength_model: lora.weight,
+            strength_clip: lora.weight,
+            model: modelSource,
+            clip: clipSource,
+          },
       _meta: { title: `LoRA: ${lora.filename}` },
     };
     modelSource = [id, LORA_MODEL_SLOT];
-    clipSource = [id, LORA_CLIP_SLOT];
+    if (!modelOnly) clipSource = [id, LORA_CLIP_SLOT];
     nodeIds.push(id);
   }
 
@@ -134,7 +139,7 @@ export function applyLoraChain(
       if (!isLink(value)) continue;
       if (value[0] !== spec.anchorNodeId) continue;
       if (value[1] === spec.modelSlot) node.inputs[key] = [...modelSource] as ComfyLink;
-      else if (value[1] === spec.clipSlot) node.inputs[key] = [...clipSource] as ComfyLink;
+      else if (!modelOnly && value[1] === spec.clipSlot) node.inputs[key] = [...clipSource] as ComfyLink;
       // Other slots (VAE, for instance) are left alone: LoraLoader does not
       // produce them, so rerouting them would break the graph.
     }

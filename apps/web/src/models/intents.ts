@@ -113,16 +113,18 @@ export function matchesIntent(entry: ModelCatalogEntry, intent: Intent): boolean
  * Discover with.
  *
  * A model that will run, or that runs once one more file arrives (the card
- * says which), passes. So does anything that does not generate on its own: a
- * style add-on or an enlarger has no verdict of its own to fail — whether it
- * works is a question about the model it is used with. An entry with no verdict
- * at all (the backend could not be asked) does not pass: it is not known to
- * work, and the empty state offers the way out.
+ * says which), passes; one whose workflow needs a node the machine lacks does
+ * not, since no download fixes that. An add-on passes when a workflow here can
+ * use it with the model it was made for. Nothing that cannot be installed
+ * passes. An entry with no verdict at all (the backend could not be asked)
+ * does not pass: it is not known to work, and the empty state offers the way
+ * out.
  */
 export function worksHere(entry: ModelCatalogEntry): boolean {
   // Nothing that cannot be installed yet works here, add-on or not.
   if (entry.installBlockedReason) return false;
-  if (VOCABULARY[entry.type].group !== 'models') return true;
+  // An add-on works here when some workflow here can use it with its model.
+  if (VOCABULARY[entry.type].group !== 'models') return entry.runnability?.status !== 'no-workflow';
   const status = entry.runnability?.status;
   // A missing node is not a file that can come with the model.
   if (entry.runnability?.missingNode) return false;

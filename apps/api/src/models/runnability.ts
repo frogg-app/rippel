@@ -93,6 +93,11 @@ function listWords(items: string[]): string {
   return `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`;
 }
 
+/** Whether any workflow for this family can splice in a LoRA. */
+function takesAddOns(family: string): boolean {
+  return knownCapabilities().some((capability) => templatesFor(capability, family).some((template) => template.manifest.lora));
+}
+
 /** What a support file is for, in the words a person would use. */
 const SUPPORT_WORDS: Partial<Record<ModelType, string>> = {
   lora: 'Adapts a checkpoint rather than generating on its own.',
@@ -178,6 +183,25 @@ export function runnabilityFor(input: RunnabilityInput): ModelRunnability {
     backendId: input.backendId,
     missing: [] as MissingCompanion[],
   };
+
+  // A style add-on is only any use with a model it was made for, through a
+  // workflow that can take add-ons. One made for a family with no such
+  // workflow here (Qwen-Image, LTX-2, Wan 14B) says so instead of passing as a
+  // support file. With no family to go on, it keeps the benefit of the doubt.
+  if (input.type === 'lora') {
+    const claim = claimFromCatalogueBase(input.catalogueBase);
+    const named = claim.kind === 'named' && !/^hugging face$/i.test(claim.stated) ? claim.stated : null;
+    const forFamily = claim.kind === 'family' ? claim.family : named ? null : family;
+    if (named || (forFamily && !takesAddOns(forFamily))) {
+      return {
+        ...base,
+        status: 'no-workflow',
+        capabilities: [],
+        summary: 'No workflow for its model yet',
+        detail: `This add-on is for ${named ?? forFamily}, and there is no workflow for that model here that can use it yet.`,
+      };
+    }
+  }
 
   // Support files never "run". Saying so is not a dodge: it is the honest
   // answer, and it stops a grid of LoRAs from being marked unusable because no

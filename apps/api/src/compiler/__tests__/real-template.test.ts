@@ -16,6 +16,7 @@ import { describe, expect, it } from 'vitest';
 
 import { compile } from '../compile.js';
 import { txt2imgSdxlTemplate } from '../../workflows/txt2img-sdxl.js';
+import { txt2imgFluxTemplate } from '../../workflows/txt2img-flux.js';
 
 const CHECKPOINT_ID = '00000000-0000-4000-8000-000000000001';
 const LORA_ID = '00000000-0000-4000-8000-00000000000a';
@@ -109,5 +110,46 @@ describe('compiling the shipped txt2img-sdxl template', () => {
     expect(() => run({ batchSize: 99 })).toThrow(/Images/);
     expect(() => run({ advanced: { steps: 500 } })).toThrow(/Steps/);
     expect(() => run({ advanced: { sampler: 'not_a_real_sampler' } })).toThrow(/Sampler/);
+  });
+});
+
+describe('compiling the shipped txt2img-flux template', () => {
+  const FLUX_ID = '00000000-0000-4000-8000-0000000000b1';
+  const FLUX_LORA_ID = '00000000-0000-4000-8000-0000000000b2';
+
+  function flux(filename: string, overrides: Partial<GenerationParams> = {}) {
+    return compile({
+      params: params({ modelId: FLUX_ID, ...overrides }),
+      template: txt2imgFluxTemplate,
+      modelFilenames: { [FLUX_ID]: filename, [FLUX_LORA_ID]: 'flux-film-look.safetensors' },
+      jobId: JOB_ID,
+    });
+  }
+
+  it('drives FluxGuidance, not the sampler cfg, and loads a safetensors file with UNETLoader', () => {
+    const { graph } = flux('flux1-dev.safetensors');
+    expect(graph['4']).toMatchObject({ class_type: 'UNETLoader', inputs: { unet_name: 'flux1-dev.safetensors' } });
+    expect(graph['26']!.inputs.guidance).toBe(3.5);
+    expect(graph['3']!.inputs.cfg).toBe(1);
+    expect(graph['6']!.inputs.text).toBe('a lighthouse in a storm');
+  });
+
+  it('loads a GGUF build through UnetLoaderGGUF', () => {
+    const { graph } = flux('flux1-dev-Q4_K_S.gguf');
+    expect(graph['4']).toMatchObject({ class_type: 'UnetLoaderGGUF', inputs: { unet_name: 'flux1-dev-Q4_K_S.gguf' } });
+    expect(graph['4']!.inputs).not.toHaveProperty('weight_dtype');
+  });
+
+  it('splices a style add-on in as a model-only LoRA, leaving the encoders alone', () => {
+    const { graph, resolved } = flux('flux1-dev-Q8_0.gguf', { loras: [{ modelId: FLUX_LORA_ID, weight: 0.8 }] });
+    const [loraId] = resolved.loraNodeIds;
+    expect(graph[loraId!]).toMatchObject({
+      class_type: 'LoraLoaderModelOnly',
+      inputs: { lora_name: 'flux-film-look.safetensors', strength_model: 0.8, model: ['4', 0] },
+    });
+    expect(graph[loraId!]!.inputs).not.toHaveProperty('clip');
+    expect(graph['3']!.inputs.model).toEqual([loraId, 0]);
+    // The prompt is still read by the dual CLIP loader directly.
+    expect(graph['6']!.inputs.clip).toEqual(['11', 0]);
   });
 });

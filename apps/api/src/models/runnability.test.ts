@@ -428,3 +428,21 @@ describe('runnabilityFor', () => {
     }
   });
 });
+
+describe('style add-ons', () => {
+  const addOn = (catalogueBase: string, filename = 'style.safetensors') =>
+    runnabilityFor({ filename, type: 'lora', catalogueBase, info: null, backendId: null, backendName: 'desk', installed: false, folder: 'loras' });
+
+  it('are support files for a family whose workflow takes add-ons', () => {
+    for (const base of ['SDXL', 'SD1.5', 'FLUX.1', 'Pony']) expect(addOn(base).status, base).toBe('support');
+  });
+
+  it('say so when made for a model nothing here can use them with', () => {
+    expect(addOn('Qwen/Qwen-Image-2.1')).toMatchObject({ status: 'no-workflow', summary: 'No workflow for its model yet' });
+    expect(addOn('Lightricks/LTX-2.3').status).toBe('no-workflow');
+  });
+
+  it('keep the benefit of the doubt with no family to go on', () => {
+    expect(addOn('Hugging Face', 'mystery-style.safetensors').status).toBe('support');
+  });
+});

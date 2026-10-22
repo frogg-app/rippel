@@ -18,8 +18,8 @@
  *    the positive zeroed out (33), so there is no negative prompt to bind.
  *  - **`EmptySD3LatentImage` (5)**: FLUX's 16-channel latent.
  *
- * No LoRA chain yet: FLUX LoRAs are model-only, and the compiler's splice
- * always wires a CLIP input.
+ * Style add-ons splice in as `LoraLoaderModelOnly` after the diffusion-model
+ * loader: FLUX LoRAs change the model, and the encoders are left alone.
  */
 
 import type { ComfyApiGraph, ManifestInput, ModelRequirement, WorkflowManifest, WorkflowTemplate } from './types.js';
@@ -179,6 +179,9 @@ export const txt2imgFluxManifest: WorkflowManifest = {
   inputs: INPUTS,
   resolutions: SDXL_RESOLUTIONS,
   quality: FLUX_QUALITY_PRESETS,
+  // DualCLIPLoader is a different node, so there is no CLIP slot on the
+  // anchor to reroute; -1 matches no link.
+  lora: { anchorNodeId: '4', modelSlot: 0, clipSlot: -1, nodeClass: 'LoraLoaderModelOnly', maxLoras: 4 },
 };
 
 export const txt2imgFluxTemplate: WorkflowTemplate = {
