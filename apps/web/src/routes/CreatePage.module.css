@@ -228,3 +228,29 @@
   .inputs { flex: none; overflow: visible; mask-image: none; -webkit-mask-image: none; padding-right: var(--panel-pad-x); }
   .footer { padding-bottom: var(--space-6); }
 }
+
+/* The draft's one line: what restoring changed, and the way to clear it. */
+.draftBar {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.draftNotice {
+  line-height: 1.45;
+}
+
+.startOver {
+  flex-shrink: 0;
+  color: var(--text-4);
+  font-size: var(--text-xs);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.startOver:hover {
+  color: var(--text);
+}

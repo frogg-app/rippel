@@ -243,6 +243,7 @@ vi.mock('../lib/api-jobs', async () => {
 const { CreatePage } = await import('./CreatePage');
 const { ModeToggle } = await import('../shell/ModeToggle');
 const { resetCreateMode } = await import('../create/mode');
+const { resetDraftStore } = await import('../create/draft');
 const { resetReadinessCache } = await import('../create/useReadiness');
 
 beforeEach(() => {
@@ -250,6 +251,7 @@ beforeEach(() => {
   localStorage.clear();
   sessionStorage.clear();
   resetCreateMode();
+  resetDraftStore();
   resetReadinessCache();
 });
 
@@ -1284,5 +1286,35 @@ describe('for somebody new', () => {
       'href',
       expect.stringContaining('intent=styles'),
     );
+  });
+});
+
+describe('the form survives leaving the page', () => {
+  it('keeps the prompt and model across navigation, and Start over clears them', async () => {
+    const user = userEvent.setup();
+    const first = render(<CreatePage />);
+    await screen.findByRole('radio', { name: /SDXL Base/i });
+    await user.type(screen.getByRole('textbox', { name: /prompt/i }), 'a paper boat');
+    first.unmount();
+
+    render(<CreatePage />);
+    expect(await screen.findByDisplayValue('a paper boat')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Start over' }));
+    expect(screen.getByRole('textbox', { name: /prompt/i })).toHaveValue('');
+  });
+
+  it('restores a saved draft, dropping a model that has gone, with a note', async () => {
+    const { flushDraft, resetDraftStore, saveDraft } = await import('../create/draft');
+    const { initialFormState } = await import('../create/form');
+    saveDraft('', { ...initialFormState(), prompt: 'rain on glass', modelId: 'model-uninstalled' });
+    flushDraft();
+    // Rendered without a signed-in user, so the in-memory copy carries it;
+    // the per-user storage round trip is covered in draft.test.ts.
+    render(<CreatePage />);
+    expect(await screen.findByDisplayValue('rain on glass')).toBeInTheDocument();
+    expect(
+      await screen.findByText('From your saved draft, the model is no longer installed, so it was removed.'),
+    ).toBeInTheDocument();
+    resetDraftStore();
   });
 });

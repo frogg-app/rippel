@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import type { User } from '@comfy/shared';
 import { api, ApiRequestError, type Credentials, type Registration } from '../lib/api';
 import { clearLibraryCache } from '../library/libraryCache';
+import { clearDraft } from '../create/draft';
 import { AuthContext, type AuthState, type AuthStatus } from './context';
 
 /**
@@ -44,7 +45,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const lastUserId = useRef<string | null | undefined>(undefined);
   useEffect(() => {
     if (status === 'loading') return;
-    if (lastUserId.current !== undefined && lastUserId.current !== userId) clearLibraryCache();
+    if (lastUserId.current !== undefined && lastUserId.current !== userId) {
+      clearLibraryCache();
+      // The Create draft is the previous user's prompt; it must not follow
+      // whoever signs in next.
+      if (lastUserId.current) clearDraft(lastUserId.current);
+    }
     lastUserId.current = userId;
   }, [status, userId]);
 
@@ -67,6 +73,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!(error instanceof ApiRequestError)) throw error;
     });
     clearLibraryCache();
+    clearDraft();
     setUser(null);
     setStatus('anonymous');
   }, []);

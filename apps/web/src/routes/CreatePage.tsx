@@ -11,7 +11,7 @@
  * `create/form.ts` (what we POST, and what the seed does), `create/jobProgress.ts`
  * (what a `JobEvent` does to the job on screen).
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { Job, Model } from '@comfy/shared';
 import { SparkIcon } from '../components/icons';
 import { Chips, Group, Hint, Segmented, Slider } from '../create/Controls';
@@ -24,6 +24,8 @@ import { ModelNotice } from '../create/ModelNotice';
 import { setupReason } from '../create/modelReasons';
 import { invalidLoras } from '../create/loras';
 import { familyWords } from '../create/families';
+import { clearDraft, droppedSentence, flushDraft, loadDraft, reviseDraft, saveDraft } from '../create/draft';
+import { AuthContext } from '../auth/context';
 import { PromptFields } from '../create/PromptFields';
 import { ReferenceImage } from '../create/ReferenceImage';
 import {
@@ -62,7 +64,11 @@ import styles from './CreatePage.module.css';
 
 export function CreatePage() {
   const targetBackendId = useTargetBackend();
-  const [form, setForm] = useState<CreateFormState>(initialFormState);
+  const userId = useContext(AuthContext)?.user?.id ?? null;
+  // What was on this screen last time — this session, or the last visit.
+  const [restored] = useState(() => loadDraft(userId));
+  const [form, setForm] = useState<CreateFormState>(() => restored ?? initialFormState());
+  const [draftNotice, setDraftNotice] = useState<string | null>(null);
   const [advancedOpen, setAdvancedOpen] = useAdvancedOpen();
   const [mode, setMode] = useCreateMode();
   const { checkpoints, loras, capabilities, loading, error } = useModels();
@@ -78,6 +84,49 @@ export function CreatePage() {
     [],
   );
 
+  // Keep the form across routes and reloads; see `create/draft.ts`.
+  useEffect(() => saveDraft(userId, form), [userId, form]);
+  useEffect(() => {
+    window.addEventListener('pagehide', flushDraft);
+    return () => {
+      window.removeEventListener('pagehide', flushDraft);
+      flushDraft();
+    };
+  }, []);
+
+  // A restored draft is checked once against what exists now: a model or
+  // style add-on uninstalled since, or a starting image that no longer loads,
+  // is dropped with a note rather than left to fail at Generate.
+  const revised = useRef(false);
+  useEffect(() => {
+    if (revised.current || !restored || loading) return;
+    revised.current = true;
+    const { form: next, dropped } = reviseDraft(restored, { checkpoints, loras });
+    if (dropped.length > 0) {
+      setForm((prev) => ({ ...prev, modelId: next.modelId, loras: next.loras }));
+      setDraftNotice(droppedSentence(dropped));
+    }
+    const image = restored.initImage;
+    if (image) {
+      void fetch(image.previewUrl, { method: 'HEAD', credentials: 'include' })
+        .then((response) => response.ok)
+        .catch(() => true) // offline is not "gone"
+        .then((ok) => {
+          if (ok) return;
+          setForm((prev) => (prev.initImage?.previewUrl === image.previewUrl ? { ...prev, initImage: null } : prev));
+          setDraftNotice('The starting image from your saved draft is no longer available, so it was removed.');
+        });
+    }
+  }, [restored, loading, checkpoints, loras]);
+
+  const startOver = useCallback(() => {
+    clearDraft(userId);
+    setForm(initialFormState());
+    setDraftNotice(null);
+  }, [userId]);
+  const hasContent = Boolean(
+    form.prompt || form.negativePrompt || form.initImage || form.loras.length > 0,
+  );
   // The Image/Video toggle lives in the shell's top bar and until now told
   // nobody: it highlighted itself while the form went on submitting txt2img.
   // The mode is the base kind; the img2* variant is derived from the starting
@@ -221,6 +270,20 @@ export function CreatePage() {
     <div className={styles.workspace}>
       <section className={styles.panel} aria-label="Generation settings">
         <div className={styles.inputs}>
+          {draftNotice || hasContent ? (
+            <div className={styles.draftBar}>
+              {draftNotice ? (
+                <span role="status" className={styles.draftNotice}>{draftNotice}</span>
+              ) : (
+                <span />
+              )}
+              {hasContent ? (
+                <button type="button" className={styles.startOver} onClick={startOver}>
+                  Start over
+                </button>
+              ) : null}
+            </div>
+          ) : null}
           <PromptFields
             prompt={form.prompt}
             negativePrompt={form.negativePrompt}
