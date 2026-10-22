@@ -34,7 +34,6 @@ import { FixModel } from './FixModel';
 import { useState, type CSSProperties } from 'react';
 import type { Model, ModelCatalogInfo, ModelRunnability, Uuid } from '@comfy/shared';
 import {
-  RUNNABILITY_LABEL,
   RUNNABILITY_TONE,
   SUPPORT_ROLES,
   basename,
@@ -50,6 +49,7 @@ import { PreviewLightbox } from './PreviewLightbox';
 import { TypeBadge } from './TypeBadge';
 import { Mark } from '../components/Mark';
 import { ManualDownloads } from './ManualDownloads';
+import { verdictLabel } from './intents';
 import styles from './ModelsPanels.module.css';
 
 export interface InstalledCardProps {
@@ -202,7 +202,7 @@ export function InstalledCard({
           // for something to generate with is actually looking for — the same
           // judgement Discover's cards already make.
           <p className={`${styles.verdict} ${styles[`verdict_${RUNNABILITY_TONE[verdict.status]}`]}`}>
-            <span className={styles.verdictChip}>{RUNNABILITY_LABEL[verdict.status]}</span>
+            <span className={styles.verdictChip}>{verdictLabel(verdict)}</span>
             <span className={styles.verdictText}>{verdict.detail ?? verdict.summary}</span>
           </p>
         ) : null}

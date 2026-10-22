@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ModelCatalogEntry } from '@comfy/shared';
 import { compareBest, inScope, sortCatalogue } from './discover';
-import { companionName, intentsOf, needsLine, worksHere } from './intents';
+import { companionName, intentsOf, verdictLabel, worksHere } from './intents';
 import { isRecommendedHere, recommendationFor } from './recommended';
 import { makeEntry, makeInfo, makeRunnability } from './testing';
 
@@ -134,7 +134,17 @@ describe('missing parts', () => {
         ],
       }),
     });
-    expect(needsLine(entry)).toBe('Needs: Prompt reader');
-    expect(needsLine(model('sdxl'))).toBeNull();
+    // Both text encoders are one "prompt reader", named once.
+    expect(verdictLabel(entry.runnability!)).toBe('Needs prompt reader');
+    expect(
+      verdictLabel({
+        status: 'needs-companion',
+        missing: [
+          { filename: 't5xxl.safetensors', purpose: null, loader: 'CLIPLoader' },
+          { filename: 'ae.safetensors', purpose: null, loader: 'VAELoader' },
+        ],
+      }),
+    ).toBe('Needs prompt reader and image decoder');
+    expect(verdictLabel({ status: 'ready' })).toBe('Will run');
   });
 });

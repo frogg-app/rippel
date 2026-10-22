@@ -51,7 +51,6 @@
 import { useState, type CSSProperties, type ReactNode } from 'react';
 import type { ModelCatalogEntry, ModelInstall } from '@comfy/shared';
 import {
-  RUNNABILITY_LABEL,
   RUNNABILITY_TONE,
   SUPPORT_ROLES,
   familyHue,
@@ -60,7 +59,7 @@ import {
   isLive,
 } from './catalogue';
 import { cardTags, ownerOf, tagKey, type TagKey } from './discover';
-import { needsLine } from './intents';
+import { verdictLabel } from './intents';
 import { isRecommendedHere, recommendationFor } from './recommended';
 import { CheckIcon, DownloadCountIcon, HeartIcon, InstallIcon, WorkflowIcon } from './icons';
 import { InstallProgress } from './InstallProgress';
@@ -168,9 +167,6 @@ export function CardVerdict({
     );
   }
   if (!verdict) return null;
-  // The parts it is missing, by their plain names. The API's sentence names
-  // the exact file; this is the line a person reads first.
-  const needs = needsLine(entry);
   return (
     <>
       {recommended}
@@ -186,7 +182,7 @@ export function CardVerdict({
         <span className={styles.verdictChip}>
           {entry.sourceWorkflow && verdict.status === 'no-workflow'
             ? 'Workflow setup needed'
-            : RUNNABILITY_LABEL[verdict.status]}
+            : verdictLabel(verdict)}
         </span>
         <span className={styles.verdictText}>
           {entry.sourceWorkflow && verdict.status === 'no-workflow'
@@ -205,7 +201,6 @@ export function CardVerdict({
           </button>
         ) : null}
       </p>
-      {needs ? <p className={styles.cardNeeds}>{needs}</p> : null}
     </>
   );
 }

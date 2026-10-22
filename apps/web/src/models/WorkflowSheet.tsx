@@ -26,7 +26,6 @@ import type { JobKind, Model, ModelWorkflows, Uuid, WorkflowTemplateSummary } fr
 import { ApiRequestError } from '../lib/api';
 import type { ModelsApi } from '../lib/api-models';
 import {
-  RUNNABILITY_LABEL,
   RUNNABILITY_TONE,
   SUPPORT_ROLES,
   familyLabel,
@@ -37,6 +36,7 @@ import { expertFor } from './vocabulary';
 import { CloseIcon, WorkflowIcon } from './icons';
 import { OfficialWorkflows } from './OfficialWorkflows';
 import { ManualDownloads } from './ManualDownloads';
+import { verdictLabel } from './intents';
 import styles from './ModelsPanels.module.css';
 
 export type WorkflowSheetSubject =
@@ -389,7 +389,7 @@ function ModelOptions({
                       </div>
                       <p className={styles.sheetOptionDesc}>{option.template.description}</p>
                       <p className={`${styles.verdict} ${styles[`verdict_${tone}`]}`}>
-                        <span className={styles.verdictChip}>{RUNNABILITY_LABEL[option.verdict.status]}</span>
+                        <span className={styles.verdictChip}>{verdictLabel(option.verdict)}</span>
                         <span className={styles.verdictText}>
                           {option.verdict.detail ?? option.verdict.summary}
                         </span>

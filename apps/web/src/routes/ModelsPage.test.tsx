@@ -476,7 +476,7 @@ describe('ModelsPage', () => {
       await ready();
 
       expect(await screen.findByText('LTX-Video 2B')).toBeInTheDocument();
-      expect(screen.getByText('Needs one more file')).toBeInTheDocument();
+      expect(screen.getByText('Needs prompt reader')).toBeInTheDocument();
       // The API's own sentence, naming the file to go and get.
       expect(screen.getByText(/t5xxl_fp16\.safetensors/)).toBeInTheDocument();
     });
@@ -655,7 +655,7 @@ describe('ModelsPage', () => {
       expect(cards.map((card) => card.getAttribute('aria-label'))).toEqual(['SDXL Base 1.0', 'FLUX.1 dev']);
       expect(within(cards[0]!).getByText('Recommended')).toBeInTheDocument();
       expect(within(cards[1]!).queryByText('Recommended')).not.toBeInTheDocument();
-      expect(within(cards[1]!).getByText('Needs: Prompt reader, Image decoder')).toBeInTheDocument();
+      expect(within(cards[1]!).getByText('Needs prompt reader and image decoder')).toBeInTheDocument();
     });
 
     /** The badge says what the file is for, to a pointer and to a keyboard. */

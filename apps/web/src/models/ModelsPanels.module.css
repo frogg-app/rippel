@@ -2491,12 +2491,6 @@ button.tagChipOn:hover {
   color: var(--accent);
 }
 
-.cardNeeds {
-  margin: 0;
-  font-size: var(--text-xs);
-  color: var(--models-warn);
-}
-
 @media (max-width: 720px) {
   /* The rail stacks above the grid rather than squeezing it to nothing. */
   .discover {

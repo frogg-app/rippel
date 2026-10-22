@@ -24,6 +24,7 @@
  */
 import type { MissingCompanion, ModelCatalogEntry, ModelType, RunnabilityStatus } from '@comfy/shared';
 import { VOCABULARY } from './vocabulary';
+import { RUNNABILITY_LABEL } from './catalogue';
 
 export type Intent = 'images' | 'video' | 'edit' | 'enlarge' | 'styles' | 'all';
 
@@ -162,9 +163,15 @@ export function companionName(missing: MissingCompanion): string {
 }
 
 /** "Needs: Prompt reader, Image decoder", or null when nothing is missing. */
-export function needsLine(entry: ModelCatalogEntry): string | null {
-  const missing = entry.runnability?.missing ?? [];
-  if (entry.runnability?.status !== 'needs-companion' || missing.length === 0) return null;
-  const names = [...new Set(missing.map(companionName))];
-  return `Needs: ${names.join(', ')}`;
+/**
+ * The badge for a verdict. For a model missing parts, the badge names them —
+ * "Needs prompt reader" — rather than counting them, since what is missing is
+ * the thing a person needs to know.
+ */
+export function verdictLabel(verdict: { status: RunnabilityStatus; missing?: MissingCompanion[] }): string {
+  const missing = verdict.missing ?? [];
+  if (verdict.status !== 'needs-companion' || missing.length === 0) return RUNNABILITY_LABEL[verdict.status];
+  const names = [...new Set(missing.map((m) => companionName(m).toLowerCase()))];
+  const list = names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : names[0];
+  return `Needs ${list}`;
 }
