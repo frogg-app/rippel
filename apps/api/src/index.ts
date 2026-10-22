@@ -34,6 +34,7 @@ import workflowCapabilityRoutes from './workflows/routes.js';
 import jobRoutes from './orchestrator/routes.js';
 import libraryRoutes from './library/routes.js';
 import uploadRoutes from './uploads/routes.js';
+import { acceptEmptyBodies } from './lib/empty-body.js';
 
 const app = Fastify({
   logger: {
@@ -45,6 +46,7 @@ const app = Fastify({
   bodyLimit: 32 * 1024 * 1024,
 });
 
+acceptEmptyBodies(app);
 await app.register(cookie, { secret: env.authSecret });
 await app.register(authPlugin);
 // Job progress is pushed over a socket rather than polled; see orchestrator/routes.ts.
