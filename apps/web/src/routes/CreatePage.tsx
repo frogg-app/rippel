@@ -20,7 +20,6 @@ import { AdvancedDrawer } from '../create/AdvancedDrawer';
 import { LoraSection } from '../create/LoraSection';
 import { JobStage } from '../create/JobStage';
 import { ModelPicker } from '../create/ModelPicker';
-import { ModelKinds } from '../models/ModelKinds';
 import { PromptFields } from '../create/PromptFields';
 import { ReferenceImage } from '../create/ReferenceImage';
 import {
@@ -216,7 +215,7 @@ export function CreatePage() {
             disabled={stage.submitting}
           />
 
-          <Group label="Model" action={<ModelKinds compact />}>
+          <Group label="Model">
             <ModelPicker
               models={checkpoints}
               kind={kind}

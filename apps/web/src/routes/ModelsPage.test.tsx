@@ -508,7 +508,7 @@ describe('ModelsPage', () => {
      * than on a ComfyUI file type, and only on what works here. Type is an
      * expert filter now, folded under More filters.
      */
-    it('opens on Make images, working models only, with Type under More filters', async () => {
+    it('opens on Make images, working models only, with Type first in the rail', async () => {
       const api = makeStubApi();
       renderPage(api);
       await ready();
@@ -530,10 +530,11 @@ describe('ModelsPage', () => {
       expect(screen.getByRole('article', { name: 'SDXL Base 1.0' })).toBeInTheDocument();
       expect(screen.queryByRole('article', { name: 'Cinematic Film Look' })).not.toBeInTheDocument();
 
-      // Type is folded away until asked for.
-      expect(screen.queryByRole('group', { name: 'Filter by model type' })).not.toBeInTheDocument();
-      await user.click(screen.getByRole('button', { name: /More filters/ }));
-      expect(screen.getByRole('group', { name: 'Filter by model type' })).toBeInTheDocument();
+      // Type leads the rail, then task.
+      const rail = screen.getByRole('complementary', { name: 'Filter the catalogue' });
+      const facets = within(rail).getAllByRole('group').map((g) => g.getAttribute('aria-label'));
+      expect(facets[0]).toBe('Filter by model type');
+      expect(facets[1]).toMatch(/task/i);
 
       // Each chip explains itself, and Style add-ons finds the add-ons.
       await user.click(within(intents).getByRole('button', { name: /^Style add-ons/ }));

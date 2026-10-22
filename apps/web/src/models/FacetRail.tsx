@@ -8,10 +8,9 @@
  * a selected type would otherwise report its own total while every other type
  * reported zero.
  *
- * Task, model family and tags stay open — they are the questions anybody asks.
- * Type, library, format, language and licence fold under "More filters": the
- * intent chips above the grid have taken over the type facet's old job, and
- * the rest are answers only somebody who already knows ComfyUI is looking for.
+ * Type comes first, then task, model family and tags — the questions anybody
+ * asks. Library, format, language and licence fold under "More filters": they
+ * are answers only somebody who already knows ComfyUI is looking for.
  * The fold opens by itself when one of its filters is on, so an active filter
  * is never hidden from the person who has to turn it off.
  *
@@ -56,8 +55,7 @@ export function FacetRail({
   onToggle,
 }: FacetRailProps) {
   const [expanded, setExpanded] = useState<ReadonlySet<ModelTagGroup>>(new Set());
-  const moreActive =
-    activeType !== null || include.some((key) => RAIL_MORE_GROUPS.includes(splitKey(key).group));
+  const moreActive = include.some((key) => RAIL_MORE_GROUPS.includes(splitKey(key).group));
   const [moreOpen, setMoreOpen] = useState(false);
   const showMore = moreOpen || moreActive;
 
@@ -113,6 +111,31 @@ export function FacetRail({
 
   return (
     <aside className={styles.rail} aria-label="Filter the catalogue">
+      <div className={styles.facet} role="group" aria-label="Filter by model type">
+        <h4 className={styles.facetTitle}>Type</h4>
+        {types.map(({ type, count }) => (
+          <button
+            key={type}
+            type="button"
+            className={`${styles.facetRow} ${activeType === type ? styles.facetRowOn : ''}`}
+            aria-pressed={activeType === type}
+            title={EXPERT_LABELS[type]}
+            onClick={() => onType(activeType === type ? null : type)}
+          >
+            <span className={styles.facetValue}>{TYPE_LABELS[type]}</span>
+            <span className={`mono ${styles.facetCount}`}>{count}</span>
+          </button>
+        ))}
+        <button
+          type="button"
+          className={`${styles.facetRow} ${activeType === null ? styles.facetRowOn : ''}`}
+          aria-pressed={activeType === null}
+          onClick={() => onType(null)}
+        >
+          <span className={styles.facetValue}>Any type</span>
+          <span className={`mono ${styles.facetCount}`}>{allTypesCount}</span>
+        </button>
+      </div>
       {RAIL_OPEN_GROUPS.map(tagGroup)}
 
       <button
@@ -129,31 +152,6 @@ export function FacetRail({
 
       {showMore ? (
         <div id="discover-more-filters">
-          <div className={styles.facet} role="group" aria-label="Filter by model type">
-            <h4 className={styles.facetTitle}>Type</h4>
-            {types.map(({ type, count }) => (
-              <button
-                key={type}
-                type="button"
-                className={`${styles.facetRow} ${activeType === type ? styles.facetRowOn : ''}`}
-                aria-pressed={activeType === type}
-                title={EXPERT_LABELS[type]}
-                onClick={() => onType(activeType === type ? null : type)}
-              >
-                <span className={styles.facetValue}>{TYPE_LABELS[type]}</span>
-                <span className={`mono ${styles.facetCount}`}>{count}</span>
-              </button>
-            ))}
-            <button
-              type="button"
-              className={`${styles.facetRow} ${activeType === null ? styles.facetRowOn : ''}`}
-              aria-pressed={activeType === null}
-              onClick={() => onType(null)}
-            >
-              <span className={styles.facetValue}>Any type</span>
-              <span className={`mono ${styles.facetCount}`}>{allTypesCount}</span>
-            </button>
-          </div>
           {RAIL_MORE_GROUPS.map(tagGroup)}
         </div>
       ) : null}
