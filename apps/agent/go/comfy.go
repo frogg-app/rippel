@@ -55,6 +55,10 @@ type ComfyState struct {
 	HelperReady     bool    `json:"helperReady"`
 	DiskFree        *int64  `json:"diskFree"`
 	DiskTotal       *int64  `json:"diskTotal"`
+	// The card's own memory, read from the OS. ComfyUI's vram_total on ROCm
+	// and unified-memory systems includes shared system RAM (a 16 GB 6900 XT
+	// reports 39 GB on Windows), so rippel caps that figure with this one.
+	GPUMemory *int64 `json:"gpuMemory"`
 }
 
 func exists(path string) bool {
@@ -197,6 +201,7 @@ func ComfyStatus(cfg *Config) ComfyState {
 		HelperReady:     helperReady,
 		DiskFree:        free,
 		DiskTotal:       total,
+		GPUMemory:       gpuMemory(),
 	}
 	if installed {
 		path := cfg.ComfyPath

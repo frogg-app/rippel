@@ -153,3 +153,17 @@ func looksLikeDoubleClick() bool {
 }
 
 func replaceAgentProcess(target string) error { return nil }
+
+// readGPUMemory reads each display adapter's HardwareInformation.qwMemorySize,
+// the driver's 64-bit dedicated memory size. WMI's AdapterRAM is 32-bit and
+// stops at 4 GB, so it cannot be used for any modern card.
+func readGPUMemory() []int64 {
+	cmd := exec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-Command",
+		`Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}\0*' -ErrorAction SilentlyContinue | ForEach-Object { $_.'HardwareInformation.qwMemorySize' }`)
+	hideConsole(cmd)
+	data, err := cmd.Output()
+	if err != nil {
+		return nil
+	}
+	return parseByteLines(string(data))
+}

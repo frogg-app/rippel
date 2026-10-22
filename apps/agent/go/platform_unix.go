@@ -78,3 +78,5 @@ func openInstalledPanel() bool                           { return false }
 func startDesktop(a *Agent, quit func()) (func(), error) { return nil, nil }
 
 func prepareForeground(command string, argc int) {}
+
+func readGPUMemory() []int64 { return amdgpuVRAM() }

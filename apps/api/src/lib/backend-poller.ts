@@ -73,6 +73,26 @@ export async function pollBackendNow(
   await pollOne(backend, log);
 }
 
+/**
+ * ComfyUI's figure capped at the card's own memory, when this backend's agent
+ * reports it. On ROCm (Windows especially) and unified-memory systems ComfyUI
+ * counts shared system RAM, so a 16 GB 6900 XT reported 39 GB and models were
+ * recommended that do not fit on the card.
+ */
+async function cardMemory(
+  backendId: string,
+  total: number | null,
+  free: number | null,
+): Promise<{ total: number | null; free: number | null }> {
+  const [row] = await query<{ gpu: string | null }>(
+    `SELECT comfy->>'gpuMemory' AS gpu FROM deployments WHERE backend_id = $1 ORDER BY created_at DESC LIMIT 1`,
+    [backendId],
+  );
+  const card = row?.gpu ? Number(row.gpu) : 0;
+  if (!(card > 0) || total === null || total <= card) return { total, free };
+  return { total: card, free: free === null ? null : Math.min(free, card) };
+}
+
 async function pollOne(backend: BackendRow, log: (msg: string) => void): Promise<void> {
   const client = new ComfyClient(backend.base_url);
 
@@ -90,6 +110,7 @@ async function pollOne(backend: BackendRow, log: (msg: string) => void): Promise
   // The first accelerator is the one ComfyUI will actually use. Its vram_total
   // is a reported budget, not the card's physical size — see 002_backend_capacity.sql.
   const device = stats.devices?.find((d) => d.type !== 'cpu') ?? stats.devices?.[0];
+  const { total: vramTotal, free: vramFree } = await cardMemory(backend.id, device?.vram_total ?? null, device?.vram_free ?? null);
   await query(
     `UPDATE backends
         SET status = 'online',
@@ -104,8 +125,8 @@ async function pollOne(backend: BackendRow, log: (msg: string) => void): Promise
     [
       backend.id,
       device?.name ?? null,
-      device?.vram_free ?? null,
-      device?.vram_total ?? null,
+      vramFree,
+      vramTotal,
       stats.system?.ram_free ?? null,
       stats.system?.ram_total ?? null,
       // Keep the whole payload: it is what the admin screen shows when the

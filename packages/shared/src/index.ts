@@ -1158,6 +1158,12 @@ export interface ComfyState {
   /** Free bytes on the volume holding the install, when it could be read. */
   diskFree: number | null;
   diskTotal: number | null;
+  /**
+   * The graphics card's own memory in bytes, as the OS reports it. Agents
+   * before 0.4.12 do not send it. Caps the backend's reported vram_total,
+   * which on ROCm and unified-memory systems includes shared system RAM.
+   */
+  gpuMemory?: number | null;
 }
 
 export interface Deployment {
