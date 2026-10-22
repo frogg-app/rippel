@@ -1,6 +1,7 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from './context';
 import { Splash } from '../components/Splash';
+import { useSurfacePhase } from '../components/surface';
 
 /**
  * The gate in front of every real screen: anonymous visitors get the sign-in
@@ -21,7 +22,10 @@ export function RequireAuth() {
 /** The mirror image: a signed-in user has no business on the auth screens. */
 export function RedirectIfSignedIn() {
   const { status } = useAuth();
+  // Just signed in: the auth page is playing its sign-in transition and will
+  // route on itself when the card has sunk.
+  const sinking = useSurfacePhase() === 'sinking';
   if (status === 'loading') return <Splash />;
-  if (status === 'authenticated') return <Navigate to="/create" replace />;
+  if (status === 'authenticated' && !sinking) return <Navigate to="/create" replace />;
   return <Outlet />;
 }

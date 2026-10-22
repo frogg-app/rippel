@@ -1,0 +1,73 @@
+/* Takes the place #root's children had, so screens lay out as before. */
+.stage {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  transform-origin: 50% 60%;
+}
+
+.stage > :not(.shine, .tint) {
+  flex-grow: 1;
+  min-height: 0;
+}
+
+.stage {
+  position: relative;
+}
+
+/* The water's colour over the rising app: recolours it toward the brand's
+   deep teal, keeping its light and shade. */
+.tint {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  background: var(--accent-deep);
+  mix-blend-mode: color;
+}
+
+/* The highlight across the app's top edge as it breaks the surface. */
+.shine {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 70px;
+  pointer-events: none;
+  opacity: 0;
+  background: radial-gradient(60% 100% at 50% 0%, rgba(196, 226, 228, 0.22), transparent 70%);
+  mix-blend-mode: screen;
+}
+
+/* Matches .shell in shell/AppShell.module.css: the settled background. */
+.under {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background: var(--ground);
+  background-image: var(--ambient);
+  background-attachment: fixed;
+  pointer-events: none;
+}
+
+/* The water over the rising app: above it, but never in the way. */
+.water {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  pointer-events: none;
+}
+
+.canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.defs {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+}

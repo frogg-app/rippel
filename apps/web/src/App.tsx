@@ -2,6 +2,7 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { AuthProvider } from './auth/AuthProvider';
 import { RedirectIfSignedIn, RequireAuth } from './auth/RequireAuth';
 import { AppShell } from './shell/AppShell';
+import { SurfaceStage } from './components/surface';
 import { AuthPage } from './routes/AuthPage';
 import { CreatePage } from './routes/CreatePage';
 import { LibraryPage } from './routes/LibraryPage';
@@ -22,22 +23,25 @@ export function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <Routes>
-          <Route element={<RedirectIfSignedIn />}>
-            <Route path="/login" element={<AuthPage mode="login" />} />
-            <Route path="/register" element={<AuthPage mode="register" />} />
-          </Route>
-
-          <Route element={<RequireAuth />}>
-            <Route element={<AppShell />}>
-              <Route path="/" element={<Navigate to="/create" replace />} />
-              <Route path="/create" element={<CreatePage />} />
-              <Route path="/library" element={<LibraryPage />} />
-              <Route path="/models" element={<ModelsPage />} />
-              <Route path="*" element={<NotFoundPage />} />
+        {/* Holds the sign-in transition: the app rising out of the water. */}
+        <SurfaceStage>
+          <Routes>
+            <Route element={<RedirectIfSignedIn />}>
+              <Route path="/login" element={<AuthPage mode="login" />} />
+              <Route path="/register" element={<AuthPage mode="register" />} />
             </Route>
-          </Route>
-        </Routes>
+
+            <Route element={<RequireAuth />}>
+              <Route element={<AppShell />}>
+                <Route path="/" element={<Navigate to="/create" replace />} />
+                <Route path="/create" element={<CreatePage />} />
+                <Route path="/library" element={<LibraryPage />} />
+                <Route path="/models" element={<ModelsPage />} />
+                <Route path="*" element={<NotFoundPage />} />
+              </Route>
+            </Route>
+          </Routes>
+        </SurfaceStage>
       </AuthProvider>
     </BrowserRouter>
   );
