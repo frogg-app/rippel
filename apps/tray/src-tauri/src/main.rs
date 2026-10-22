@@ -13,7 +13,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use serde_json::Value;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{AppHandle, Manager, PhysicalPosition, Rect, WebviewWindow, WindowEvent};
+use tauri::{AppHandle, Manager, PhysicalPosition, PhysicalSize, Rect, WebviewWindow, WindowEvent};
 
 /// The only paths the panel may call. The token grants the whole desktop API,
 /// so the webview gets a list rather than a pass-through.
@@ -62,6 +62,36 @@ impl Agent {
             Err(e) => Err(format!("The agent is not answering ({e}).")),
         }
     }
+}
+
+/// The tallest the panel grows to before its body scrolls, in logical pixels.
+const PANEL_MAX_HEIGHT: f64 = 820.0;
+
+/// Size the panel to its content. The bottom edge stays put, so a panel shown
+/// above the taskbar grows upward; it never grows past the screen's work area.
+#[tauri::command]
+fn fit(window: WebviewWindow, height: f64) {
+    let scale = window.scale_factor().unwrap_or(1.0);
+    let mut wanted = height.clamp(200.0, PANEL_MAX_HEIGHT) * scale;
+    let (Ok(inner), Ok(outer), Ok(position)) = (window.inner_size(), window.outer_size(), window.outer_position()) else {
+        return;
+    };
+    let gap = 12.0 * scale;
+    let mut top_limit = f64::MIN;
+    if let Ok(Some(monitor)) = window.current_monitor() {
+        let area = monitor.work_area();
+        top_limit = area.position.y as f64 + gap;
+        wanted = wanted.min(area.size.height as f64 - 2.0 * gap);
+    }
+    let wanted = wanted.round();
+    if (wanted - inner.height as f64).abs() < 1.0 {
+        return;
+    }
+    let bottom = position.y as f64 + outer.height as f64;
+    let frame = outer.height as f64 - inner.height as f64;
+    let _ = window.set_size(PhysicalSize::new(inner.width, wanted as u32));
+    let y = (bottom - wanted - frame).max(top_limit);
+    let _ = window.set_position(PhysicalPosition::new(position.x, y.round() as i32));
 }
 
 #[tauri::command]
@@ -189,7 +219,7 @@ fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(desktop.clone())
-        .invoke_handler(tauri::generate_handler![agent])
+        .invoke_handler(tauri::generate_handler![agent, fit])
         .on_window_event(|window, event| {
             if let WindowEvent::Focused(false) = event {
                 if window.is_visible().unwrap_or(false) {

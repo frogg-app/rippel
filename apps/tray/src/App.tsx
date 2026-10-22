@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { Lockup, Mark } from '@web/components/Mark';
@@ -15,6 +16,8 @@ export function App() {
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState<Busy>(null);
   const [view, setView] = useState<'home' | 'logs'>('home');
+  const panelRef = useRef<HTMLDivElement>(null);
+  useFitWindow(panelRef, view === 'home' && status !== null);
 
   const refresh = useCallback(async () => {
     try {
@@ -45,7 +48,7 @@ export function App() {
   };
 
   return (
-    <div className="panel">
+    <div className="panel" ref={panelRef}>
       <header className="head" data-tauri-drag-region>
         <div className="brand" data-tauri-drag-region>
           <Lockup size={17} />
@@ -106,6 +109,45 @@ export function App() {
       ) : null}
     </div>
   );
+}
+
+// ---------------------------------------------------------------- sizing
+
+/** The height the logs and the waiting screen use: room to read, not content-sized. */
+const PLAIN_HEIGHT = 600;
+
+/**
+ * Keep the window as tall as the panel's content, so there is no empty space
+ * below Activity and no scrollbar until the content outgrows the screen. The
+ * body measures by its scrollHeight because it shrinks (and scrolls) when the
+ * window is capped; everything else is its own height.
+ */
+function useFitWindow(panelRef: React.RefObject<HTMLDivElement | null>, fitContent: boolean) {
+  const last = useRef(0);
+  useLayoutEffect(() => {
+    if (!('__TAURI_INTERNALS__' in window)) return;
+    const measure = () => {
+      const panel = panelRef.current;
+      if (!panel) return;
+      let height = PLAIN_HEIGHT;
+      if (fitContent) {
+        height = 0;
+        for (const child of Array.from(panel.children) as HTMLElement[]) {
+          height += child.classList.contains('body') ? child.scrollHeight : child.offsetHeight;
+        }
+      }
+      height = Math.ceil(height);
+      if (height !== last.current) {
+        last.current = height;
+        void invoke('fit', { height });
+      }
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    const body = panelRef.current?.querySelector('.body');
+    for (const child of Array.from(body?.children ?? [])) observer.observe(child);
+    return () => observer.disconnect();
+  });
 }
 
 // ---------------------------------------------------------------- connection
