@@ -229,6 +229,21 @@ describe('DeploymentsSection', () => {
     expect(await screen.findByText('Enabled', { selector: 'dd' })).toBeInTheDocument();
   });
 
+  it('re-pairs a connected machine with a fresh code, keeping it the same machine', async () => {
+    const { api } = fakeApi();
+    render(<DeploymentsSection api={api} />);
+    await screen.findByText('studio-4090');
+    // A connected machine is not asked for a code until someone wants one.
+    expect(api.pairingCode).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole('button', { name: 'Re-pair' }));
+    expect(await screen.findByText('Pair studio-4090 again')).toBeInTheDocument();
+    expect(await screen.findByText('K7M4P2QR')).toBeInTheDocument();
+    expect(api.pairingCode).toHaveBeenCalledWith('d1', expect.anything());
+    expect(api.remove).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel re-pair' }));
+    expect(screen.queryByText('Pair studio-4090 again')).not.toBeInTheDocument();
+  });
+
   it('asks twice before removing a machine', async () => {
     const { api } = fakeApi();
     render(<DeploymentsSection api={api} />);

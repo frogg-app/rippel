@@ -599,7 +599,13 @@ function DeploymentCard({
           <button type="button" className={shared.action} onClick={() => setShowInstall((v) => !v)}>
             {showInstall ? 'Hide install options' : 'Install Agent'}
           </button>
-        ) : null}
+        ) : (
+          // For a reinstalled or moved agent: a new code hands it this same
+          // machine, so its backend, models and history stay as they are.
+          <button type="button" className={shared.action} onClick={() => setShowInstall((v) => !v)} aria-expanded={showInstall}>
+            {showInstall ? 'Cancel re-pair' : 'Re-pair'}
+          </button>
+        )}
 
       </div>
 
@@ -627,7 +633,9 @@ function DeploymentCard({
         </span>
       ) : null}
 
-      {showInstall && !agentInstalled ? <InstallInstructionsPanel api={api} deployment={deployment} method={installMethod} /> : null}
+      {showInstall ? (
+        <InstallInstructionsPanel api={api} deployment={deployment} method={agentInstalled ? 'manual' : installMethod} repair={agentInstalled} />
+      ) : null}
       {task ? <TaskLog task={task} onDismiss={() => setTask(null)} /> : null}
       <footer className={styles.cardFooter}>
         <button
@@ -851,11 +859,14 @@ function PairingPanel({
   api,
   deployment,
   platform,
+  issueNow = false,
 }: {
   api: DeploymentsApi;
   deployment: Deployment;
   /** Chosen by the tabs above, so the command matches what they say. */
   platform: 'linux' | 'darwin' | 'win32';
+  /** Issue a code straight away, even for a machine that has checked in. */
+  issueNow?: boolean;
 }) {
   type State =
     | { kind: 'loading' }
@@ -867,7 +878,7 @@ function PairingPanel({
   const [now, setNow] = useState(() => Date.now());
   // A machine that has checked in has already redeemed a code; showing it
   // another by default would be offering a solution to a solved problem.
-  const [paired, setPaired] = useState(() => Boolean(deployment.lastSeenAt));
+  const [paired, setPaired] = useState(() => !issueNow && Boolean(deployment.lastSeenAt));
 
   const issue = useCallback(
     async (signal?: AbortSignal) => {
@@ -1118,7 +1129,18 @@ function plaintextToPublicHost(url: string): boolean {
   return true;
 }
 
-function InstallInstructionsPanel({ api, deployment, method }: { api: DeploymentsApi; deployment: Deployment; method: 'manual' | 'command' }) {
+function InstallInstructionsPanel({
+  api,
+  deployment,
+  method,
+  repair = false,
+}: {
+  api: DeploymentsApi;
+  deployment: Deployment;
+  method: 'manual' | 'command';
+  /** Pairing an agent again to a machine rippel already knows. */
+  repair?: boolean;
+}) {
   const [data, setData] = useState<InstallInstructions | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
   // The command-line tabs still choose a platform; the download chooses a
@@ -1167,10 +1189,12 @@ function InstallInstructionsPanel({ api, deployment, method }: { api: Deployment
       {/* ------------------------------------------------ download, then pair */}
       {method === 'manual' && <div className={`${styles.step} ${styles.stepLead}`}>
         <div className={styles.stepHead}>
-          <h4 className={styles.stepTitle}>Set up {deployment.name}</h4>
+          <h4 className={styles.stepTitle}>{repair ? `Pair ${deployment.name} again` : `Set up ${deployment.name}`}</h4>
         </div>
         <p className={styles.stepNote}>
-          Download the agent, run it, and give it these two.
+          {repair
+            ? 'Run one of the commands below on the machine, or give the agent these two. It becomes this same machine again, with its models and history; the code works once.'
+            : 'Download the agent, run it, and give it these two.'}
         </p>
         {chosen ? (
           <div className={styles.downloadRow}>
@@ -1200,6 +1224,7 @@ function InstallInstructionsPanel({ api, deployment, method }: { api: Deployment
           api={api}
           deployment={deployment}
           platform={platform === 'unknown' ? 'linux' : platform}
+          issueNow={repair}
         />
       </div>}
 
