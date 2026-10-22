@@ -238,8 +238,16 @@ function PartRow({
         ) : state.kind === 'message' ? (
           <span role={state.error ? 'alert' : undefined}>{state.text}</span>
         ) : part.offer && isAdmin ? (
-          <Button variant="primary" busy={state.kind === 'starting'} onClick={install}>
-            {state.kind === 'starting' ? 'Starting…' : `Install ${part.offer.name}${part.offer.size ? ` (${part.offer.size})` : ''}`}
+          // The row already names the part, so the button carries only the
+          // verb and the size; the build's own name is its accessible name.
+          <Button
+            variant="primary"
+            busy={state.kind === 'starting'}
+            onClick={install}
+            aria-label={`Install ${part.offer.name}${part.offer.size ? ` (${part.offer.size})` : ''}`}
+            title={`Installs ${part.offer.filename}`}
+          >
+            {state.kind === 'starting' ? 'Starting…' : `Install${part.offer.size ? ` (${part.offer.size})` : ''}`}
           </Button>
         ) : null}
         <a className={buttonClass('quiet')} href={findPartHref(search)}>

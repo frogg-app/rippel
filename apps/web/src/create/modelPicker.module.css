@@ -392,33 +392,53 @@ button.summary:focus-visible {
   margin-left: auto;
 }
 
+/* The missing parts as one grid: the name on the left, the actions in a
+   right-aligned column every row shares, so "Find on Models" lines up whether
+   or not a row also has Install. Rows are subgrids of the list. */
 .noticeParts {
+  container-type: inline-size;
   margin: 0;
   padding: 0;
   list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: var(--gap-sm);
+  row-gap: 6px;
+  align-items: center;
 }
 
 .noticePart {
-  display: flex;
-  flex-wrap: wrap;
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: subgrid;
   align-items: center;
-  justify-content: space-between;
-  gap: 6px;
 }
 
 .noticePartName {
+  min-width: 0;
   color: var(--text-3);
   font-weight: 600;
 }
 
 .noticePartActions {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  justify-content: flex-end;
+  gap: var(--gap-xs);
   min-width: 0;
+}
+
+/* Too narrow for both columns: the name above, the actions still flush right. */
+@container (max-width: 360px) {
+  .noticePart {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
+  }
+
+  .noticePartActions {
+    flex-wrap: wrap;
+  }
 }
 
