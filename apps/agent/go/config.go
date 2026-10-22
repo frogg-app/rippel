@@ -14,7 +14,7 @@ import (
 // AgentVersion is reported on every ping and check-in. rippel stores it against
 // the deployment, so it is the one string an operator sees when asking "what is
 // actually running on that box".
-const AgentVersion = "0.4.14"
+const AgentVersion = "0.5.0"
 
 // Config is the agent's settings, and the directory they came from.
 //
@@ -33,10 +33,16 @@ type Config struct {
 	ComfyPath          string   `json:"comfyPath,omitempty"`
 	ComfyPort          int      `json:"comfyPort,omitempty"`
 	ComfyArgs          string   `json:"comfyArgs,omitempty"`
-	VAEOnGPU           *bool    `json:"vaeOnGpu,omitempty"`
-	MemoryMode         string   `json:"memoryMode,omitempty"`
-	StorageToken       string   `json:"storageToken,omitempty"`
-	HeartbeatSeconds   int      `json:"heartbeatSeconds,omitempty"`
+	// Which engine this machine runs: "comfyui" or "sdcpp". The tunnel's engine
+	// target and the models root follow it. See sdcpp.go.
+	Engine           string `json:"engine,omitempty"`
+	SdcppPath        string `json:"sdcppPath,omitempty"`
+	SdcppPort        int    `json:"sdcppPort,omitempty"`
+	SdcppArgs        string `json:"sdcppArgs,omitempty"`
+	VAEOnGPU         *bool  `json:"vaeOnGpu,omitempty"`
+	MemoryMode       string `json:"memoryMode,omitempty"`
+	StorageToken     string `json:"storageToken,omitempty"`
+	HeartbeatSeconds int    `json:"heartbeatSeconds,omitempty"`
 	// Written by the GPU self-test (gpu_health.go).
 	GPUHealth      *GPUHealth `json:"gpuHealth,omitempty"`
 	GPUEnv         string     `json:"gpuEnv,omitempty"`
@@ -163,6 +169,8 @@ func LoadConfig() (*Config, error) {
 		DeploymentID:       envString("RIPPEL_DEPLOYMENT_ID", file.DeploymentID, ""),
 		Host:               envString("RIPPEL_AGENT_HOST", file.Host, "0.0.0.0"),
 		ComfyArgs:          envString("RIPPEL_COMFY_ARGS", file.ComfyArgs, ""),
+		Engine:             envString("RIPPEL_ENGINE", file.Engine, "comfyui"),
+		SdcppArgs:          envString("RIPPEL_SDCPP_ARGS", file.SdcppArgs, ""),
 		VAEOnGPU:           file.VAEOnGPU,
 		MemoryMode:         envString("RIPPEL_MEMORY_MODE", file.MemoryMode, "auto"),
 		StorageToken:       envString("RIPPEL_STORAGE_TOKEN", file.StorageToken, ""),
@@ -183,6 +191,16 @@ func LoadConfig() (*Config, error) {
 	if cfg.HeartbeatSeconds, err = envInt("RIPPEL_HEARTBEAT_SECONDS", file.HeartbeatSeconds, 20); err != nil {
 		return nil, err
 	}
+	// 8190: beside the agent (8189) and ComfyUI (8188), and not sd-server's own
+	// default of 1234, which a developer's unrelated tool is likely to be on.
+	if cfg.SdcppPort, err = envInt("RIPPEL_SDCPP_PORT", file.SdcppPort, 8190); err != nil {
+		return nil, err
+	}
+	sdcppPath := envString("RIPPEL_SDCPP_PATH", file.SdcppPath, filepath.Join(home, "sdcpp"))
+	if abs, absErr := filepath.Abs(sdcppPath); absErr == nil {
+		sdcppPath = abs
+	}
+	cfg.SdcppPath = sdcppPath
 
 	comfyPath := envString("RIPPEL_COMFY_PATH", file.ComfyPath, filepath.Join(home, "ComfyUI"))
 	if abs, absErr := filepath.Abs(comfyPath); absErr == nil {
@@ -198,6 +216,12 @@ func LoadConfig() (*Config, error) {
 	}
 	if cfg.ComfyPort < 1 || cfg.ComfyPort > 65535 {
 		return nil, fmt.Errorf("ComfyUI's port must be between 1 and 65535, got %d", cfg.ComfyPort)
+	}
+	if cfg.SdcppPort < 1 || cfg.SdcppPort > 65535 {
+		return nil, fmt.Errorf("sd-server's port must be between 1 and 65535, got %d", cfg.SdcppPort)
+	}
+	if !validEngine(cfg.Engine) {
+		return nil, fmt.Errorf("engine must be comfyui or sdcpp, got %q", cfg.Engine)
 	}
 	return cfg, nil
 }

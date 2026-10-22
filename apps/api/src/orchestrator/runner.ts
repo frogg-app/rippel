@@ -13,7 +13,8 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import type { Job, JobPhase, JobProgress } from '@comfy/shared';
+import type { Engine, Job, JobPhase, JobProgress } from '@comfy/shared';
+import { LOAD_PREFIX, pollSdcpp, queuedLabel } from './sdcpp.js';
 import { query } from '../db.js';
 import { publish } from './events.js';
 import { collectOutputs, readHistory } from './collect.js';
@@ -79,6 +80,8 @@ interface Tracked {
   lastProgress: JobProgress;
   /** Phase+label of the last publish, so idle repeats are not republished. */
   lastPhaseKey: string | null;
+  /** Which engine holds the job: decides socket-or-poll and how to settle. */
+  engine: Engine;
 }
 
 export function startOrchestrator(log: (msg: string) => void = console.log): () => void {
@@ -289,9 +292,10 @@ export function startOrchestrator(log: (msg: string) => void = console.log): () 
         sawStep: false,
         lastProgress: EMPTY_PROGRESS,
         lastPhaseKey: null,
+        engine: result.engine,
       };
       tracked.set(result.promptId, entry);
-      socketFor(result.backend.base_url);
+      if (result.engine === 'comfyui') socketFor(result.backend.base_url);
 
       // Say something immediately. Between here and the backend's first frame
       // there is a gap that is a moment when the box is idle and minutes when
@@ -299,7 +303,11 @@ export function startOrchestrator(log: (msg: string) => void = console.log): () 
       await publishPhase(
         entry,
         'preparing',
-        preparingLabel(entry.phaseContext, null),
+        result.engine === 'sdcpp'
+          ? result.promptId.startsWith(LOAD_PREFIX)
+            ? `Loading ${result.modelLabel} on ${result.backend.name}`
+            : `Starting on ${result.backend.name}`
+          : preparingLabel(entry.phaseContext, null),
         { fraction: 0 },
         false,
       );
@@ -324,12 +332,13 @@ export function startOrchestrator(log: (msg: string) => void = console.log): () 
     for (const row of rows) {
       if (!row.comfy_prompt_id || !row.backend_id) continue;
 
-      const backend = await query<{ base_url: string; name: string }>(
-        'SELECT base_url, name FROM backends WHERE id = $1',
+      const backend = await query<{ base_url: string; name: string; engine: Engine }>(
+        'SELECT base_url, name, engine FROM backends WHERE id = $1',
         [row.backend_id],
       );
       const baseUrl = backend[0]?.base_url;
       if (!baseUrl) continue;
+      const engine: Engine = backend[0]?.engine ?? 'comfyui';
 
       // Re-adopt jobs this process never dispatched — the restart case. The
       // graph we submitted is gone with the process, so the phase context has
@@ -354,11 +363,86 @@ export function startOrchestrator(log: (msg: string) => void = console.log): () 
           sawStep: (row.progress.step ?? 0) > 0,
           lastProgress: { ...EMPTY_PROGRESS, ...row.progress },
           lastPhaseKey: null,
+          engine,
         });
-        socketFor(baseUrl);
+        if (engine === 'comfyui') socketFor(baseUrl);
       }
 
-      await settle(row, baseUrl);
+      if (engine === 'sdcpp') {
+        await settleSdcpp(row, baseUrl, backend[0]?.name ?? 'the backend');
+      } else {
+        await settle(row, baseUrl);
+      }
+    }
+  }
+
+  /**
+   * One tick of an sd.cpp job. The poll carries everything — load state,
+   * queue position, step counter, preview, result — so this is the whole of
+   * the socket callbacks and `settle` for that engine, in one place.
+   */
+  async function settleSdcpp(row: JobRow, baseUrl: string, backendName: string): Promise<void> {
+    const entry = tracked.get(row.comfy_prompt_id!);
+    if (!entry) return;
+    const outcome = await pollSdcpp(row, baseUrl, backendName, entry.dispatchedAt);
+
+    switch (outcome.state) {
+      case 'unreachable':
+        return;
+      case 'loading':
+        await publishPhase(entry, 'preparing', outcome.label, { fraction: 0 }, false);
+        return;
+      case 'queued':
+        await publishPhase(entry, 'preparing', queuedLabel(outcome.position, backendName), { fraction: 0 }, false);
+        return;
+      case 'submitted': {
+        // The load finished and the real job exists now: the row and the
+        // tracking map both move from the load token to the server's id.
+        tracked.delete(entry.promptId);
+        entry.promptId = outcome.promptId;
+        tracked.set(outcome.promptId, entry);
+        await query('UPDATE jobs SET comfy_prompt_id = $2 WHERE id = $1', [row.id, outcome.promptId]);
+        await publishPhase(entry, 'preparing', `Starting on ${backendName}`, { fraction: 0 }, false);
+        log(`[orchestrator] ${row.id} loaded, now ${outcome.promptId} on ${backendName}`);
+        return;
+      }
+      case 'running': {
+        if (outcome.step === null || outcome.totalSteps === null) {
+          await publishPhase(entry, 'preparing', `Encoding the prompt on ${backendName}`, { fraction: 0 });
+          return;
+        }
+        const now = Date.now();
+        entry.firstStepAt ??= now;
+        entry.sawStep = true;
+        const elapsed = now - entry.firstStepAt;
+        const remaining = outcome.totalSteps - outcome.step;
+        const etaSeconds = outcome.step > 0 && elapsed > 0 ? Math.round(((elapsed / outcome.step) * remaining) / 1000) : null;
+        const done = outcome.step >= outcome.totalSteps;
+        await applyProgress(entry, {
+          ...EMPTY_PROGRESS,
+          step: outcome.step,
+          totalSteps: outcome.totalSteps,
+          fraction: outcome.totalSteps > 0 ? outcome.step / outcome.totalSteps : 0,
+          etaSeconds: done ? null : etaSeconds,
+          previewUrl: outcome.previewUrl,
+          // The last step has been sampled and the poll still says
+          // generating: that is the decode, which the server does not count.
+          phase: done ? 'decoding' : 'sampling',
+          phaseLabel: done ? decodingLabel(entry.phaseContext, null) : samplingLabel(entry.phaseContext),
+        });
+        return;
+      }
+      case 'failed':
+        tracked.delete(entry.promptId);
+        await failJob(row, outcome.message);
+        return;
+      case 'completed':
+        tracked.delete(entry.promptId);
+        if (row.status !== 'uploading') await setStatus(row.id, 'uploading');
+        await setStatus(row.id, 'complete');
+        publish(row.user_id, { type: 'job.complete', jobId: row.id, assets: outcome.assets });
+        log(`[orchestrator] ${row.id} complete, ${outcome.assets.length} asset(s) from sd.cpp`);
+        return;
     }
   }
 

@@ -20,6 +20,7 @@
 import type { JobStatus, Uuid } from '@comfy/shared';
 import { queryOne as defaultQueryOne } from '../db.js';
 import { isTerminal, setStatus as defaultSetStatus, type JobRow } from './jobs.js';
+import { cancelSdcpp } from './sdcpp.js';
 
 export interface CancelDeps {
   queryOne: typeof defaultQueryOne;
@@ -61,11 +62,17 @@ async function askBackendToDrop(
   promptId: string,
   deps: CancelDeps,
 ): Promise<void> {
-  const backend = await deps.queryOne<{ base_url: string }>(
-    'SELECT base_url FROM backends WHERE id = $1',
+  const backend = await deps.queryOne<{ base_url: string; engine?: string }>(
+    'SELECT base_url, engine FROM backends WHERE id = $1',
     [backendId],
   );
   if (!backend) return;
+
+  // sd-server has its own cancel route and nothing like ComfyUI's queue.
+  if (backend.engine === 'sdcpp') {
+    await cancelSdcpp(backend.base_url, promptId);
+    return;
+  }
 
   await deps
     .fetch(`${backend.base_url}/queue`, {

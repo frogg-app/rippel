@@ -336,7 +336,7 @@ export function DetailDrawer({
         <div className={styles.body}>
           <div className={styles.stage}>
             <div className={styles.preview}>
-              {asset.kind === 'video' ? (
+              {asset.kind === 'video' && !/\.webp(\?|$)/i.test(asset.url) ? (
                 // eslint-disable-next-line jsx-a11y/media-has-caption
                 <video
                   key={asset.id}

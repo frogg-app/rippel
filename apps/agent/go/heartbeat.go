@@ -51,6 +51,9 @@ type checkinBody struct {
 	// would blank out what a previous agent reported, so re-running the
 	// installer on a working box would flash "ComfyUI not installed".
 	Comfy *ComfyState `json:"comfy,omitempty"`
+	// Agent 0.5+: which engine is active, and the sd.cpp half of the picture.
+	Engine string      `json:"engine,omitempty"`
+	Sdcpp  *SdcppState `json:"sdcpp,omitempty"`
 }
 
 func StartHeartbeat(agent *Agent, log func(string, ...any)) *Heartbeat {
@@ -137,12 +140,15 @@ func (hb *Heartbeat) postCheckin(cfg *Config) error {
 		deploymentID = &id
 	}
 	state := ComfyStatus(cfg)
+	sdcpp := SdcppStatus(cfg)
 	body, err := json.Marshal(checkinBody{
 		DeploymentID: deploymentID,
 		Version:      AgentVersion,
 		Platform:     cfg.Platform,
 		AgentPort:    cfg.Port,
 		Comfy:        &state,
+		Engine:       cfg.Engine,
+		Sdcpp:        &sdcpp,
 	})
 	if err != nil {
 		return err

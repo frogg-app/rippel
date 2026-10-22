@@ -146,6 +146,7 @@ const FAMILY_BASE: Record<ModelFamily, string> = {
   [FAMILIES.wan]: 'Wan 2.2',
   [FAMILIES.wan22Ti2v5b]: 'Wan2.2 TI2V 5B',
   [FAMILIES.qwenImage]: 'Qwen-Image',
+  [FAMILIES.zImage]: 'Z-Image',
   [FAMILIES.minimax]: 'MiniMax',
   [FAMILIES.hidream]: 'HiDream',
 };

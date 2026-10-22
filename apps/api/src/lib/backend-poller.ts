@@ -1,6 +1,7 @@
 import { query, transaction } from '../db.js';
 import { inferFamily } from '../models/family.js';
 import { ComfyClient, extractModels, prettyModelName } from './comfy.js';
+import { discoverSdcppModels, SdcppClient } from './sdcpp.js';
 
 const POLL_INTERVAL_MS = 15_000;
 
@@ -8,6 +9,7 @@ interface BackendRow {
   id: string;
   name: string;
   base_url: string;
+  engine: 'comfyui' | 'sdcpp';
 }
 
 /**
@@ -28,7 +30,7 @@ export function startBackendPoller(log: (msg: string) => void = console.log): ()
     if (stopped) return;
     try {
       const backends = await query<BackendRow>(
-        `SELECT id, name, base_url FROM backends WHERE enabled = true`,
+        `SELECT id, name, base_url, engine FROM backends WHERE enabled = true`,
       );
       await Promise.all(backends.map((b) => pollOne(b, log)));
       // After the sweep, not before: a model discovered a moment ago may have
@@ -61,7 +63,7 @@ export async function pollBackendNow(
   log: (msg: string) => void = console.log,
 ): Promise<void> {
   const rows = await query<BackendRow & { enabled: boolean }>(
-    `SELECT id, name, base_url, enabled FROM backends WHERE id = $1`,
+    `SELECT id, name, base_url, engine, enabled FROM backends WHERE id = $1`,
     [id],
   );
   const backend = rows[0];
@@ -94,6 +96,7 @@ async function cardMemory(
 }
 
 async function pollOne(backend: BackendRow, log: (msg: string) => void): Promise<void> {
+  if (backend.engine === 'sdcpp') return pollSdcpp(backend, log);
   const client = new ComfyClient(backend.base_url);
 
   let stats;
@@ -142,6 +145,52 @@ async function pollOne(backend: BackendRow, log: (msg: string) => void): Promise
     log(`poller: ${backend.name} is up but /object_info failed: ${
       err instanceof Error ? err.message : String(err)
     }`);
+  }
+}
+
+/**
+ * The sd.cpp poll. `models/status` is the heartbeat and `model-files` is the
+ * catalogue; there is no `/system_stats`, so the card's memory comes from what
+ * the agent reported about the machine, the same figure `cardMemory` caps
+ * ComfyUI's number with.
+ */
+async function pollSdcpp(backend: BackendRow, log: (msg: string) => void): Promise<void> {
+  const client = new SdcppClient(backend.base_url);
+  let status;
+  try {
+    status = await client.modelStatus();
+  } catch {
+    await query(`UPDATE backends SET status = 'offline' WHERE id = $1 AND status <> 'offline'`, [backend.id]);
+    return;
+  }
+
+  const [agent] = await query<{ gpu: string | null; build: string | null; version: string | null }>(
+    `SELECT comfy->>'gpuMemory' AS gpu, sdcpp->>'build' AS build, sdcpp->>'version' AS version
+       FROM deployments WHERE backend_id = $1 ORDER BY last_seen_at DESC NULLS LAST LIMIT 1`,
+    [backend.id],
+  );
+  const card = agent?.gpu ? Number(agent.gpu) : null;
+  await query(
+    `UPDATE backends
+        SET status = 'online',
+            device_name = $2,
+            vram_total = COALESCE($3, vram_total),
+            system_info = $4,
+            last_seen_at = now()
+      WHERE id = $1`,
+    [
+      backend.id,
+      `stable-diffusion.cpp${agent?.build ? ` (${agent.build})` : ''}${agent?.version ? ` ${agent.version}` : ''}`,
+      card && card > 0 ? card : null,
+      JSON.stringify({ sdcpp: status }),
+    ],
+  );
+
+  try {
+    const models = discoverSdcppModels(await client.modelFiles());
+    await syncModels(backend.id, models);
+  } catch (err) {
+    log(`poller: ${backend.name} is up but /model-files failed: ${err instanceof Error ? err.message : String(err)}`);
   }
 }
 

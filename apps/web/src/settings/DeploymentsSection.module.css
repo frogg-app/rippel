@@ -475,6 +475,9 @@
 }
 
 .memorySettings { display: grid; gap: 8px; padding: 4px 0; }
+.engineRow { display: grid; grid-template-columns: 160px minmax(0, 260px); align-items: center; gap: var(--gap-sm); padding: 4px 0; }
+.engineRow .memoryNote { grid-column: 1 / -1; }
+@media (max-width: 700px) { .engineRow { grid-template-columns: minmax(0, 1fr); } }
 .memoryLabel { font-size: 13px; font-weight: 600; }
 
 .memoryNote { margin: 0; font-size: 12px; color: var(--text-muted, #8c9fa7); line-height: 1.5; }

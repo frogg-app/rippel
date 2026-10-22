@@ -185,6 +185,8 @@ func (a *Agent) route(w http.ResponseWriter, r *http.Request) {
 			"platform":    cfg.Platform,
 			"hostname":    hostname(),
 			"comfy":       ComfyStatus(cfg),
+			"engine":      cfg.Engine,
+			"sdcpp":       SdcppStatus(cfg),
 			"accelerator": DetectAccelerator(),
 			"tasks":       tasks,
 		})
@@ -207,6 +209,10 @@ func (a *Agent) route(w http.ResponseWriter, r *http.Request) {
 
 	if r.Method == http.MethodGet && path == "/agent/comfyui/log" {
 		writeJSON(w, http.StatusOK, map[string]any{"log": TailComfyLog(cfg, 500)})
+		return
+	}
+	if r.Method == http.MethodGet && path == "/agent/sdcpp/log" {
+		writeJSON(w, http.StatusOK, map[string]any{"log": TailSdcppLog(cfg, 500)})
 		return
 	}
 
@@ -263,6 +269,37 @@ func (a *Agent) route(w http.ResponseWriter, r *http.Request) {
 			a.power(w, action)
 			return
 		}
+	}
+
+	// --- stable-diffusion.cpp, the second engine (sdcpp.go)
+
+	if r.Method == http.MethodPost && path == "/agent/sdcpp/install" {
+		var body struct {
+			Build string `json:"build"`
+		}
+		if err := readBody(r, &body); err != nil {
+			writeError(w, http.StatusBadRequest, "bad_request", err.Error())
+			return
+		}
+		a.begin(w, "install-sdcpp", func(task *Task) error {
+			_, err := InstallSdcpp(a.config(), task, body.Build, nil)
+			a.changed()
+			return err
+		})
+		return
+	}
+
+	if r.Method == http.MethodPost && strings.HasPrefix(path, "/agent/sdcpp/") {
+		action := strings.TrimPrefix(path, "/agent/sdcpp/")
+		if action == "start" || action == "stop" || action == "restart" {
+			a.sdcppPower(w, action)
+			return
+		}
+	}
+
+	if r.Method == http.MethodPost && path == "/agent/engine" {
+		a.setEngine(w, r)
+		return
 	}
 
 	if r.Method == http.MethodPost && path == "/agent/gpu/repair" {

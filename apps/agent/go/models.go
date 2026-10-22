@@ -49,14 +49,25 @@ func modelPath(name string) (string, error) {
 }
 
 func modelRoot(cfg *Config) (*os.Root, error) {
-	// Open models relative to the ComfyUI handle: a models symlink escaping the
-	// ComfyUI installation is refused too. Never create a guessed install path.
-	comfy, err := os.OpenRoot(cfg.ComfyPath)
+	// Open models relative to the engine's handle: a models symlink escaping the
+	// installation is refused too. Never create a guessed install path.
+	//
+	// ComfyUI's folder wins whenever it exists, because sd-server scans it too
+	// (sdcppModelDirs) and one copy of each weight is the point of sharing.
+	// A machine with only sd.cpp gets the folder sd.cpp owns.
+	base := cfg.ComfyPath
+	if !exists(filepath.Join(cfg.ComfyPath, "models")) && exists(sdcppBinary(cfg)) {
+		base = cfg.SdcppPath
+		if err := os.MkdirAll(sdcppOwnModels(cfg), 0o755); err != nil {
+			return nil, err
+		}
+	}
+	install, err := os.OpenRoot(base)
 	if err != nil {
 		return nil, err
 	}
-	defer comfy.Close()
-	return comfy.OpenRoot("models")
+	defer install.Close()
+	return install.OpenRoot("models")
 }
 
 func ensureDestination(root *os.Root, name string) error {

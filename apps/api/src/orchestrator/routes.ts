@@ -28,6 +28,8 @@ import { publish, subscribe } from './events.js';
 import { cancelJob } from './cancel.js';
 import { publishQueuePositions } from './queue.js';
 import { makeQueueRoutes } from './queue-routes.js';
+import { SdcppClient } from '../lib/sdcpp.js';
+import { planFor } from './sdcpp-plan.js';
 
 /**
  * Shallow validation only. The manifest is the authority on what a legal value
@@ -116,6 +118,45 @@ export default async function jobRoutes(app: FastifyInstance) {
         return reply.code(400).send({ error: 'invalid_input', message: 'No such model.' });
       }
 
+      // A backend must hold the model *now*. Checking here turns a job that
+      // would sit queued forever into an immediate, explicable refusal. Found
+      // before the template because which *engine* holds it decides whether
+      // a template is needed at all.
+      const candidates = await candidatesFor(params.modelId);
+      const target = candidates.find((candidate) => !params.targetBackendId || candidate.id === params.targetBackendId);
+      if (!target) {
+        return reply.code(409).send({
+          error: 'no_backend',
+          message: params.targetBackendId ? 'The selected backend is unavailable or cannot run this model and workflow.' : 'No online backend has that model right now.',
+        });
+      }
+
+      // stable-diffusion.cpp: no graph to compile, so the check is whether a
+      // recipe exists for the family and the backend has every file it needs.
+      // The plan is rebuilt at dispatch; this is the early, explicable refusal.
+      if (target.engine === 'sdcpp') {
+        const client = new SdcppClient(target.base_url);
+        let planned;
+        try {
+          const [files, recipes] = await Promise.all([client.modelFiles(), client.recipes()]);
+          planned = planFor({ family: model.base_model, checkpointFilename: model.filename, modelLabel: model.display_name, capability: params.kind, files, recipes });
+        } catch (err) {
+          return reply.code(502).send({ error: 'backend_error', message: `Could not read what ${target.name} has installed: ${err instanceof Error ? err.message : String(err)}` });
+        }
+        if (!planned.ok) {
+          return reply.code(planned.plan ? 422 : 501).send({ error: planned.plan ? 'missing_files' : 'no_template', message: planned.reason });
+        }
+        let row: JobRow;
+        try { row = await createJob(req.user!.id, params, `sdcpp:${planned.plan.recipe}`); }
+        catch (error) {
+          if (error instanceof UserRestrictionError) return reply.code(error.statusCode).send({ error: error.code, message: error.message });
+          throw error;
+        }
+        const job: Job = { ...(await jobWithAssets(row)), queuePosition: await queuePosition(row) };
+        publish(row.user_id, { type: 'job.created', job });
+        return reply.code(202).send({ job });
+      }
+
       // Not guarded on base_model being set: a null family is exactly what the
       // generic fallback template exists to serve, and short-circuiting here
       // would make it unreachable from job creation. The dispatcher chooses
@@ -175,9 +216,6 @@ export default async function jobRoutes(app: FastifyInstance) {
         });
       }
 
-      // A backend must hold the model *now*. Checking here turns a job that
-      // would sit queued forever into an immediate, explicable refusal.
-      const candidates = await candidatesFor(params.modelId);
       const allowed = template.manifest.id.startsWith('library-') ? await readyBackendIds(template.manifest.id) : null;
       const backend = candidates.find((candidate) => (!params.targetBackendId || candidate.id === params.targetBackendId) && (!allowed || allowed.includes(candidate.id)));
       if (!backend) {

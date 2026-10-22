@@ -81,6 +81,8 @@ export const FAMILIES = {
    * no built-in template, which is the honest outcome until one is added.
    */
   qwenImage: 'qwen-image',
+  /** Tongyi's Z-Image and Z-Image-Turbo; runnable through stable-diffusion.cpp. */
+  zImage: 'z-image',
   minimax: 'minimax',
   hidream: 'hidream',
 } as const;
@@ -196,6 +198,9 @@ const RULES: readonly Rule[] = [
   // ---------------------------------------------------------------- no built-in graph
   // "qwen" alone is the text encoder (qwen_2.5_vl_7b); only "qwen image" is the model.
   { family: FAMILIES.qwenImage, pattern: /\bqwen image\b|\bqwenimage\b/, strength: 'strong' },
+  { family: FAMILIES.zImage, pattern: /\bz image\b|\bzimage\b/, strength: 'strong' },
+  // SD-Turbo is an SD 2.1 derivative; its own files never say "sd2".
+  { family: FAMILIES.sd2, pattern: /\bsd turbo\b/, strength: 'strong' },
   { family: FAMILIES.minimax, pattern: /\bminimax\b|\bhailuo\b/, strength: 'strong' },
   { family: FAMILIES.hidream, pattern: /\bhidream\b/, strength: 'strong' },
 ];
@@ -243,6 +248,8 @@ const CATALOGUE_BASES: Record<string, ModelFamily | null> = {
   wan22ti2v5b: FAMILIES.wan22Ti2v5b,
   wanvideo: FAMILIES.wan,
   qwenimage: FAMILIES.qwenImage,
+  zimage: FAMILIES.zImage,
+  zimageturbo: FAMILIES.zImage,
   minimax: FAMILIES.minimax,
   minimaxh3: FAMILIES.minimax,
   hailuo: FAMILIES.minimax,

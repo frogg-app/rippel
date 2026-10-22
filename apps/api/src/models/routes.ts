@@ -39,6 +39,7 @@ import {
   type InstallRow,
 } from './installs.js';
 import { readinessFor } from './readiness.js';
+import { sdcppReadiness } from './sdcpp-readiness.js';
 import { weightsLayoutOf } from './weights-probe.js';
 import { knownLayouts, layoutsForUrls } from './url-layout.js';
 import { workingBuildFor } from './working-builds.js';
@@ -51,6 +52,7 @@ interface BackendUrlRow {
   id: string;
   base_url: string;
   name: string;
+  engine?: 'comfyui' | 'sdcpp';
 }
 
 export default async function modelInstallRoutes(app: FastifyInstance) {
@@ -58,7 +60,7 @@ export default async function modelInstallRoutes(app: FastifyInstance) {
   /** Reject anything but an admin, and hand back the backend's URL. */
   async function adminBackend(backendId: string): Promise<BackendUrlRow | null> {
     return queryOne<BackendUrlRow>(
-      'SELECT id, base_url, name FROM backends WHERE id = $1',
+      'SELECT id, base_url, name, engine FROM backends WHERE id = $1',
       [backendId],
     );
   }
@@ -354,6 +356,21 @@ export default async function modelInstallRoutes(app: FastifyInstance) {
           error: 'bad_request',
           message: parsed.error.issues[0]?.message ?? 'Pass either modelId or templateId',
         });
+      }
+
+      // stable-diffusion.cpp has recipes rather than templates, so its answer
+      // comes from the recipe plan: the same slots the dispatcher will fill.
+      if (backend.engine === 'sdcpp') {
+        if (!parsed.data.modelId) {
+          return reply.code(400).send({ error: 'bad_request', message: 'stable-diffusion.cpp readiness is asked per model; pass modelId.' });
+        }
+        try {
+          const readiness = await sdcppReadiness({ backend, modelId: parsed.data.modelId, capability: parsed.data.capability ?? 'txt2img' });
+          if (!readiness) return reply.code(404).send({ error: 'not_found', message: 'No such model' });
+          return { readiness } satisfies { readiness: BackendReadiness };
+        } catch (err) {
+          return reply.code(502).send({ error: 'backend_error', message: `Could not read what ${backend.name} has installed: ${err instanceof Error ? err.message : String(err)}` });
+        }
       }
 
       const resolved = await resolveSubject(parsed.data);

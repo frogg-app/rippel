@@ -9,7 +9,8 @@ import { readyBackendIds } from '../library/workflows/store.js';
  * user a job is running when nothing was submitted.
  */
 
-import type { Uuid } from '@comfy/shared';
+import type { Engine, Uuid } from '@comfy/shared';
+import { dispatchSdcpp } from './sdcpp.js';
 import { compile, TemplateError, ValidationError } from '../compiler/index.js';
 import { sendStoredInitImageToBackend, withInitImage } from '../workflows/init-image.js';
 import { withResolvedRequirements } from '../workflows/requirements.js';
@@ -98,6 +99,8 @@ export interface Dispatched {
   nodeClasses: Record<string, string>;
   /** What to call the weights in a progress label, e.g. "SDXL 1.0". */
   modelLabel: string;
+  /** Which engine took the job, so the runner knows how to follow it. */
+  engine: Engine;
 }
 
 /**
@@ -133,6 +136,23 @@ export async function dispatch(job: JobRow, clientId: string): Promise<Dispatche
   // The exact score, from the template actually chosen, is recorded below.
   const ranking = await rankingScore(job, family, model?.filename ?? null);
   const backend = await pickBackend(job.params.modelId, allowed, job.params.targetBackendId, ranking);
+
+  // stable-diffusion.cpp takes a recipe and files rather than a graph, so
+  // everything below — template, compile, preflight, /prompt — is ComfyUI's
+  // half of the job. See orchestrator/sdcpp.ts for the other half.
+  if (backend.engine === 'sdcpp') {
+    const result = await dispatchSdcpp(job, backend, model!);
+    return {
+      backend,
+      promptId: result.promptId,
+      templateId: result.templateId,
+      resolved: result.resolved as unknown as ResolvedValues,
+      nodeClasses: {},
+      modelLabel: result.modelLabel,
+      engine: 'sdcpp',
+    };
+  }
+
   const choice = await chooseTemplate({
     modelId: job.params.modelId,
     templateId,
@@ -263,6 +283,7 @@ export async function dispatch(job: JobRow, clientId: string): Promise<Dispatche
       Object.entries(graph).map(([nodeId, node]) => [nodeId, node.class_type]),
     ),
     modelLabel: model?.display_name ?? family,
+    engine: 'comfyui',
   };
 }
 

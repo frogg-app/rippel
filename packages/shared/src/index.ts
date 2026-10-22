@@ -70,6 +70,8 @@ export interface Backend {
   gpuState?: GpuState | null;
   /** The managing deployment, for admins only (the Repair action). */
   deploymentId?: string | null;
+  /** Which program answers at `baseUrl`. Omitted on older payloads means ComfyUI. */
+  engine?: Engine;
 }
 
 // ---------------------------------------------------------------- models
@@ -1228,8 +1230,51 @@ export interface GpuHealth {
   checkedAt?: string;
 }
 
+/**
+ * The generation program a machine runs. `comfyui` is the node-graph server
+ * rippel grew up on; `sdcpp` is stable-diffusion.cpp's `sd-server`, one static
+ * binary with a native async job API. A deployment has exactly one *active*
+ * engine, which is what its backend row points at.
+ */
+export type Engine = 'comfyui' | 'sdcpp';
+
+/** A GPU build of stable-diffusion.cpp, as released upstream. */
+export type SdcppBuild = 'cpu' | 'vulkan' | 'cuda' | 'rocm';
+
+/** What sd-server reports about the model it holds. */
+export interface SdcppModelStatus {
+  state: 'empty' | 'loading' | 'ready' | 'error';
+  recipe: string | null;
+  /** Slot id -> file id, as loaded. */
+  models: Record<string, string>;
+  error: string | null;
+  loadElapsedSeconds?: number | null;
+}
+
+/** What the agent reports about the stable-diffusion.cpp it manages. */
+export interface SdcppState {
+  /** Whether sd-server is present at the agent's sd.cpp path. */
+  installed: boolean;
+  /** Whether it is running and answering on its port. */
+  running: boolean;
+  path: string | null;
+  /** The upstream release this install came from, e.g. "master-a77d362". */
+  version: string | null;
+  build: SdcppBuild | null;
+  port: number;
+  /** The directories sd-server scans for models, first is where downloads go. */
+  modelDirs: string[];
+  model: SdcppModelStatus | null;
+  diskFree: number | null;
+  diskTotal: number | null;
+}
+
 export interface Deployment {
   tunnelConnected?: boolean;
+  /** The engine the agent runs and the backend row points at (agent 0.5+). */
+  engine?: Engine;
+  /** Last sd.cpp status the agent reported; null until it first checks in. */
+  sdcpp?: SdcppState | null;
   /** Public HTTPS origins; omit for direct host/port connections. */
   agentUrl?: string;
   engineUrl?: string;

@@ -9,7 +9,7 @@
  * user has already been told their job started.
  */
 
-import type { Uuid } from '@comfy/shared';
+import type { Engine, Uuid } from '@comfy/shared';
 import { query } from '../db.js';
 import { assessOn } from './fit.js';
 
@@ -17,6 +17,8 @@ export interface Candidate {
   id: string;
   name: string;
   base_url: string;
+  /** Which program answers at base_url; decides how a job is dispatched. */
+  engine: Engine;
   /** The filename ComfyUI addresses the model by, subfolder and all. */
   filename: string;
   active_jobs: number;
@@ -42,7 +44,7 @@ export class NoBackendError extends Error {
  */
 export async function candidatesFor(modelId: Uuid): Promise<Candidate[]> {
   return query<Candidate>(
-    `SELECT b.id, b.name, b.base_url, m.filename,
+    `SELECT b.id, b.name, b.base_url, b.engine, m.filename,
             count(j.id) FILTER (
               WHERE j.status IN ('dispatched', 'running', 'uploading')
             ) AS active_jobs
@@ -53,7 +55,7 @@ export async function candidatesFor(modelId: Uuid): Promise<Candidate[]> {
       WHERE mb.model_id = $1
         AND b.enabled
         AND b.status = 'online'
-      GROUP BY b.id, m.filename
+      GROUP BY b.id, b.engine, m.filename
       ORDER BY active_jobs ASC, b.name ASC`,
     [modelId],
   );

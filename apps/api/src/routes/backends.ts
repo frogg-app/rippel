@@ -19,6 +19,7 @@ interface BackendRow {
   agent_online: boolean | null;
   gpu_state: Backend['gpuState'];
   deployment_id: string | null;
+  engine: Backend['engine'];
 }
 
 export default async function backendRoutes(app: FastifyInstance) {
@@ -31,7 +32,7 @@ export default async function backendRoutes(app: FastifyInstance) {
     const rows = await query<BackendRow>(
       `SELECT b.id, b.name, b.base_url, b.enabled, b.status, b.device_name,
               b.vram_free, b.vram_total, b.ram_free, b.ram_total,
-              b.vram_limit_mb, b.last_seen_at,
+              b.vram_limit_mb, b.last_seen_at, b.engine,
               count(j.id) FILTER (
                 WHERE j.status IN ('queued', 'dispatched', 'running', 'uploading')
               ) AS queue_depth,
@@ -64,6 +65,7 @@ export default async function backendRoutes(app: FastifyInstance) {
       agentOnline: row.agent_online,
       gpuState: row.gpu_state ?? null,
       deploymentId: isAdmin ? row.deployment_id : null,
+      engine: row.engine ?? 'comfyui',
     }));
 
     return { backends };

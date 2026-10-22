@@ -30,6 +30,8 @@ import type {
   AgentProbe,
   ComfyState,
   Deployment,
+  Engine,
+  SdcppState,
   SshInstallInput,
 } from '@comfy/shared';
 import { query as defaultQuery, queryOne as defaultQueryOne, transaction as defaultTransaction } from '../db.js';
@@ -88,6 +90,8 @@ interface DeploymentRow {
   token: string;
   agent_version: string | null;
   comfy: ComfyState | null;
+  engine: Engine;
+  sdcpp: SdcppState | null;
   backend_id: string | null;
   backend_name: string | null;
   last_seen_at: Date | null;
@@ -103,7 +107,7 @@ interface PairingRow {
 }
 
 const SELECT = `SELECT d.id, d.name, d.host, d.agent_port, d.agent_url, d.engine_url, d.platform, d.status, d.token,
-                       d.agent_version, d.comfy, d.backend_id, b.name AS backend_name,
+                       d.agent_version, d.comfy, d.engine, d.sdcpp, d.backend_id, b.name AS backend_name,
                        d.last_seen_at, d.created_at
                   FROM deployments d
                   LEFT JOIN backends b ON b.id = d.backend_id`;
@@ -137,6 +141,8 @@ function toDeployment(row: DeploymentRow): Deployment {
     status: liveStatus(row),
     agentVersion: row.agent_version,
     comfy: row.comfy,
+    engine: row.engine ?? 'comfyui',
+    sdcpp: row.sdcpp ?? null,
     backendId: row.backend_id,
     backendName: row.backend_name,
     lastSeenAt: row.last_seen_at ? new Date(row.last_seen_at).toISOString() : null,
@@ -316,7 +322,10 @@ export function makeDeploymentRoutes(deps: DeployDeps = {}) {
         platform?: AgentPlatform;
         agentPort?: number;
         comfy?: ComfyState;
+        engine?: Engine;
+        sdcpp?: SdcppState;
       };
+      const engine: Engine | null = body.engine === 'comfyui' || body.engine === 'sdcpp' ? body.engine : null;
 
       // req.ip is the peer, and trustProxy is on, so behind a proxy this is the
       // forwarded address. A private address is worth adopting; a proxy's own
@@ -332,6 +341,8 @@ export function makeDeploymentRoutes(deps: DeployDeps = {}) {
                 agent_port = COALESCE($4, agent_port),
                 agent_version = COALESCE($5, agent_version),
                 comfy = COALESCE($6::jsonb, comfy),
+                engine = COALESCE($7, engine),
+                sdcpp = COALESCE($8::jsonb, sdcpp),
                 last_seen_at = now()
           WHERE id = $1
           RETURNING id`,
@@ -342,9 +353,16 @@ export function makeDeploymentRoutes(deps: DeployDeps = {}) {
           Number.isInteger(body.agentPort) ? body.agentPort : null,
           body.version ?? null,
           body.comfy ? JSON.stringify(body.comfy) : null,
+          engine,
+          body.sdcpp ? JSON.stringify(body.sdcpp) : null,
         ],
       );
-      if (body.comfy?.installed && !body.comfy.helperInstalled) void ensureHelper(row.id);
+      // The agent's config is the authority on which engine it runs; the
+      // backend row follows so the poller and dispatcher branch correctly.
+      if (engine && row.backend_id) {
+        await db.query(`UPDATE backends SET engine = $2 WHERE id = $1 AND engine <> $2`, [row.backend_id, engine]);
+      }
+      if ((engine ?? row.engine) === 'comfyui' && body.comfy?.installed && !body.comfy.helperInstalled) void ensureHelper(row.id);
       return { ok: true, deploymentId: updated?.id ?? row.id };
     });
 
@@ -605,7 +623,7 @@ export function makeDeploymentRoutes(deps: DeployDeps = {}) {
            RETURNING *
          )
          SELECT i.id, i.name, i.host, i.agent_port, i.agent_url, i.engine_url, i.platform, i.status, i.token,
-                i.agent_version, i.comfy, i.backend_id, NULL::text AS backend_name,
+                i.agent_version, i.comfy, i.engine, i.sdcpp, i.backend_id, NULL::text AS backend_name,
                 i.last_seen_at, i.created_at
            FROM inserted i`,
         [
@@ -732,11 +750,15 @@ export function makeDeploymentRoutes(deps: DeployDeps = {}) {
           await db.query(
             `UPDATE deployments
                 SET status = 'online', platform = $2, agent_version = $3, comfy = $4::jsonb,
+                    engine = COALESCE($5, engine), sdcpp = COALESCE($6::jsonb, sdcpp),
                     last_seen_at = now()
               WHERE id = $1`,
-            [row.id, status.platform, status.version, JSON.stringify(status.comfy)],
+            [row.id, status.platform, status.version, JSON.stringify(status.comfy), status.engine ?? null, status.sdcpp ? JSON.stringify(status.sdcpp) : null],
           );
-          return { comfy: status.comfy, accelerator: status.accelerator, tasks: status.tasks };
+          if (status.engine && row.backend_id) {
+            await db.query(`UPDATE backends SET engine = $2 WHERE id = $1 AND engine <> $2`, [row.backend_id, status.engine]);
+          }
+          return { comfy: status.comfy, engine: status.engine ?? row.engine, sdcpp: status.sdcpp ?? null, accelerator: status.accelerator, tasks: status.tasks };
         } catch (cause) {
           await db.query(`UPDATE deployments SET status = 'offline' WHERE id = $1`, [row.id]);
           return agentFailure(reply, cause);
@@ -879,6 +901,107 @@ export function makeDeploymentRoutes(deps: DeployDeps = {}) {
       },
     );
 
+    // ------------------------------------------------------------ stable-diffusion.cpp
+
+    /**
+     * Install (or update: it is the same download) the second engine. `build`
+     * is `auto`, `cpu`, `vulkan`, `cuda` or `rocm`; the agent resolves auto.
+     */
+    app.post<{ Params: { id: string }; Body: { build?: string } }>(
+      '/deployments/:id/sdcpp/install',
+      { onRequest: [app.requireSettings] },
+      async (req, reply) => {
+        const row = await loadOr404(req, reply);
+        if (!row) return;
+        const build = req.body?.build ?? 'auto';
+        if (!['auto', 'cpu', 'vulkan', 'cuda', 'rocm'].includes(build)) {
+          return reply.code(400).send({ error: 'invalid_input', field: 'build', message: 'Choose auto, cpu, vulkan, cuda or rocm.' });
+        }
+        try {
+          return { task: await agent.installSdcpp(targetOf(row), build) };
+        } catch (cause) {
+          return agentFailure(reply, cause);
+        }
+      },
+    );
+
+    app.get<{ Params: { id: string } }>(
+      '/deployments/:id/sdcpp/log',
+      { onRequest: [app.requireSettings] },
+      async (req, reply) => {
+        const row = await loadOr404(req, reply);
+        if (!row) return;
+        try {
+          return { log: await agent.sdcppLog(targetOf(row)) };
+        } catch (cause) {
+          return agentFailure(reply, cause);
+        }
+      },
+    );
+
+    app.post<{ Params: { id: string; action: string } }>(
+      '/deployments/:id/sdcpp/:action',
+      { onRequest: [app.requireSettings] },
+      async (req, reply) => {
+        const row = await loadOr404(req, reply);
+        if (!row) return;
+        const action = req.params.action;
+        if (action !== 'start' && action !== 'stop' && action !== 'restart') {
+          return reply.code(404).send({ error: 'not_found', message: `No such action "${action}".` });
+        }
+        try {
+          const result = await agent.sdcppPower(targetOf(row), action);
+          if (row.backend_id) void pollNow(row.backend_id).catch(() => {});
+          return { result };
+        } catch (cause) {
+          return agentFailure(reply, cause);
+        }
+      },
+    );
+
+    /**
+     * Choose the engine. Saved on the machine first — the agent's config is
+     * the authority, and its tunnel starts dialling the new engine's port at
+     * once — then mirrored onto the deployment and its backend row. A
+     * directly-addressed backend (no tunnel) also gets its port changed.
+     */
+    app.post<{ Params: { id: string }; Body: { engine?: string } }>(
+      '/deployments/:id/engine',
+      { onRequest: [app.requireSettings] },
+      async (req, reply) => {
+        const row = await loadOr404(req, reply);
+        if (!row) return;
+        const engine = req.body?.engine;
+        if (engine !== 'comfyui' && engine !== 'sdcpp') {
+          return reply.code(400).send({ error: 'invalid_input', field: 'engine', message: 'Choose comfyui or sdcpp.' });
+        }
+        if (row.backend_id) {
+          const busy = await db.query(
+            `SELECT 1 FROM jobs WHERE backend_id = $1 AND status IN ('dispatched','running','uploading') LIMIT 1`,
+            [row.backend_id],
+          );
+          if (busy.length) return reply.code(409).send({ error: 'busy', message: 'A job is running on this machine. Wait for it to finish before switching engines.' });
+        }
+        try {
+          await agent.setEngine(targetOf(row), engine);
+        } catch (cause) {
+          return agentFailure(reply, cause);
+        }
+        await db.query(`UPDATE deployments SET engine = $2 WHERE id = $1`, [row.id, engine]);
+        if (row.backend_id) {
+          const port = engine === 'sdcpp' ? row.sdcpp?.port ?? 8190 : row.comfy?.port ?? 8188;
+          const directUrl = row.engine_url ?? `http://${row.host}:${port}`;
+          await db.query(
+            `UPDATE backends SET engine = $2, base_url = CASE WHEN base_url LIKE 'http://127.0.0.1:%/engine' THEN base_url ELSE $3 END WHERE id = $1`,
+            [row.backend_id, engine, directUrl],
+          );
+          void pollNow(row.backend_id).catch(() => {});
+        }
+        const updated = await load(row.id);
+        return { deployment: toDeployment(updated!) };
+      },
+    );
+
     /**
      * Put the storage helper on the machine.
      *
@@ -928,7 +1051,7 @@ export function makeDeploymentRoutes(deps: DeployDeps = {}) {
             message: `${row.name} is already registered as the backend "${row.backend_name}".`,
           });
         }
-        const port = row.comfy?.port ?? 8188;
+        const port = row.engine === 'sdcpp' ? row.sdcpp?.port ?? 8190 : row.comfy?.port ?? 8188;
         const baseUrl = tunnelConnected(row.id) ? tunnelEngineUrl(row.id) : row.engine_url ?? `http://${row.host}:${port}`;
         const name = (req.body?.name ?? row.name).trim().slice(0, 60) || row.name;
 
@@ -941,14 +1064,15 @@ export function makeDeploymentRoutes(deps: DeployDeps = {}) {
           // hand before installing the agent should end up with them linked,
           // not with a duplicate they have to reconcile.
           await db.query(`UPDATE deployments SET backend_id = $2 WHERE id = $1`, [row.id, clash.id]);
+          await db.query(`UPDATE backends SET engine = $2 WHERE id = $1`, [clash.id, row.engine]);
           void pollNow(clash.id).catch(() => {});
           const linked = await load(row.id);
           return { deployment: toDeployment(linked!), adopted: true };
         }
 
         const backend = await db.queryOne<{ id: string }>(
-          `INSERT INTO backends (name, base_url, enabled) VALUES ($1, $2, true) RETURNING id`,
-          [name, baseUrl],
+          `INSERT INTO backends (name, base_url, enabled, engine) VALUES ($1, $2, true, $3) RETURNING id`,
+          [name, baseUrl, row.engine],
         );
         await db.query(`UPDATE deployments SET backend_id = $2 WHERE id = $1`, [row.id, backend!.id]);
         void pollNow(backend!.id).catch(() => {});

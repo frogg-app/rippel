@@ -1,7 +1,7 @@
 package main
 
 // The agent initiates the only network connection. Multiplexed channels can
-// reach just the local agent API and ComfyUI, never an arbitrary host or port.
+// reach just the local agent API and the active engine, never an arbitrary host or port.
 import (
 	"context"
 	"encoding/base64"
@@ -151,7 +151,7 @@ func runTunnel(ctx context.Context, ws *websocket.Conn, config func() *Config) {
 			case "agent":
 				port = cfg.Port
 			case "engine":
-				port = cfg.ComfyPort
+				port = enginePort(cfg)
 			default:
 				_ = send(tunnelFrame{Type: "close", ID: frame.ID})
 				continue

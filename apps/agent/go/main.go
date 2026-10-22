@@ -169,6 +169,7 @@ func runAgent() error {
 
 	serviceLog("v%s on %s listening on %s", AgentVersion, hostname(), address)
 	serviceLog("managing ComfyUI at %s (port %d)", cfg.ComfyPath, cfg.ComfyPort)
+	serviceLog("managing stable-diffusion.cpp at %s (port %d); active engine: %s", cfg.SdcppPath, cfg.SdcppPort, cfg.Engine)
 	if cfg.ServerURL != "" {
 		serviceLog("checking in to %s every %ds", cfg.ServerURL, cfg.HeartbeatSeconds)
 	}

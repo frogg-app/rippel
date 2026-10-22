@@ -7,6 +7,8 @@ import type {
   AgentTask,
   Backend,
   Deployment,
+  Engine,
+  SdcppState,
   SshRun,
 } from '@comfy/shared';
 import { CheckIcon, ChipIcon, CopyIcon, DownloadIcon, DriveIcon, PlusIcon, RamIcon } from '../library/icons';
@@ -19,6 +21,7 @@ import {
   type DeploymentsApi,
   type InstallInstructions,
   type PairingCode,
+  withStatus,
 } from '../lib/api-deployments';
 import { refreshBackends, useBackends } from '../shell/useBackends';
 import shared from './SettingsModal.module.css';
@@ -220,13 +223,19 @@ function DeploymentCard({
   const [showInstall, setShowInstall] = useState(() => !agentInstalled);
 
   const comfy = deployment.comfy;
+  // Which program this machine runs. Older agents never say, and run ComfyUI.
+  const engine: Engine = deployment.engine ?? 'comfyui';
+  const sdcpp = deployment.sdcpp ?? null;
+  const supportsSdcpp = agentAtLeast(deployment.agentVersion, 0, 5);
+  const engineInstalled = engine === 'sdcpp' ? Boolean(sdcpp?.installed) : Boolean(comfy?.installed);
+  const engineRunning = engine === 'sdcpp' ? Boolean(sdcpp?.running) : Boolean(comfy?.running);
   const [vaeOnGpu, setVaeOnGpu] = useState(comfy?.vaeOnGpu ?? true);
   useEffect(() => { setVaeOnGpu(comfy?.vaeOnGpu ?? true); }, [comfy?.vaeOnGpu]);
   const [memory, setMemory] = useState<'auto' | 'ram'>(comfy?.memoryMode ?? 'auto');
   useEffect(() => { setMemory(comfy?.memoryMode ?? 'auto'); }, [comfy?.memoryMode]);
   const online = deployment.status === 'online';
-  const backendStatus = online ? (comfy?.running ? 'online' : 'warning') : deployment.status === 'pending' ? 'unknown' : 'offline';
-  const backendLabel = online ? (comfy?.running ? 'online' : comfy?.installed ? 'Engine stopped' : 'Setup needed') : deployment.status === 'pending' ? 'waiting for the agent' : 'offline';
+  const backendStatus = online ? (engineRunning ? 'online' : 'warning') : deployment.status === 'pending' ? 'unknown' : 'offline';
+  const backendLabel = online ? (engineRunning ? 'online' : engineInstalled ? 'Engine stopped' : 'Setup needed') : deployment.status === 'pending' ? 'waiting for the agent' : 'offline';
 
   /**
    * Why a control is refusing, in the words the card would use out loud.
@@ -287,7 +296,7 @@ function DeploymentCard({
   const refresh = () =>
     act('read the machine', async () => {
       const status = await api.status(deployment.id);
-      onChange({ ...deployment, comfy: status.comfy, status: 'online' });
+      onChange(withStatus(deployment, status));
     });
 
   const test = () =>
@@ -312,7 +321,7 @@ function DeploymentCard({
       onChange(next);
       try {
         const status = await api.status(deployment.id);
-        onChange({ ...next, comfy: status.comfy });
+        onChange(withStatus(next, status));
       } catch (cause) {
         const detail = cause instanceof Error ? ` ${cause.message}` : '';
         onError(`The agent answered, but its engine status could not be refreshed.${detail}`);
@@ -367,14 +376,12 @@ function DeploymentCard({
             if (!result.ok) continue;
             const status = await api.status(deployment.id);
             if (signal.aborted) return;
-            onChange({
+            onChange(withStatus({
               ...deployment,
-              status: 'online',
               agentVersion: result.version ?? deployment.agentVersion,
               platform: result.platform ?? deployment.platform,
               lastSeenAt: new Date().toISOString(),
-              comfy: status.comfy,
-            });
+            }, status));
             setAgentUpdate('done');
             refreshBackends();
             return;
@@ -392,24 +399,49 @@ function DeploymentCard({
       }
     });
 
+  const installSdcpp = () =>
+    act('install stable-diffusion.cpp', async () => {
+      await follow(await api.installSdcpp(deployment.id, 'auto'));
+      const status = await api.status(deployment.id).catch(() => null);
+      if (status) onChange(withStatus(deployment, status));
+    });
+
+  const powerSdcpp = (action: 'start' | 'stop' | 'restart') =>
+    act(`${action} stable-diffusion.cpp`, async () => {
+      await api.sdcppPower(deployment.id, action);
+      // sd-server binds its port within a second or two; ComfyUI's wait is
+      // longer because it imports torch first.
+      await new Promise((resolve) => setTimeout(resolve, action === 'stop' ? 500 : 2500));
+      const status = await api.status(deployment.id).catch(() => null);
+      if (status) onChange(withStatus(deployment, status));
+      refreshBackends();
+    });
+
+  const chooseEngine = (next: Engine) =>
+    act('switch the engine', async () => {
+      if (next === engine) return;
+      onChange(await api.setEngine(deployment.id, next));
+      refreshBackends();
+    });
+
   const install = () =>
     act('install ComfyUI', async () => {
       await follow(await api.installComfy(deployment.id, 'auto'));
       const status = await api.status(deployment.id).catch(() => null);
-      if (status) onChange({ ...deployment, comfy: status.comfy });
+      if (status) onChange(withStatus(deployment, status));
     });
 
   const applyMemory = () => act('apply memory settings', async () => {
     await follow(await api.setMemoryMode(deployment.id, memory));
     const status = await api.status(deployment.id);
-    onChange({ ...deployment, comfy: status.comfy });
+    onChange(withStatus(deployment, status));
     refreshBackends();
   });
 
   const applyVAE = () => act('apply VAE settings', async () => {
     await follow(await api.setVaeOnGpu(deployment.id, vaeOnGpu));
     const status = await api.status(deployment.id);
-    onChange({ ...deployment, comfy: status.comfy });
+    onChange(withStatus(deployment, status));
     refreshBackends();
   });
 
@@ -426,7 +458,7 @@ function DeploymentCard({
       // immediate and wrong.
       await new Promise((resolve) => setTimeout(resolve, action === 'stop' ? 500 : 4000));
       const status = await api.status(deployment.id).catch(() => null);
-      if (status) onChange({ ...deployment, comfy: status.comfy });
+      if (status) onChange(withStatus(deployment, status));
       refreshBackends();
     });
 
@@ -434,14 +466,14 @@ function DeploymentCard({
     act('install the storage helper', async () => {
       await follow(await api.installHelper(deployment.id));
       const status = await api.status(deployment.id).catch(() => null);
-      if (status) onChange({ ...deployment, comfy: status.comfy });
+      if (status) onChange(withStatus(deployment, status));
     });
 
   const repairGpu = () =>
     act('repair the GPU setup', async () => {
       await follow(await api.repairGpu(deployment.id));
       const status = await api.status(deployment.id).catch(() => null);
-      if (status) onChange({ ...deployment, comfy: status.comfy });
+      if (status) onChange(withStatus(deployment, status));
       refreshBackends();
     });
 
@@ -491,8 +523,29 @@ function DeploymentCard({
       </div>
 
       <NextAction deployment={deployment} />
-      <ComfySummary deployment={deployment} />
-      {comfy?.installed ? (
+      {supportsSdcpp ? (
+        <div className={styles.engineRow}>
+          <span className={styles.memoryLabel} id={`engine-${deployment.id}`}>Engine</span>
+          <Dropdown
+            value={engine}
+            onChange={(value) => void chooseEngine(value as Engine)}
+            disabled={!online || busy !== null}
+            aria-labelledby={`engine-${deployment.id}`}
+            menuWidth={300}
+            options={[
+              { value: 'comfyui', label: 'ComfyUI' },
+              { value: 'sdcpp', label: 'stable-diffusion.cpp' },
+            ]}
+          />
+          <p className={styles.memoryNote}>
+            {engine === 'sdcpp'
+              ? 'One small program, no Python. Loads one model at a time.'
+              : 'The full node-graph server. Needs Python and several GB.'}
+          </p>
+        </div>
+      ) : null}
+      {engine === 'sdcpp' ? <SdcppSummary deployment={deployment} /> : <ComfySummary deployment={deployment} />}
+      {engine === 'comfyui' && comfy?.installed ? (
         <div className={styles.memorySettings}>
           <div className={styles.computeSetting}>
             <label className={styles.memoryLabel} htmlFor={`memory-${deployment.id}`} title="Use more system RAM to help larger models fit; generation may be slower.">
@@ -545,7 +598,43 @@ function DeploymentCard({
           {busy === 'read the machine' ? 'Reading…' : 'Refresh'}
         </ReasonedButton>
 
-        {comfy?.installed ? (
+        {engine === 'sdcpp' ? (
+          sdcpp?.installed ? (
+            <>
+              <ReasonedButton
+                className={shared.action}
+                reason={busyReason ?? offlineReason}
+                onClick={() => void powerSdcpp(sdcpp.running ? 'restart' : 'start')}
+              >
+                {busy?.endsWith('stable-diffusion.cpp') && busy.startsWith(sdcpp.running ? 'restart' : 'start')
+                  ? 'Working…'
+                  : sdcpp.running
+                    ? 'Restart engine'
+                    : 'Start engine'}
+              </ReasonedButton>
+              {sdcpp.running ? (
+                <ReasonedButton className={shared.action} reason={busyReason} onClick={() => void powerSdcpp('stop')}>
+                  Stop
+                </ReasonedButton>
+              ) : null}
+              <ReasonedButton
+                className={shared.action}
+                reason={busyReason ?? offlineReason ?? (sdcpp.running ? 'Stop the engine before updating it.' : null)}
+                onClick={() => void installSdcpp()}
+              >
+                {busy === 'install stable-diffusion.cpp' ? 'Updating…' : 'Update engine'}
+              </ReasonedButton>
+            </>
+          ) : (
+            <ReasonedButton
+              className={`${shared.action} ${shared.actionPrimary}`}
+              reason={busyReason ?? offlineReason}
+              onClick={() => void installSdcpp()}
+            >
+              {busy === 'install stable-diffusion.cpp' ? 'Installing…' : 'Install engine'}
+            </ReasonedButton>
+          )
+        ) : comfy?.installed ? (
           <>
             <ReasonedButton
               className={shared.action}
@@ -581,7 +670,7 @@ function DeploymentCard({
           </ReasonedButton>
         )}
 
-        {comfy?.installed && (comfy.gpuHealth?.state === 'unsupported' || comfy.gpuHealth?.state === 'cpu') ? (
+        {engine === 'comfyui' && comfy?.installed && (comfy.gpuHealth?.state === 'unsupported' || comfy.gpuHealth?.state === 'cpu') ? (
           <ReasonedButton
             className={`${shared.action} ${shared.actionPrimary}`}
             reason={busyReason ?? offlineReason}
@@ -591,7 +680,7 @@ function DeploymentCard({
           </ReasonedButton>
         ) : null}
 
-        {comfy?.installed && (!comfy.helperInstalled || (comfy.running && !comfy.helperReady)) ? (
+        {engine === 'comfyui' && comfy?.installed && (!comfy.helperInstalled || (comfy.running && !comfy.helperReady)) ? (
           <ReasonedButton
             className={shared.action}
             reason={busyReason ?? offlineReason}
@@ -601,7 +690,7 @@ function DeploymentCard({
           </ReasonedButton>
         ) : null}
 
-        {comfy?.installed && !deployment.backendId ? (
+        {engineInstalled && !deployment.backendId ? (
           <ReasonedButton
             className={`${shared.action} ${shared.actionPrimary}`}
             reason={busyReason ?? offlineReason}
@@ -682,7 +771,7 @@ function DeploymentCard({
  * this very card. Saying only "waiting for the agent" left both looking alike.
  */
 function NextAction({ deployment }: { deployment: Deployment }) {
-  const comfy = deployment.comfy;
+  const comfy = deployment.engine === 'sdcpp' ? deployment.sdcpp : deployment.comfy;
   const neverSeen = !deployment.lastSeenAt && !deployment.agentVersion && deployment.status !== 'online';
 
   if (neverSeen) {
@@ -776,6 +865,88 @@ function ComfySummary({ deployment }: { deployment: Deployment }) {
       ) : null}
     </dl>
   );
+}
+
+/** The stable-diffusion.cpp on that machine, one line per fact worth knowing. */
+function SdcppSummary({ deployment }: { deployment: Deployment }) {
+  const sdcpp: SdcppState | null = deployment.sdcpp ?? null;
+  if (!sdcpp) {
+    return (
+      <p className={`${styles.summary} ${styles.summaryEmpty}`}>
+        Machine details will appear when the agent connects.
+      </p>
+    );
+  }
+  const model = sdcpp.model;
+  const loaded = model && model.state !== 'empty'
+    ? model.state === 'loading'
+      ? 'loading…'
+      : model.state === 'error'
+        ? `failed to load${model.error ? `: ${model.error}` : ''}`
+        : `${model.recipe ?? 'a model'}${model.models ? ` · ${Object.values(model.models).map((id) => id.split('/').pop()).join(', ')}` : ''}`
+    : 'none loaded';
+  return (
+    <dl className={styles.summary}>
+      <div>
+        <dt>Generation engine</dt>
+        <dd>
+          {sdcpp.installed ? (
+            <>
+              <span data-state={sdcpp.running ? 'on' : 'off'} className={styles.pip} />
+              {sdcpp.running ? 'running' : 'installed, stopped'}
+              <span className="mono"> · stable-diffusion.cpp</span>
+              {sdcpp.build ? <span className="mono"> · {sdcpp.build}</span> : null}
+              {sdcpp.version ? <span className="mono"> · {sdcpp.version}</span> : null}
+            </>
+          ) : (
+            'not installed'
+          )}
+        </dd>
+      </div>
+      {sdcpp.running ? (
+        <div>
+          <dt>Model</dt>
+          <dd>
+            <span data-state={model?.state === 'ready' ? 'on' : model?.state === 'error' ? 'warn' : 'off'} className={styles.pip} />
+            {loaded}
+          </dd>
+        </div>
+      ) : null}
+      <div>
+        <dt>Generation</dt>
+        <dd>
+          {deployment.backendId ? (
+            <>
+              <span data-state="on" className={styles.pip} />
+              Enabled
+            </>
+          ) : (
+            'Not enabled'
+          )}
+        </dd>
+      </div>
+      {sdcpp.path ? (
+        <div>
+          <dt>Path</dt>
+          <dd className="mono">{sdcpp.path}</dd>
+        </div>
+      ) : null}
+      {sdcpp.modelDirs?.length ? (
+        <div>
+          <dt>Models</dt>
+          <dd className="mono">{sdcpp.modelDirs.join(' · ')}</dd>
+        </div>
+      ) : null}
+    </dl>
+  );
+}
+
+/** Whether an agent version string is at least major.minor. Unknown is not. */
+export function agentAtLeast(version: string | null | undefined, major: number, minor: number): boolean {
+  if (!version) return false;
+  const [a, b] = version.split('.').map(Number);
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return false;
+  return a! > major || (a === major && b! >= minor);
 }
 
 // ---------------------------------------------------------------- logs

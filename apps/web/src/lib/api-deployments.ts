@@ -15,6 +15,8 @@ import type {
   ComfyState,
   Deployment,
   DeploymentInput,
+  Engine,
+  SdcppState,
   SshInstallInput,
   SshRun,
   Uuid,
@@ -154,8 +156,22 @@ function mockCode(): PairingCode {
 
 export interface LiveStatus {
   comfy: ComfyState;
+  /** Agent 0.5+: which engine is active and the sd.cpp half of the machine. */
+  engine?: Engine;
+  sdcpp?: SdcppState | null;
   accelerator: 'cuda' | 'rocm' | 'cpu';
   tasks: AgentTask[];
+}
+
+/** A deployment with what a live status read just said about it. */
+export function withStatus(deployment: Deployment, status: LiveStatus): Deployment {
+  return {
+    ...deployment,
+    status: 'online',
+    comfy: status.comfy,
+    engine: status.engine ?? deployment.engine,
+    sdcpp: status.sdcpp === undefined ? deployment.sdcpp : status.sdcpp,
+  };
 }
 
 export interface DeploymentsApi {
@@ -177,6 +193,10 @@ export interface DeploymentsApi {
   repairGpu(id: Uuid): Promise<AgentTask>;
   power(id: Uuid, action: 'start' | 'stop' | 'restart'): Promise<unknown>;
   installHelper(id: Uuid): Promise<AgentTask>;
+  /** The second engine, stable-diffusion.cpp (agent 0.5+). */
+  installSdcpp(id: Uuid, build: string): Promise<AgentTask>;
+  sdcppPower(id: Uuid, action: 'start' | 'stop' | 'restart'): Promise<unknown>;
+  setEngine(id: Uuid, engine: Engine): Promise<Deployment>;
   task(id: Uuid, taskId: string, since: number): Promise<{ task: AgentTask; logOffset: number }>;
   registerBackend(id: Uuid, name?: string): Promise<{ deployment: Deployment; adopted: boolean }>;
   sshInstall(input: SshInstallInput & { platform?: string; comfyPort?: number }): Promise<{
@@ -216,6 +236,11 @@ export const deploymentsApi: DeploymentsApi = {
   updateComfy: async (id) =>
     (await request<{ task: AgentTask }>(`/deployments/${id}/comfyui/update`, { method: 'POST' })).task,
   power: (id, action) => request(`/deployments/${id}/comfyui/${action}`, { method: 'POST' }),
+  installSdcpp: async (id, build) =>
+    (await request<{ task: AgentTask }>(`/deployments/${id}/sdcpp/install`, { method: 'POST', body: { build } })).task,
+  sdcppPower: (id, action) => request(`/deployments/${id}/sdcpp/${action}`, { method: 'POST' }),
+  setEngine: async (id, engine) =>
+    (await request<{ deployment: Deployment }>(`/deployments/${id}/engine`, { method: 'POST', body: { engine } })).deployment,
   installHelper: async (id) =>
     (await request<{ task: AgentTask }>(`/deployments/${id}/helper/install`, { method: 'POST' })).task,
   task: (id, taskId, since) =>

@@ -10,7 +10,7 @@
  * scripted agent, the same way backends/storage.ts tests its helper.
  */
 
-import type { AgentPlatform, AgentTask, ComfyState } from '@comfy/shared';
+import type { AgentPlatform, AgentTask, ComfyState, Engine, SdcppState } from '@comfy/shared';
 import { tunnelAgentUrl } from './tunnel.js';
 import { env } from '../env.js';
 
@@ -34,6 +34,9 @@ export interface AgentPingResult {
 
 export interface AgentStatusResult extends AgentPingResult {
   comfy: ComfyState;
+  /** Agent 0.5+; absent from older agents, which run ComfyUI only. */
+  engine?: Engine;
+  sdcpp?: SdcppState;
   accelerator: 'cuda' | 'rocm' | 'cpu';
   tasks: AgentTask[];
 }
@@ -71,6 +74,11 @@ export interface AgentClient {
     storageToken: string,
   ): Promise<AgentTask>;
   comfyLog(target: AgentTarget): Promise<string[]>;
+  /** The second engine (agent 0.5+). `build` is auto|cpu|vulkan|cuda|rocm. */
+  installSdcpp(target: AgentTarget, build: string): Promise<AgentTask>;
+  sdcppPower(target: AgentTarget, action: 'start' | 'stop' | 'restart'): Promise<unknown>;
+  sdcppLog(target: AgentTarget): Promise<string[]>;
+  setEngine(target: AgentTarget, engine: Engine): Promise<{ engine: Engine }>;
 }
 
 /**
@@ -171,6 +179,11 @@ export function makeAgentClient(opts: { fetchImpl?: typeof fetch; timeoutMs?: nu
         })
       ).task,
     comfyLog: async (target) => (await call<{ log: string[] }>(target, '/agent/comfyui/log')).log,
+    installSdcpp: async (target, build) =>
+      (await call<{ task: AgentTask }>(target, '/agent/sdcpp/install', { method: 'POST', body: { build } })).task,
+    sdcppPower: (target, action) => call(target, `/agent/sdcpp/${action}`, { method: 'POST' }),
+    sdcppLog: async (target) => (await call<{ log: string[] }>(target, '/agent/sdcpp/log')).log,
+    setEngine: (target, engine) => call(target, '/agent/engine', { method: 'POST', body: { engine } }),
   };
 }
 

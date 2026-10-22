@@ -152,6 +152,9 @@ function fakeApi(initial: Deployment[] = [online], over: Partial<DeploymentsApi>
     repairGpu: vi.fn(async () => done({ kind: 'repair-gpu' })),
     updateComfy: vi.fn(async () => done({ kind: 'update-comfyui' })),
     power: vi.fn(async () => ({ started: true })),
+    installSdcpp: vi.fn(async () => done({ kind: 'install-sdcpp', log: ['stable-diffusion.cpp installed.'] })),
+    sdcppPower: vi.fn(async () => ({ started: true })),
+    setEngine: vi.fn(async (id, engine) => ({ ...rows.find((r) => r.id === id)!, engine })),
     installHelper: vi.fn(async () => done({ kind: 'install-helper' })),
     task: vi.fn(async () => ({ task: done(), logOffset: 2 })),
     registerBackend: vi.fn(async () => ({
@@ -220,6 +223,46 @@ describe('DeploymentsSection', () => {
     expect(screen.getByRole('button', { name: 'Stop' })).toBeInTheDocument();
     // A helper that is already answering needs no button offering to install it.
     expect(screen.queryByRole('button', { name: /storage helper/ })).not.toBeInTheDocument();
+  });
+
+  it('shows stable-diffusion.cpp controls when that engine is active, and installs it on request', async () => {
+    const sdcppMachine: Deployment = {
+      ...online,
+      agentVersion: '0.5.0',
+      engine: 'sdcpp',
+      sdcpp: { installed: false, running: false, path: null, version: null, build: null, port: 8190, modelDirs: [], model: null, diskFree: null, diskTotal: null },
+    };
+    const { api } = fakeApi([sdcppMachine]);
+    const { unmount } = render(<DeploymentsSection api={api} />);
+    expect(await screen.findByText('Setup needed')).toBeInTheDocument();
+    // ComfyUI's own controls stay out of the way while the other engine is chosen.
+    expect(screen.queryByRole('button', { name: 'Enable file access' })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Install engine' }));
+    await waitFor(() => expect(api.installSdcpp).toHaveBeenCalledWith('d1', 'auto'));
+    expect(await screen.findByText(/stable-diffusion\.cpp installed\./)).toBeInTheDocument();
+    unmount();
+
+    const running: Deployment = {
+      ...sdcppMachine,
+      backendId: 'b1',
+      backendName: 'studio-4090',
+      sdcpp: { ...sdcppMachine.sdcpp!, installed: true, running: true, build: 'vulkan', version: 'master-987-a77d362', path: '/home/steve/.rippel-agent/sdcpp',
+        model: { state: 'ready', recipe: 'z-image-turbo', models: { diffusion_model: 'diffusion_models/z_image_turbo-Q3_K.gguf' }, error: null } },
+    };
+    render(<DeploymentsSection api={fakeApi([running]).api} />);
+    expect(await screen.findByRole('button', { name: 'Restart engine' })).toBeInTheDocument();
+    expect(screen.getByText(/z-image-turbo/)).toBeInTheDocument();
+    expect(screen.getByText(/vulkan/)).toBeInTheDocument();
+    expect(screen.getByText('Enabled', { selector: 'dd' })).toBeInTheDocument();
+  });
+
+  it('switches the engine through the API and keeps the card in step', async () => {
+    const { api } = fakeApi([{ ...online, agentVersion: '0.5.0', engine: 'comfyui', sdcpp: null }]);
+    render(<DeploymentsSection api={api} />);
+    await userEvent.click(await screen.findByRole('combobox', { name: 'Engine' }));
+    await userEvent.click(await screen.findByRole('option', { name: 'stable-diffusion.cpp' }));
+    await waitFor(() => expect(api.setEngine).toHaveBeenCalledWith('d1', 'sdcpp'));
+    expect(await screen.findByText('Setup needed')).toBeInTheDocument();
   });
 
   it('offers the helper when it is missing, and follows the install to its log', async () => {

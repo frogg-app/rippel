@@ -4,6 +4,13 @@ One background agent per machine you want rippel to manage. It installs and upda
 ComfyUI, starts and stops it, keeps the `comfyui-rippel-storage` helper in
 place, and tells rippel what it finds.
 
+Since 0.5.0 it manages a second engine too: **stable-diffusion.cpp**'s
+`sd-server`, one static binary with no Python beside it. The agent downloads
+the upstream release for the machine (CPU, Vulkan, CUDA or ROCm), starts and
+stops it, and reports which model it holds. A machine runs one *active*
+engine, chosen from rippel's Deployments panel; see `go/sdcpp.go` and
+`docs/plans/2026-10-23-sdcpp-engine.md`.
+
 A *backend* is an address rippel sends prompts to. A *deployment* is a machine
 rippel can act on. This is the second one. They are separate: a ComfyUI you
 started by hand is a backend with no agent, and a freshly installed agent is a
