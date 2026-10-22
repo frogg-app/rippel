@@ -13,6 +13,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { Collection, LibraryApi } from '../lib/api-library';
 import { libraryApi as defaultApi } from '../lib/api-library';
+import { libraryCache } from './libraryCache';
 
 export interface CollectionsState {
   collections: Collection[];
@@ -25,8 +26,9 @@ export interface CollectionsState {
 }
 
 export function useCollections(api: LibraryApi = defaultApi): CollectionsState {
-  const [collections, setCollections] = useState<Collection[]>([]);
-  const [loading, setLoading] = useState(true);
+  // The last list, if this page has been visited: shown at once, refreshed below.
+  const [collections, setCollections] = useState<Collection[]>(() => libraryCache(api).collections ?? []);
+  const [loading, setLoading] = useState(() => libraryCache(api).collections === undefined);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -50,6 +52,12 @@ export function useCollections(api: LibraryApi = defaultApi): CollectionsState {
       controller.abort();
     };
   }, [api]);
+
+  // Every local change (a new collection, a count bump) is what the next visit
+  // should paint, so the cache follows the list rather than only the fetch.
+  useEffect(() => {
+    if (!loading) libraryCache(api).collections = collections;
+  }, [api, loading, collections]);
 
   const create = useCallback(
     async (name: string) => {

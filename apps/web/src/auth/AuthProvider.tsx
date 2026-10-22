@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { User } from '@comfy/shared';
 import { api, ApiRequestError, type Credentials, type Registration } from '../lib/api';
+import { clearLibraryCache } from '../library/libraryCache';
 import { AuthContext, type AuthState, type AuthStatus } from './context';
 
 /**
@@ -36,6 +37,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  // A cached library belongs to whoever was signed in when it was fetched.
+  // Clear it on any change of user, sign-out included, but not on the first
+  // resolution after a page load (the cache is empty then anyway).
+  const userId = user?.id ?? null;
+  const lastUserId = useRef<string | null | undefined>(undefined);
+  useEffect(() => {
+    if (status === 'loading') return;
+    if (lastUserId.current !== undefined && lastUserId.current !== userId) clearLibraryCache();
+    lastUserId.current = userId;
+  }, [status, userId]);
+
   const signIn = useCallback(async (credentials: Credentials) => {
     const { user: signedIn } = await api.auth.login(credentials);
     setUser(signedIn);
@@ -54,6 +66,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await api.auth.logout().catch((error: unknown) => {
       if (!(error instanceof ApiRequestError)) throw error;
     });
+    clearLibraryCache();
     setUser(null);
     setStatus('anonymous');
   }, []);

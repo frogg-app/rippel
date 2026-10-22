@@ -1,11 +1,12 @@
-import { useCallback, useContext, useMemo, useRef, useState } from 'react';
+import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type {
   Collection,
   LibraryAsset,
   LibraryFilters,
 } from '../lib/api-library';
-import { usingMockLibrary } from '../lib/api-library';
+import { libraryApi, usingMockLibrary } from '../lib/api-library';
+import { libraryCache } from '../library/libraryCache';
 import { AuthContext } from '../auth/context';
 import { AssetGrid } from '../library/AssetGrid';
 import { CollectionsRail } from '../library/CollectionsRail';
@@ -36,7 +37,11 @@ import styles from './LibraryPage.module.css';
  */
 export function LibraryPage() {
   const navigate = useNavigate();
-  const [filters, setFilters] = useState<LibraryFilters>({});
+  // The filter, view and search last left, so coming back lands where you were.
+  const [filters, setFilters] = useState<LibraryFilters>(() => libraryCache(libraryApi).filters ?? {});
+  useEffect(() => {
+    libraryCache(libraryApi).filters = filters;
+  }, [filters]);
   const [selected, setSelected] = useState<LibraryAsset | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
 

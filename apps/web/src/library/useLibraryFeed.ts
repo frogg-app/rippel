@@ -30,6 +30,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { LibraryApi, LibraryAsset, LibraryFilters } from '../lib/api-library';
 import { libraryApi as defaultApi } from '../lib/api-library';
+import { libraryCache } from './libraryCache';
 
 export interface LibraryFeed {
   items: LibraryAsset[];
@@ -85,6 +86,8 @@ interface FeedState {
    * already holding — see the auto-continue effect below.
    */
   lastAppended: number | null;
+  /** The filter key these rows belong to, so the cache never files them under another. */
+  key: string;
 }
 
 const EMPTY: FeedState = {
@@ -95,6 +98,7 @@ const EMPTY: FeedState = {
   loadingMore: false,
   error: null,
   lastAppended: null,
+  key: '',
 };
 
 export function useLibraryFeed({
@@ -102,8 +106,6 @@ export function useLibraryFeed({
   pageSize = 40,
   api = defaultApi,
 }: LibraryFeedOptions): LibraryFeed {
-  const [state, setState] = useState<FeedState>(EMPTY);
-
   // Filters are a fresh object every render; comparing their *contents* is what
   // stops every parent render from restarting the feed.
   const filterKey = JSON.stringify([
@@ -113,6 +115,13 @@ export function useLibraryFeed({
     filters.collectionId ?? null,
     filters.q?.trim() ?? '',
   ]);
+
+  // A feed seen before paints from its last answer and refreshes underneath.
+  const cachedState = (): FeedState | null => {
+    const hit = libraryCache(api).feeds.get(filterKey);
+    return hit ? { ...EMPTY, ...hit, loading: false, key: filterKey } : null;
+  };
+  const [state, setState] = useState<FeedState>(() => cachedState() ?? { ...EMPTY, key: filterKey });
 
   /**
    * Bumped whenever the feed is thrown away. A response carrying an older
@@ -128,16 +137,19 @@ export function useLibraryFeed({
   const [nonce, setNonce] = useState(0);
 
   const fetchPage = useCallback(
-    async (mine: number, cursor: string | null) => {
+    async (mine: number, cursor: string | null, background = false) => {
       if (inFlight.current) return;
       inFlight.current = true;
 
-      setState((prev) => ({
-        ...prev,
-        error: null,
-        loading: cursor === null,
-        loadingMore: cursor !== null,
-      }));
+      // A background refresh keeps the cached rows on screen: no skeleton.
+      if (!background) {
+        setState((prev) => ({
+          ...prev,
+          error: null,
+          loading: cursor === null,
+          loadingMore: cursor !== null,
+        }));
+      }
 
       try {
         const page = await api.assets.list({ ...filters, cursor, limit: pageSize });
@@ -154,10 +166,14 @@ export function useLibraryFeed({
             loadingMore: false,
             error: null,
             lastAppended: cursor === null ? page.items.length : fresh.length,
+            key: prev.key,
           };
         });
       } catch (cause) {
         if (generation.current !== mine) return;
+        // A failed refresh of rows we already show is not worth an error
+        // screen; the cached rows stay and the next visit tries again.
+        if (background) return;
         setState((prev) => ({
           ...prev,
           loading: false,
@@ -178,14 +194,26 @@ export function useLibraryFeed({
     generation.current += 1;
     inFlight.current = false;
     const mine = generation.current;
-    setState({ ...EMPTY });
-    void fetchPage(mine, null);
+    const cached = cachedState();
+    setState(cached ?? { ...EMPTY, key: filterKey });
+    void fetchPage(mine, null, cached !== null);
     return () => {
       // Anything still in flight belongs to a feed that no longer exists.
       generation.current += 1;
       inFlight.current = false;
     };
   }, [fetchPage, nonce]);
+
+  // Keep the cache in step with what is shown, local edits included, so a
+  // star or a removal is not undone by the next visit's first paint.
+  useEffect(() => {
+    if (state.loading || state.error || state.key !== filterKey) return;
+    libraryCache(api).feeds.set(filterKey, {
+      items: state.items,
+      cursor: state.cursor,
+      hasMore: state.hasMore,
+    });
+  }, [api, filterKey, state.key, state.loading, state.error, state.items, state.cursor, state.hasMore]);
 
   const loadMore = useCallback(() => {
     const current = stateRef.current;

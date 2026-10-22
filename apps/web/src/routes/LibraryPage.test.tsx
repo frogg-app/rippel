@@ -12,7 +12,7 @@
  * that depends on which implementation happens to be wired is a test that
  * breaks for reasons unrelated to the screen.
  */
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 
 vi.mock('../lib/api-library', async () => {
@@ -24,6 +24,12 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { LibraryPage } from './LibraryPage';
+import { clearLibraryCache, libraryCache } from '../library/libraryCache';
+import { libraryApi } from '../lib/api-library';
+
+// Every test here shares the one fixture api, so the page's cache would leak
+// between them.
+beforeEach(() => clearLibraryCache());
 
 function renderPage() {
   return render(
@@ -115,5 +121,21 @@ describe('LibraryPage', () => {
     await waitFor(() =>
       expect(screen.queryByRole('dialog', { name: 'Asset details' })).not.toBeInTheDocument(),
     );
+  });
+
+  it('keeps the search and view across navigation, and paints the grid at once', async () => {
+    const user = userEvent.setup();
+    const first = renderPage();
+    await screen.findAllByRole('button', { name: /rain-slick street/ });
+    await user.type(screen.getByLabelText('Search your prompts'), 'rain');
+    // The search box debounces; wait for the search to be the page's filter.
+    await waitFor(() => expect(libraryCache(libraryApi).filters?.q).toBe('rain'));
+    await screen.findAllByRole('button', { name: /rain-slick street/ });
+    first.unmount();
+
+    renderPage();
+    expect(screen.getByLabelText('Search your prompts')).toHaveValue('rain');
+    // From the cache, on the first render: no skeleton to wait through.
+    expect(screen.getAllByRole('button', { name: /rain-slick street/ }).length).toBeGreaterThan(0);
   });
 });
