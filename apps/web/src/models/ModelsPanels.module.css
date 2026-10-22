@@ -1744,16 +1744,6 @@
   outline-offset: 2px;
 }
 
-.chipAll {
-  margin-left: auto;
-}
-
-@media (max-width: 720px) {
-  .chipAll {
-    margin-left: 0;
-  }
-}
-
 @media (max-width: 720px) {
   .searchRow { flex-wrap: wrap; }
   .search { min-width: 0; flex-basis: 100%; }

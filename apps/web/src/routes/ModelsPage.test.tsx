@@ -1092,7 +1092,7 @@ describe('ModelsPage', () => {
       });
       renderPage(api);
       await ready();
-      // The screen opens on Checkpoint; a LoRA lives behind "All types".
+      // "All types" is the default; clicking it again keeps every type showing.
       await openTab(/All types/);
 
       // The card does not promise a workflow it cannot deliver.

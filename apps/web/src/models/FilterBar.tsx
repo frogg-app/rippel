@@ -148,6 +148,18 @@ export function FilterBar({
       ) : null}
 
       <div className={styles.chips} role="group" aria-label="Filter by model type">
+        {/* First, and the default: the same as Discover's "Any type". */}
+        <button
+          type="button"
+          className={`${styles.chip} ${activeType === null ? styles.chipOn : ''}`}
+          aria-pressed={activeType === null}
+          onClick={() => onType(null)}
+        >
+          All types
+          {allCount === undefined ? null : (
+            <span className={`mono ${styles.chipCount}`}>{allCount}</span>
+          )}
+        </button>
         {types.map(({ type, count }) => (
           <button
             key={type}
@@ -161,20 +173,6 @@ export function FilterBar({
             <span className={`mono ${styles.chipCount}`}>{count}</span>
           </button>
         ))}
-        {/* Last, and pushed to the far end. It stopped being the default — the
-            screen opens on Checkpoint — so it stops being the first thing the
-            eye lands on. It is the escape hatch, not the starting point. */}
-        <button
-          type="button"
-          className={`${styles.chip} ${styles.chipAll} ${activeType === null ? styles.chipOn : ''}`}
-          aria-pressed={activeType === null}
-          onClick={() => onType(null)}
-        >
-          All types
-          {allCount === undefined ? null : (
-            <span className={`mono ${styles.chipCount}`}>{allCount}</span>
-          )}
-        </button>
       </div>
     </div>
   );

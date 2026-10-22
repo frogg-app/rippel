@@ -100,14 +100,11 @@ const TABS: readonly Tab[] = ['installed', 'discover', 'downloads', 'storage'];
 const DEFAULT_TAB: Tab = 'discover';
 
 /**
- * Which type both tabs open on.
- *
- * A checkpoint is the thing you can actually generate with, and it is what
- * somebody arriving here is looking for; on the live catalogue it is 145 rows
- * of 372 rather than all of them. "All types" is still one click away, at the
- * far end of the chip row.
+ * Installed's type filter, remembered for the session per api. Both tabs open
+ * on every type (Discover's lives in the URL); a choice the user makes sticks
+ * until they change it.
  */
-const DEFAULT_TYPE: ModelType = 'checkpoint';
+const lastInstalledType = new WeakMap<ModelsApi, ModelType | null>();
 
 function tabFromParams(params: URLSearchParams): Tab {
   const asked = params.get('tab');
@@ -257,13 +254,16 @@ export function ModelsPage({ api = modelsApi, storageApi: storage = storageApi }
 
   // ------------------------------------------------------------- installed
 
-  // Checkpoints first, on both tabs: they are what somebody comes to this
-  // screen for, and the add-ons are the long tail. Installed matches Discover
-  // rather than diverging — ten models do all fit on one screen, but a filter
-  // row that means one thing on one tab and another on the next is a worse
-  // trade than one extra click, and "All types" is one click away at the end
-  // of the row.
-  const [installedType, setInstalledType] = useState<ModelType | null>(() => params.has('q') ? null : DEFAULT_TYPE);
+  // Every type by default, as on Discover; a type the user picks is kept for
+  // the session.
+  const [installedType, setInstalledTypeState] = useState<ModelType | null>(() => lastInstalledType.get(api) ?? null);
+  const setInstalledType = useCallback(
+    (type: ModelType | null) => {
+      lastInstalledType.set(api, type);
+      setInstalledTypeState(type);
+    },
+    [api],
+  );
   const [installedFamily, setInstalledFamily] = useState<string | null>(null);
   const [installedQ, setInstalledQ] = useState('');
 
@@ -584,7 +584,7 @@ export function ModelsPage({ api = modelsApi, storageApi: storage = storageApi }
                     label: 'Clear filters',
                     onClick: () => {
                       setInstalledQ('');
-                      setInstalledType(DEFAULT_TYPE);
+                      setInstalledType(null);
                       setInstalledFamily(null);
                     },
                   }}
