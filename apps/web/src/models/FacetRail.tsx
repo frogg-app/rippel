@@ -113,6 +113,15 @@ export function FacetRail({
     <aside className={styles.rail} aria-label="Filter the catalogue">
       <div className={styles.facet} role="group" aria-label="Filter by model type">
         <h4 className={styles.facetTitle}>Type</h4>
+        <button
+          type="button"
+          className={`${styles.facetRow} ${activeType === null ? styles.facetRowOn : ''}`}
+          aria-pressed={activeType === null}
+          onClick={() => onType(null)}
+        >
+          <span className={styles.facetValue}>Any type</span>
+          <span className={`mono ${styles.facetCount}`}>{allTypesCount}</span>
+        </button>
         {types.map(({ type, count }) => (
           <button
             key={type}
@@ -126,15 +135,6 @@ export function FacetRail({
             <span className={`mono ${styles.facetCount}`}>{count}</span>
           </button>
         ))}
-        <button
-          type="button"
-          className={`${styles.facetRow} ${activeType === null ? styles.facetRowOn : ''}`}
-          aria-pressed={activeType === null}
-          onClick={() => onType(null)}
-        >
-          <span className={styles.facetValue}>Any type</span>
-          <span className={`mono ${styles.facetCount}`}>{allTypesCount}</span>
-        </button>
       </div>
       {RAIL_OPEN_GROUPS.map(tagGroup)}
 

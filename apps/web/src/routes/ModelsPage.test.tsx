@@ -517,14 +517,14 @@ describe('ModelsPage', () => {
       const intents = screen.getByRole('group', { name: 'What do you want to do?' });
       const chips = within(intents).getAllByRole('button');
       expect(chips.map((chip) => chip.textContent!.replace(/[0-9]+$/, ''))).toEqual([
+        'Everything',
         'Make images',
         'Make video',
         'Edit an image',
         'Enlarge images',
         'Style add-ons',
-        'Everything',
       ]);
-      expect(chips[0]).toHaveAttribute('aria-pressed', 'true');
+      expect(chips[1]).toHaveAttribute('aria-pressed', 'true');
       expect(screen.getByText('Models that turn a prompt into a picture.')).toBeInTheDocument();
       expect(screen.getByRole('checkbox', { name: 'Works on this machine' })).toBeChecked();
       expect(screen.getByRole('article', { name: 'SDXL Base 1.0' })).toBeInTheDocument();

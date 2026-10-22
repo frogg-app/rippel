@@ -34,7 +34,7 @@ export interface IntentWords {
 }
 
 /** In the order the chips are drawn: the common job first, Everything last. */
-export const INTENTS: readonly Intent[] = ['images', 'video', 'edit', 'enlarge', 'styles', 'all'];
+export const INTENTS: readonly Intent[] = ['all', 'images', 'video', 'edit', 'enlarge', 'styles'];
 
 export const INTENT_WORDS: Record<Intent, IntentWords> = {
   images: {
