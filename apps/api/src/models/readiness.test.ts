@@ -373,7 +373,7 @@ describe('readiness when the checkpoint file itself is the problem', () => {
     const readiness = steve('diffusers');
     expect(readiness.ready).toBe(false);
     expect(readiness.modelProblem?.kind).toBe('unloadable');
-    expect(readiness.manualSteps[0]).toMatch(/diffusers-format/);
+    expect(readiness.manualSteps[0]).toMatch(/can’t read this file/);
     expect(readiness.installable).toEqual([]);
   });
 

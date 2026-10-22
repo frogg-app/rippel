@@ -60,7 +60,7 @@ describe('noticeHeadline', () => {
       'LTX-Video needs a prompt reader (T5 text encoder) and an image decoder (LTX-Video VAE) before it can run',
     );
     expect(noticeHeadline(ltx, blocked({ problem: { kind: 'unloadable', summary: 's', detail: 'd' } }))).toBe(
-      'Model Weights 0306 can’t be loaded by ComfyUI',
+      'This file won’t run',
     );
   });
 });

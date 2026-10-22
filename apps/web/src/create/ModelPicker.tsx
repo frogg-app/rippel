@@ -236,13 +236,11 @@ export function ModelPicker({
             <span>
               {listed.every((entry) => entry.blocked === 'needs-setup') ? (
                 <>
-                  Your {KIND_NOUN[mode]} models need a file or two before they can run.
-                  Press one to see what, and to get it.
+                  These models need a file or two first.
                 </>
               ) : (
                 <>
-                  Nothing here can make a {KIND_NOUN[mode]} as the form stands. Press a model to
-                  see what it needs.
+                  None of these can run yet.
                 </>
               )}
             </span>

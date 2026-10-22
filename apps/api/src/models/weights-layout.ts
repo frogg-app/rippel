@@ -107,14 +107,11 @@ export const LAYOUT_WORDS = {
   diffusers: {
     summary: 'ComfyUI can’t load this file',
     detail:
-      'It holds diffusers-format weights (the diffusion transformer alone, laid out for the diffusers library), ' +
-      'and ComfyUI has no loader for that layout — installing a prompt reader or image decoder will not change that. ' +
-      'Use a ComfyUI single-file build of the model instead, such as ltx-video-2b-v0.9.1.safetensors.',
+      'ComfyUI can’t read this file’s format. Use a single-file ComfyUI build instead.',
   },
   diffusionOnly: {
     summary: 'Diffusion weights only',
     detail:
-      'It holds the diffusion weights alone, with no image decoder inside, so it has to load from the ' +
-      '"diffusion_models" folder with a separate image decoder (VAE) and prompt reader.',
+      'Move it to the diffusion_models folder; it also needs an image decoder.',
   },
 } as const;

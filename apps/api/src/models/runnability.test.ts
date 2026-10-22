@@ -468,7 +468,7 @@ describe('runnabilityFor, with the file layout known', () => {
     const verdict = runnabilityFor({ ...file, layout: 'diffusers' });
     expect(verdict.status).toBe('no-workflow');
     expect(verdict.summary).toMatch(/can’t load/);
-    expect(verdict.detail).toMatch(/diffusers-format/);
+    expect(verdict.detail).toMatch(/can’t read this file/);
     expect(verdict.missing).toEqual([]);
   });
 

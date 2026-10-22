@@ -42,8 +42,8 @@ export function noticeHeadline(model: Model, answer: ModelReadiness): string {
   const who = model.baseModel ? familyWords(model.baseModel).label : model.displayName;
   if (answer.problem) {
     return answer.problem.kind === 'unloadable'
-      ? `${model.displayName} can’t be loaded by ComfyUI`
-      : `${model.displayName} is in the wrong folder`;
+      ? 'This file won’t run'
+      : 'This file is in the wrong folder';
   }
   const absent = absentParts(answer.missing);
   if (absent.length > 0) return `${who} needs ${joinParts(absent)} before it can run`;
@@ -77,9 +77,8 @@ export function ModelNotice({
 
       {answer.problem ? (
         <>
-          <p className={styles.noticeText}>{answer.problem.detail}</p>
-          <a className={styles.link} href={findModelsHref(mode)}>
-            Find a model that will run
+          <a className={styles.link} href={findModelsHref(mode)} title={answer.problem.detail}>
+            Pick another model
           </a>
         </>
       ) : (
