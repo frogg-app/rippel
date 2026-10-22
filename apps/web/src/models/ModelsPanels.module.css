@@ -2906,3 +2906,12 @@ button.tagChipOn:hover {
 .drawerFactsQuiet {
   font-size: var(--text-xs);
 }
+
+/* The fit pill can be long ("9.37 GB · not supported yet"): give it the whole row so it stays on one line. */
+.fact:has(.fitPill) {
+  grid-column: 1 / -1;
+}
+
+.fact:has(.fitPill) dd {
+  overflow: visible;
+}
