@@ -51,7 +51,7 @@ export function RippleBackdrop({
     const host = canvas.parentElement ?? document.body;
 
     const water = shared ?? new RippleField(1, 1, performance.now());
-    const renderer = createGlRenderer(canvas) ?? createCanvas2dRenderer(canvas);
+    const renderer = rendererFor(canvas);
     if (!renderer) return;
 
     if (shape) {
@@ -115,7 +115,6 @@ export function RippleBackdrop({
       host.removeEventListener('pointerdown', onDown);
       host.removeEventListener('pointermove', onMove);
       host.removeEventListener('pointerleave', onLeave);
-      renderer.dispose();
     };
   }, [shape, shared, interactive]);
 
@@ -125,7 +124,22 @@ export function RippleBackdrop({
 interface Renderer {
   resize(width: number, height: number): void;
   draw(water: RippleField): void;
-  dispose(): void;
+}
+
+/**
+ * One renderer per canvas, kept for the canvas's life. A canvas hands out only
+ * one kind of context, ever, and the same one again on every call: so an
+ * effect that re-runs on the same canvas (StrictMode does this on every mount
+ * in dev; a prop change does it anywhere) must reuse what it made. Losing the
+ * WebGL context in a cleanup, as this once did, left the next run holding a
+ * dead context it could not draw with or swap for a 2D one, and Chromium paints
+ * a lost context as an opaque white box with a sad-face icon, over the page.
+ */
+const renderers = new WeakMap<HTMLCanvasElement, Renderer | null>();
+
+export function rendererFor(canvas: HTMLCanvasElement): Renderer | null {
+  if (!renderers.has(canvas)) renderers.set(canvas, createGlRenderer(canvas) ?? createCanvas2dRenderer(canvas));
+  return renderers.get(canvas) ?? null;
 }
 
 /**
@@ -240,9 +254,6 @@ function createGlRenderer(canvas: HTMLCanvasElement): Renderer | null {
       g.clear(g.COLOR_BUFFER_BIT);
       g.drawArrays(g.TRIANGLE_STRIP, 0, 4);
     },
-    dispose() {
-      g.getExtension('WEBGL_lose_context')?.loseContext();
-    },
   };
 }
 
@@ -286,6 +297,5 @@ function createCanvas2dRenderer(canvas: HTMLCanvasElement): Renderer | null {
       c.imageSmoothingEnabled = true;
       c.drawImage(small, -cell / 2, -cell / 2, cols * cell, rows * cell);
     },
-    dispose() {},
   };
 }
