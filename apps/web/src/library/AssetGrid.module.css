@@ -175,14 +175,17 @@
   left: 9px;
   display: flex;
   align-items: center;
-  gap: 5px;
-  padding: 3px 8px;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
   border-radius: 999px;
   background: var(--badge);
   backdrop-filter: blur(8px);
-  font-size: 10.5px;
   color: var(--accent);
   pointer-events: auto;
+}
+.sharedPrivate {
+  color: var(--text-3);
 }
 
 /* Whose it is, or how long the archive keeps it: top-right, where the star

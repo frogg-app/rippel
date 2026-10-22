@@ -1,6 +1,6 @@
 import type { LibraryAsset } from '../lib/api-library';
 import { clockDuration } from './grouping';
-import { GlobeIcon, LinkIcon, PlayIcon, StarIcon } from './icons';
+import { GlobeIcon, LinkIcon, LockIcon, PlayIcon, StarIcon } from './icons';
 import { VISIBILITY_HINT, VISIBILITY_LABEL } from '../lib/sharing';
 import styles from './AssetGrid.module.css';
 
@@ -78,15 +78,22 @@ export function AssetTile({
         <span className={styles.byline}>{daysLeft(asset.purgesAt)}</span>
       ) : null}
 
-      {/* Private is the default and carries no badge: a badge on every tile is
-          noise, and the absence is the reassuring state. Anything that has
-          left private is marked, always, not only on hover. */}
-      {asset.visibility !== 'private' ? (
-        <span className={styles.shared} title={VISIBILITY_HINT[asset.visibility]}>
-          {asset.visibility === 'public' ? <GlobeIcon size={10} /> : <LinkIcon size={10} />}
-          {VISIBILITY_LABEL[asset.visibility]}
-        </span>
-      ) : null}
+      {/* Who can see it, on every tile: a lock, a link or a globe. Private
+          is muted so the shared ones stand out at a glance. */}
+      <span
+        className={`${styles.shared} ${asset.visibility === 'private' ? styles.sharedPrivate : ''}`}
+        title={`${VISIBILITY_LABEL[asset.visibility]}: ${VISIBILITY_HINT[asset.visibility]}`}
+        aria-label={VISIBILITY_LABEL[asset.visibility]}
+        role="img"
+      >
+        {asset.visibility === 'public' ? (
+          <GlobeIcon size={11} />
+        ) : asset.visibility === 'link' ? (
+          <LinkIcon size={11} />
+        ) : (
+          <LockIcon size={11} />
+        )}
+      </span>
 
       {(me === null || asset.ownerId === me) && !asset.archivedAt ? (
       <button
