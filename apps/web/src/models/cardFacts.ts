@@ -182,6 +182,18 @@ export function fitOf(
   };
 }
 
+/**
+ * The drawer's pill: the drawer has a Size tile of its own, so the size is
+ * taken off the front ("6.9 GB · not supported yet" reads "Not supported
+ * yet"). A label that is only the size stays as it is.
+ */
+export function drawerFit(fit: Fit, bytes: number | null): Fit {
+  const prefix = bytes ? `${formatBytes(bytes)} · ` : null;
+  if (!prefix || !fit.label.startsWith(prefix)) return fit;
+  const word = fit.label.slice(prefix.length);
+  return { ...fit, label: word.charAt(0).toUpperCase() + word.slice(1) };
+}
+
 /** The Installed tab's version: a local file has bytes, not a size string. */
 export function modelFit(model: Model, verdict: ModelRunnability | null, memory: number | null, supportNoun: string): Fit {
   return fitOf({ type: model.type, runnability: verdict }, model.sizeBytes, memory, supportNoun);

@@ -28,13 +28,13 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import type { ModelCatalogEntry } from '@comfy/shared';
 import { SUPPORT_ROLES, basename, formatBytes, generates } from './catalogue';
-import { authorOf, fitOf, fullId, huggingFaceUrl, shortName, sizeBytesOf } from './cardFacts';
+import { FitFact } from './FitFact';
+import { authorOf, drawerFit, fitOf, fullId, huggingFaceUrl, shortName, sizeBytesOf } from './cardFacts';
 import { expertFor } from './vocabulary';
 import { DRAWER_TAG_ORDER, entryTags, tagKey, type TagKey } from './discover';
 import {
   CardVerdict,
   InstallControls,
-  FitPill,
   artGradient,
   type InstallControlsProps,
 } from './CatalogueCard';
@@ -199,7 +199,7 @@ export function CatalogueDrawer({
 
           <dl className={styles.factsGrid}>
             <Fact label="Size" value={bytes ? formatBytes(bytes) : null} />
-            {isSupport ? null : <Fact label="Fit" value={<FitPill fit={fit} />} />}
+            {isSupport ? null : <FitFact fit={drawerFit(fit, bytes)} />}
             <Fact label="Memory here" value={memoryBytes ? formatBytes(memoryBytes) : null} />
             <Fact label="Licence" value={info?.license ?? null} />
             <Fact label="Downloads" value={info?.downloads ? info.downloads.toLocaleString() : null} />

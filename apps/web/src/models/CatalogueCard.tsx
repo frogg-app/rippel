@@ -48,7 +48,7 @@
  *   failed      the error, and the button back, labelled as a retry
  *   installed   no button at all: a re-install is answered with a 409
  */
-import { useState, type CSSProperties, type ReactNode } from 'react';
+import { useState, type CSSProperties, type ReactNode, type Ref } from 'react';
 import type { ModelCatalogEntry, ModelInstall } from '@comfy/shared';
 import {
   RUNNABILITY_TONE,
@@ -256,9 +256,9 @@ export function InstallControls({
 }
 
 /** The merged "size · fit" pill, shared by both tabs and the drawer. */
-export function FitPill({ fit, className = '' }: { fit: Fit; className?: string }) {
+export function FitPill({ fit, className = '', ref }: { fit: Fit; className?: string; ref?: Ref<HTMLSpanElement> }) {
   return (
-    <span className={`${styles.fitPill} ${styles[`fit_${fit.tone}`]} ${className}`} title={fit.detail}>
+    <span ref={ref} className={`${styles.fitPill} ${styles[`fit_${fit.tone}`]} ${className}`} title={fit.detail}>
       {fit.label}
     </span>
   );

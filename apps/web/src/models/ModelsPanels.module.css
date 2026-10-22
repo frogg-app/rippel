@@ -2875,6 +2875,8 @@ button.tagChipOn:hover {
 .factsGrid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  /* A wide Fit tile leaves holes; let the later tiles fill them. */
+  grid-auto-flow: dense;
   gap: 8px;
   margin: 0;
 }
@@ -2907,11 +2909,7 @@ button.tagChipOn:hover {
   font-size: var(--text-xs);
 }
 
-/* The fit pill can be long ("9.37 GB · not supported yet"): give it the whole row so it stays on one line. */
-.fact:has(.fitPill) {
-  grid-column: 1 / -1;
-}
-
-.fact:has(.fitPill) dd {
+/* FitFact sets its own span (1, 2 or the row) from the pill's width; the pill never wraps or clips. */
+.fitFact dd {
   overflow: visible;
 }

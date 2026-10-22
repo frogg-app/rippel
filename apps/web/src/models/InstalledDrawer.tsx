@@ -15,9 +15,10 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import type { Model, ModelCatalogInfo, ModelRunnability, Uuid } from '@comfy/shared';
 import { SUPPORT_ROLES, basename, familyLabel, formatBytes, generates } from './catalogue';
-import { fitOf, installedSource, type InstalledSource } from './cardFacts';
+import { drawerFit, fitOf, installedSource, type InstalledSource } from './cardFacts';
 import { DRAWER_TAG_ORDER, tagKey } from './discover';
-import { FitPill, artGradient } from './CatalogueCard';
+import { artGradient } from './CatalogueCard';
+import { FitFact } from './FitFact';
 import { RemoveButton } from './InstalledCard';
 import { FixModel } from './FixModel';
 import { NeedsPills } from './MissingParts';
@@ -164,7 +165,7 @@ export function InstalledDrawer({
 
           <dl className={styles.factsGrid}>
             <Fact label="Size" value={model.sizeBytes ? formatBytes(model.sizeBytes) : null} />
-            {isSupport ? null : <Fact label="Fit" value={<FitPill fit={fit} />} />}
+            {isSupport ? null : <FitFact fit={drawerFit(fit, model.sizeBytes)} />}
             <Fact label="Memory here" value={memoryBytes ? formatBytes(memoryBytes) : null} />
             <Fact label="Licence" value={info?.license ?? null} />
             <Fact label="Downloads" value={info?.downloads ? info.downloads.toLocaleString() : null} />
