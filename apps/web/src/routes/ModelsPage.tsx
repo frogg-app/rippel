@@ -39,6 +39,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { setTargetBackend, useTargetBackend } from '../shell/useTargetBackend';
 import type { Model, ModelCatalogEntry, ModelType, Uuid } from '@comfy/shared';
 import { useAuth } from '../auth/context';
 import { modelsApi, type ModelsApi } from '../lib/api-models';
@@ -52,8 +53,7 @@ import { WorkflowSheet, type WorkflowSheetSubject } from '../models/WorkflowShee
 import { ApiRequestError } from '../lib/api';
 import { WorkflowIcon } from '../models/icons';
 import { Notice } from '../models/Notice';
-import { CubeIcon, ChevronIcon } from '../models/icons';
-import { Dropdown } from '../components/Dropdown';
+import { CubeIcon } from '../models/icons';
 import {
   catalogueTypes,
   familyLabel,
@@ -147,17 +147,21 @@ export function ModelsPage({ api = modelsApi, storageApi: storage = storageApi }
     [setParams],
   );
 
-  const [backendId, setBackendId] = useState<Uuid | null>(() => params.get('backend'));
-
-  // Default to the backend the shell's pill would show: an online one first,
-  // because that is the one an install can actually run on.
+  // The machine is the one the shell's pill picks: one choice for the whole
+  // app. This page used to keep its own, and two pickers that could disagree
+  // was more confusing than useful. A ?backend= link still chooses it.
+  const [linkedBackend] = useState(() => params.get('backend'));
   useEffect(() => {
-    if (backendId && library.backends.some((candidate) => candidate.id === backendId)) return;
-    const enabled = library.backends.filter((backend) => backend.enabled);
-    const preferred =
-      enabled.find((backend) => backend.status === 'online') ?? enabled[0] ?? library.backends[0];
-    setBackendId(preferred?.id ?? null);
-  }, [backendId, library.backends]);
+    if (linkedBackend) setTargetBackend(linkedBackend);
+  }, [linkedBackend]);
+  const target = useTargetBackend();
+  const backendId: Uuid | null =
+    target && library.backends.some((candidate) => candidate.id === target)
+      ? target
+      : (() => {
+          const enabled = library.backends.filter((backend) => backend.enabled);
+          return (enabled.find((backend) => backend.status === 'online') ?? enabled[0] ?? library.backends[0])?.id ?? null;
+        })();
 
   const backend = library.backends.find((candidate) => candidate.id === backendId) ?? null;
 
@@ -170,8 +174,6 @@ export function ModelsPage({ api = modelsApi, storageApi: storage = storageApi }
   });
 
   const installs = useInstalls({ api, backendId, enabled: isAdmin });
-  const backendWarning = backend?.status !== 'online' ||
-    ['unsupported', 'error', 'offline'].includes(catalogue.state.kind);
   const now = useNow(installs.live.length > 0);
 
   // ------------------------------------------------------------- workflows
@@ -450,31 +452,6 @@ export function ModelsPage({ api = modelsApi, storageApi: storage = storageApi }
 
         <div className={styles.spacer} />
 
-        {library.backends.length > 0 ? (
-          <Dropdown
-            id="models-backend"
-            aria-label={tab === 'installed' ? 'Highlighting' : tab === 'storage' ? 'Files on' : 'Installing to'}
-            className={styles.backendPicker}
-            leading={<>
-              <span
-                className={`${styles.dot} ${backendWarning ? styles.dotWarning : styles.dotOn}`}
-                title={backendWarning ? 'Backend needs attention' : 'Backend ready'}
-                aria-hidden
-              />
-              <span className={styles.backendLabel}>
-                {tab === 'installed' ? 'Highlighting' : tab === 'storage' ? 'Files on' : 'Installing to'}
-              </span>
-            </>}
-            value={backendId ?? ''}
-            options={library.backends.map((candidate) => ({
-              value: candidate.id,
-              label: `${candidate.name}${candidate.status === 'online' ? '' : ' (offline)'}`,
-            }))}
-            onChange={(next) => setBackendId(next || null)}
-          >
-            <ChevronIcon size={12} className={styles.backendChevron} />
-          </Dropdown>
-        ) : null}
       </header>
 
       <div className={styles.body}>

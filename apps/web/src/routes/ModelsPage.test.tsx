@@ -35,7 +35,7 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { refreshBackends } from '../shell/useBackends';
+import { setTargetBackend } from '../shell/useTargetBackend';
 import type { ReactNode } from 'react';
 import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom';
 import type { JobKind, User } from '@comfy/shared';
@@ -160,7 +160,6 @@ describe('ModelsPage', () => {
       await openTab(/Discover/);
 
       expect(await screen.findByText('This machine’s model installer isn’t ready.')).toBeInTheDocument();
-      expect(screen.getByTitle('Backend needs attention')).toBeInTheDocument();
       expect(
         screen.getByRole('heading', { name: 'Model installation unavailable' }),
       ).toBeInTheDocument();
@@ -1250,46 +1249,21 @@ describe('ModelsPage', () => {
     });
   });
 
-  describe('the pickers that used to be native selects', () => {
-    it('opens from the selector label and drops a removed backend after settings change', async () => {
-      const remaining = makeBackend({ id: 'backend-2', name: 'steve-pc' });
-      const api = makeStubApi({ backends: [makeBackend(), remaining] });
-      renderPage(api);
-      await ready();
-      const picker = screen.getByRole('combobox', { name: /highlighting/i });
-      expect(within(picker).getByText('Highlighting')).toBeInTheDocument();
-      await userEvent.click(within(picker).getByText('Highlighting'));
-      expect(screen.getByRole('option', { name: 'steve-pc' })).toBeInTheDocument();
-      await userEvent.keyboard('{Escape}');
-      api.backends = vi.fn().mockResolvedValue([remaining]);
-      act(() => refreshBackends());
-      await waitFor(() => expect(picker).toHaveTextContent('steve-pc'));
-      await userEvent.click(picker);
-      expect(screen.queryByRole('option', { name: 'desktop-6900xt' })).not.toBeInTheDocument();
-    });
-
-    it('switches backend from the header picker, by keyboard alone', async () => {
+  describe('which machine', () => {
+    it('follows the shell\'s backend choice rather than keeping its own', async () => {
       const api = makeStubApi({
-        backends: [
-          makeBackend(),
-          makeBackend({ id: 'backend-2', name: 'studio-4090', status: 'offline' }),
-        ],
+        backends: [makeBackend(), makeBackend({ id: 'backend-2', name: 'studio-4090' })],
       });
+      const catalogue = vi.spyOn(api, 'catalogue');
       renderPage(api);
       await ready();
+      // One picker for the whole app: this page draws none of its own.
+      expect(screen.queryByRole('combobox', { name: /installing to|highlighting|files on/i })).toBeNull();
+      await openTab(/Discover/);
 
-      const picker = screen.getByRole('combobox', { name: /installing to|highlighting|files on/i });
-      expect(picker).toHaveTextContent('desktop-6900xt');
-
-      picker.focus();
-      const user = userEvent.setup();
-      await user.keyboard('{Enter}');
-      // The offline one is still offered, and still says so.
-      expect(screen.getByRole('option', { name: /studio-4090 \(offline\)/ })).toBeInTheDocument();
-
-      await user.keyboard('{ArrowDown}{Enter}');
-      expect(picker).toHaveTextContent('studio-4090');
-      expect(picker).toHaveFocus();
+      act(() => setTargetBackend('backend-2'));
+      await waitFor(() => expect(catalogue.mock.calls.at(-1)?.[0]).toBe('backend-2'));
+      act(() => setTargetBackend(null));
     });
 
     it('filters the catalogue by base from the facet rail, and back again', async () => {
