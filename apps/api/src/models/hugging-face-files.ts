@@ -20,7 +20,7 @@
  * Everything here is pure, so it is tested against real repository listings.
  */
 import type { ModelType, ModelVariant } from '@comfy/shared';
-import { FAMILIES, familyFromFilename, type ModelFamily } from './family.js';
+import { FAMILIES, NEXT_GENERATION, familyFromFilename, type ModelFamily } from './family.js';
 
 /** Comfy-Org's repositories keep each file under the folder it belongs in. */
 const SPLIT_FOLDERS: Partial<Record<ModelType, readonly string[]>> = {
@@ -32,7 +32,7 @@ const SPLIT_FOLDERS: Partial<Record<ModelType, readonly string[]>> = {
 const SHARD = /-\d{5}-of-\d{5}/;
 
 /** Builds no stock ComfyUI loader reads, whatever the repository. */
-const UNLOADABLE = /(^|[^a-z0-9])(mlx|nvfp4|fp4|int4|int8|w4a8|w8a8|w4a16|svdq|svdquant|awq|gptq|convrot|bnb|nf4|onnx|openvino|coreml)([^a-z0-9]|$)/;
+const UNLOADABLE = /(^|[^a-z0-9])(mlx|nvfp4|fp4|int4|int8|w4a4|w4a8|w8a8|w4a16|qnn|svdq|svdquant|awq|gptq|convrot|bnb|nf4|onnx|openvino|coreml)([^a-z0-9]|$)/;
 
 /**
  * Side files in a *model* repository: the parts that come with a model rather
@@ -155,9 +155,10 @@ const FAMILY_BASE: Record<ModelFamily, string> = {
  */
 export function huggingFaceFamilyBase(id: string, baseModels: readonly string[], filename: string | null): string | null {
   const evidence = [...baseModels, id, filename ?? ''];
-  // FLUX.2 is a different model with its own encoders; the FLUX.1 graph would
-  // load it and fail. Named here so it is not read as FLUX.1 below.
-  if (evidence.some((text) => /flux[-_. ]?2/i.test(text))) return null;
+  // Next generations under an old family's name: FLUX.2 and LTX-2.x are new
+  // models with their own encoders, and the FLUX.1 / LTX-Video graphs would
+  // load them and fail. Caught here so they are not read as the old family.
+  if (evidence.some((text) => NEXT_GENERATION.test(text))) return null;
   for (const text of evidence) {
     if (!text) continue;
     const family = familyFromFilename(text.replace(/\//g, ' '));

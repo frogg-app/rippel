@@ -301,10 +301,20 @@ function mostSpecific(families: Set<ModelFamily>): ModelFamily | null {
 }
 
 /**
+ * FLUX.2 and LTX-2.x are new models that kept their predecessors' names, with
+ * their own encoders: the FLUX.1 and LTX-Video graphs would load them and fail.
+ * Matches "FLUX.2", "flux2", "LTX-2", "ltx-2.3", "LTX23" — and not
+ * "ltx-video-2b" or "ltxv-2b", which are LTX-Video.
+ */
+export const NEXT_GENERATION = /flux[-_. ]?2|ltx[-_. ]?2(?=$|[^a-z0-9]|[-_. ]?\d)|ltx2\d/i;
+
+/**
  * Infer the family from a filename alone. Exported for tests and for anywhere
  * that has no catalogue entry to offer; ordinary callers want `inferFamily`.
  */
 export function familyFromFilename(filename: string): ModelFamily | null {
+  // A next generation under an old name is not the old family; see below.
+  if (NEXT_GENERATION.test(filename)) return null;
   const tokens = tokenize(filename);
 
   const strong = new Set<ModelFamily>();

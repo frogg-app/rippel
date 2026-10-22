@@ -93,6 +93,21 @@ describe('huggingFaceFamilyBase', () => {
     expect(huggingFaceFamilyBase('someone/mystery', [], 'v1-5-pruned-emaonly.safetensors')).toBe('SD1.5');
     expect(huggingFaceFamilyBase('someone/mystery', [], 'model.safetensors')).toBeNull();
   });
+
+  it('does not read FLUX.2 or LTX-2 as the family they took their name from', () => {
+    for (const [id, file] of [
+      ['leejet/FLUX.2-klein-4B-GGUF', 'flux-2-klein-4b-Q8_0.gguf'],
+      ['Lightricks/LTX-2', 'ltx-2-19b-dev.safetensors'],
+      ['someone/LTX-2.3', 'ltx-2.3-22b-dev.safetensors'],
+      ['someone/echo', 'LTX23-echoVid-Surgical-DiT-Q8_0.gguf'],
+    ]) {
+      expect(huggingFaceFamilyBase(id!, [], file!), id).toBeNull();
+    }
+    expect(huggingFaceFamilyBase('someone/fine-tune', ['Lightricks/LTX-2'], 'sulphur_dev_bf16.safetensors')).toBeNull();
+    // LTX-Video 0.9 builds stay LTX-Video.
+    expect(huggingFaceFamilyBase('city96/LTX-Video-0.9.5-gguf', [], 'ltx-video-2b-v0.9.5-Q8_0.gguf')).toBe('LTXV');
+    expect(huggingFaceFamilyBase('someone/ltxv', [], 'ltxv-2b-0.9.6-distilled-04-25-Q8_0.gguf')).toBe('LTXV');
+  });
 });
 
 describe('sizedVariants', () => {

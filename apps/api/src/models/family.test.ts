@@ -237,3 +237,13 @@ describe('inferred families resolve against the real registry', () => {
     expect(new Set(normalized).size).toBe(spellings.length);
   });
 });
+
+describe('next generations under an old name', () => {
+  it('are not the old family', () => {
+    for (const filename of ['flux-2-klein-4b-Q8_0.gguf', 'flux2-dev.safetensors', 'ltx-2.3-22b-dev.safetensors', 'LTX-2.5-Distilled-Q8_0.gguf', 'ltx-2-19b-dev.safetensors']) {
+      expect(familyFromFilename(filename), filename).toBeNull();
+    }
+    expect(familyFromFilename('ltx-video-2b-v0.9.5.safetensors')).toBe('ltx-video');
+    expect(familyFromFilename('flux1-dev.safetensors')).toBe('flux.1');
+  });
+});
