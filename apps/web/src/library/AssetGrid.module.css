@@ -176,13 +176,24 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
-  border-radius: 999px;
+  box-sizing: border-box;
+  flex: none;
+  width: 26px;
+  height: 26px;
+  min-width: 26px;
+  padding: 0;
+  aspect-ratio: 1;
+  border-radius: 50%;
   background: var(--badge);
   backdrop-filter: blur(8px);
   color: var(--accent);
   pointer-events: auto;
+}
+.shared svg {
+  display: block;
+  flex: none;
+  width: 14px;
+  height: 14px;
 }
 .sharedPrivate {
   color: var(--text-3);
