@@ -61,7 +61,7 @@ import {
   familyLabel,
   filterCatalogue,
   filterInstalled,
-  latestByFilename,
+  installsByFilename,
   MODEL_TYPES,
   TYPE_LABELS,
 } from '../models/catalogue';
@@ -444,7 +444,7 @@ export function ModelsPage({ api = modelsApi, storageApi: storage = storageApi }
     () => installs.installs.filter((install) => install.backendId === backendId),
     [installs.installs, backendId],
   );
-  const installsHere = useMemo(() => latestByFilename(backendInstalls), [backendInstalls]);
+  const installsHere = useMemo(() => installsByFilename(backendInstalls), [backendInstalls]);
 
   const startInstall = installs.start;
   const onInstall = useCallback(
@@ -860,7 +860,7 @@ function CatalogueBody({
 }: {
   state: ReturnType<typeof useCatalogue>['state'];
   filtered: ModelCatalogEntry[];
-  installsHere: Map<string, import('@comfy/shared').ModelInstall>;
+  installsHere: Map<string, import('@comfy/shared').ModelInstall[]>;
   starting: ReadonlySet<string>;
   canInstall: boolean;
   onInstall: (entry: ModelCatalogEntry, variant?: string) => void;

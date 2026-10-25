@@ -40,6 +40,7 @@ export interface InstallRow {
   base_model: string;
   url: string;
   save_path: string;
+  catalogue_ref?: string | null;
   status: ModelInstallStatus;
   detail: string | null;
   error: string | null;
@@ -62,6 +63,7 @@ export function toModelInstall(row: InstallRow): ModelInstall {
     type: row.model_type as ModelType,
     base: row.base_model,
     url: row.url,
+    catalogueRef: row.catalogue_ref ?? null,
     status: row.status,
     detail: row.detail,
     error: row.error?.includes('not an approved model host')
@@ -431,8 +433,8 @@ export async function createInstall(params: {
 
   const row = await queryOne<InstallRow>(
     `INSERT INTO model_installs
-       (backend_id, requested_by, filename, display_name, model_type, base_model, url, save_path, status, after_install)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+       (backend_id, requested_by, filename, display_name, model_type, base_model, url, save_path, status, after_install, catalogue_ref)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
      RETURNING *`,
     [
       params.backendId,
@@ -445,6 +447,7 @@ export async function createInstall(params: {
       savePath,
       params.after ? 'waiting' : 'queued',
       params.after ?? null,
+      params.entry.ref,
     ],
   );
   return row!;

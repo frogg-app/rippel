@@ -32,7 +32,7 @@ export const PAGE_SIZE = 48;
 export interface CatalogueGridProps {
   entries: ModelCatalogEntry[];
   /** Latest install per file on this backend, keyed by filename basename. */
-  installByFile: Map<string, ModelInstall>;
+  installByFile: Map<string, ModelInstall[]>;
   starting: ReadonlySet<string>;
   canInstall: boolean;
   onInstall: (entry: ModelCatalogEntry, variant?: string) => void;
@@ -56,14 +56,19 @@ export type { LoadVariants };
 
 /**
  * The latest install of this entry, whichever of its versions it was: a
- * Hugging Face model installed as its Q4 build is still that model.
+ * Hugging Face model installed as its Q4 build is still that model. Matched on
+ * the catalogue ref, since re-uploads of the same weights share a filename;
+ * only installs from before the ref was recorded fall back to the filename.
  */
-function installForEntry(byFile: Map<string, ModelInstall>, entry: ModelCatalogEntry): ModelInstall | null {
+export function installForEntry(byFile: Map<string, ModelInstall[]>, entry: ModelCatalogEntry): ModelInstall | null {
   const files = [entry.filename, ...(entry.variants ?? []).map((variant) => variant.filename)];
   let latest: ModelInstall | null = null;
   for (const file of files) {
-    const install = byFile.get(basename(file));
-    if (install && (!latest || Date.parse(install.createdAt) > Date.parse(latest.createdAt))) latest = install;
+    for (const install of byFile.get(basename(file)) ?? []) {
+      if (install.catalogueRef !== null && install.catalogueRef !== entry.ref) continue;
+      if (!latest || Date.parse(install.createdAt) > Date.parse(latest.createdAt)) latest = install;
+      break;
+    }
   }
   return latest;
 }
