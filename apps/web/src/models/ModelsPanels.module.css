@@ -1776,8 +1776,8 @@
 .workflowLibraryFold > summary { cursor: pointer; color: var(--accent); margin-bottom: var(--gap); }
 
 .workflowSearch, .workflowControls input { background: var(--surface-2); color: var(--text); border: 1px solid var(--line-input); border-radius: var(--radius-md); padding: 9px 12px; }
-.workflowControls > button { border: 1px solid var(--line-strong); border-radius: var(--radius-md); background: var(--surface-2); color: var(--text); padding: 8px 12px; cursor: pointer; }
-.workflowControls > button:disabled { opacity: .5; cursor: default; }
+.workflowFiles { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
+.workflowFiles li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--gap-xs); }
 /* Files to fetch by hand, under a needs-another-model verdict. */
 .downloads {
   display: flex;

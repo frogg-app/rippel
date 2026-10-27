@@ -123,6 +123,7 @@ export function makeInstall(overrides: Partial<ModelInstall> = {}): ModelInstall
     backendId: BACKEND_ID,
     requestedBy: USER_ID,
     filename: 'sd_xl_base_1.0.safetensors',
+    catalogueRef: null,
     displayName: 'SDXL Base 1.0',
     type: 'checkpoint',
     base: 'SDXL',

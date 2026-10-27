@@ -20,7 +20,7 @@
  */
 import { useContext, useEffect, useState, type ReactNode } from 'react';
 import type { JobKind, Model, ModelFileOperation, ModelFileProblem, ModelInstall } from '@comfy/shared';
-import { ApiRequestError } from '../lib/api';
+import { ApiRequestError, messageOr } from '../lib/api';
 import { type MissingPart, type ModelReadiness, readinessApi } from '../lib/api-jobs';
 import { modelsApi } from '../lib/api-models';
 import { AuthContext } from '../auth/context';
@@ -34,7 +34,7 @@ import { NOT_SUPPORTED, absentParts, joinParts } from './modelReasons';
 import { WorkflowSuggestions } from '../models/WorkflowSuggestions';
 import { modeOfKind } from './form';
 import { invalidateReadiness } from './useReadiness';
-import { Button } from '../components/Button';
+import { Button, buttonClass } from '../components/Button';
 import { DeleteButton } from '../components/ConfirmDelete';
 import styles from './modelPicker.module.css';
 
@@ -238,11 +238,19 @@ function PartRow({
         ) : state.kind === 'message' ? (
           <span role={state.error ? 'alert' : undefined}>{state.text}</span>
         ) : part.offer && isAdmin ? (
-          <button type="button" className={styles.getIt} disabled={state.kind === 'starting'} onClick={install}>
-            {state.kind === 'starting' ? 'Starting…' : `Install ${part.offer.name}${part.offer.size ? ` (${part.offer.size})` : ''}`}
-          </button>
+          // The row already names the part, so the button carries only the
+          // verb and the size; the build's own name is its accessible name.
+          <Button
+            variant="primary"
+            busy={state.kind === 'starting'}
+            onClick={install}
+            aria-label={`Install ${part.offer.name}${part.offer.size ? ` (${part.offer.size})` : ''}`}
+            title={`Installs ${part.offer.filename}`}
+          >
+            {state.kind === 'starting' ? 'Starting…' : `Install${part.offer.size ? ` (${part.offer.size})` : ''}`}
+          </Button>
         ) : null}
-        <a className={styles.link} href={findPartHref(search)}>
+        <a className={buttonClass('quiet')} href={findPartHref(search)}>
           Find on Models
         </a>
       </span>
@@ -259,7 +267,7 @@ type FixState =
 
 function errorText(cause: unknown, fallback: string): string {
   if (cause instanceof ApiRequestError && cause.status === 403) return 'Only an admin can do this.';
-  return cause instanceof Error ? cause.message : fallback;
+  return messageOr(cause, fallback);
 }
 
 /**
@@ -423,7 +431,7 @@ export function ProblemFix({
     );
   } else {
     action = (
-      <a className={styles.link} href={pickHref} title={problem.detail}>
+      <a className={buttonClass('secondary')} href={pickHref} title={problem.detail}>
         Pick another model
       </a>
     );

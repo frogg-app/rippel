@@ -25,6 +25,10 @@
   font-size: var(--text-sm);
 }
 
+.button:is(a) {
+  text-decoration: none;
+}
+
 .pill {
   border-radius: 999px;
 }

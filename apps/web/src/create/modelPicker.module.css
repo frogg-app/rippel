@@ -300,20 +300,6 @@ button.summary:focus-visible {
   color: var(--text-4);
 }
 
-.getIt {
-  padding: 1px 8px;
-  border-radius: 6px;
-  border: 1px solid var(--accent);
-  color: var(--accent);
-  font-size: var(--text-xs);
-  font-weight: 600;
-  transition: background var(--transition), color var(--transition);
-}
-
-.getIt:hover:not(:disabled) {
-  background: var(--accent-tint-strong);
-  color: var(--text);
-}
 
 /* No model for this mode: an invitation, not a warning. */
 .firstRun {
@@ -378,6 +364,16 @@ button.summary:focus-visible {
   gap: 6px;
 }
 
+.hiddenNote {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gap-xs);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
 .noticeText {
   margin: 0;
 }
@@ -396,49 +392,53 @@ button.summary:focus-visible {
   margin-left: auto;
 }
 
+/* The missing parts as one grid: the name on the left, the actions in a
+   right-aligned column every row shares, so "Find on Models" lines up whether
+   or not a row also has Install. Rows are subgrids of the list. */
 .noticeParts {
+  container-type: inline-size;
   margin: 0;
   padding: 0;
   list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: var(--gap-sm);
+  row-gap: 6px;
+  align-items: center;
 }
 
 .noticePart {
-  display: flex;
-  flex-wrap: wrap;
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: subgrid;
   align-items: center;
-  justify-content: space-between;
-  gap: 6px;
 }
 
 .noticePartName {
+  min-width: 0;
   color: var(--text-3);
   font-weight: 600;
 }
 
 .noticePartActions {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  justify-content: flex-end;
+  gap: var(--gap-xs);
   min-width: 0;
 }
 
-/* "Remove this file": an admin's way out, deliberately quieter than the fix. */
-.quietLink {
-  background: none;
-  border: 0;
-  padding: 0;
-  margin-left: 0.75rem;
-  font: inherit;
-  font-size: var(--text-xs);
-  color: var(--text-muted, inherit);
-  opacity: 0.75;
-  text-decoration: underline;
-  cursor: pointer;
+/* Too narrow for both columns: the name above, the actions still flush right. */
+@container (max-width: 360px) {
+  .noticePart {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
+  }
+
+  .noticePartActions {
+    flex-wrap: wrap;
+  }
 }
-.quietLink:hover {
-  opacity: 1;
-}
+

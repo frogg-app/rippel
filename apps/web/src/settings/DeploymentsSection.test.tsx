@@ -169,6 +169,17 @@ function fakeApi(initial: Deployment[] = [online], over: Partial<DeploymentsApi>
 }
 
 describe('DeploymentsSection', () => {
+  it('says a failed Test in plain words, with the raw status in the hover', async () => {
+    const { api } = fakeApi([online], {
+      probe: vi.fn(async () => { throw new ApiRequestError(415, 'Unsupported Media Type', 'Unsupported Media Type'); }),
+    });
+    render(<DeploymentsSection api={api} />);
+    await userEvent.click(await screen.findByRole('button', { name: /^Test/ }));
+    const toast = await screen.findByText('Couldn’t test studio-4090. Try again.');
+    expect(toast).toHaveAttribute('title', 'HTTP 415 Unsupported Media Type');
+    expect(screen.queryByText('Unsupported Media Type')).toBeNull();
+  });
+
   it('shows a machine, its ComfyUI and its helper', async () => {
     const { api } = fakeApi();
     render(<DeploymentsSection api={api} />);

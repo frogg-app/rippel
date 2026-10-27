@@ -51,6 +51,7 @@ import {
   listNames,
   missingSentence,
 } from './modelReasons';
+import { Button } from '../components/Button';
 import styles from './modelPicker.module.css';
 
 export function ModelPicker({
@@ -253,22 +254,16 @@ export function ModelPicker({
         {/* The honest count. Hiding a checkpoint the user installed is fine;
             not saying so is not. */}
         {hiddenNoTemplate.length > 0 && !partition.pending ? (
-          <p className={styles.note}>
+          <p
+            className={styles.hiddenNote}
+            title={`rippel doesn’t know how to use ${hiddenNoTemplate.length === 1 ? 'it' : 'them'} yet.`}
+          >
             <span>
-              {hiddenNoTemplate.length} {hiddenNoTemplate.length === 1 ? 'model' : 'models'} hidden —
-              rippel doesn’t know how to use {hiddenNoTemplate.length === 1 ? 'it' : 'them'} yet.{' '}
-              <button
-                type="button"
-                className={styles.link}
-                aria-expanded={revealed}
-                onClick={() => setRevealed((open) => !open)}
-              >
-                {revealed ? 'Hide again' : 'Show anyway'}
-              </button>{' '}
-              <a className={styles.link} href="/models">
-                Open Models
-              </a>
+              {hiddenNoTemplate.length} {hiddenNoTemplate.length === 1 ? 'model' : 'models'} hidden
             </span>
+            <Button variant="quiet" aria-label={revealed ? 'Hide the hidden models' : 'Show hidden models'} aria-expanded={revealed} onClick={() => setRevealed((open) => !open)}>
+              {revealed ? 'Hide' : 'Show'}
+            </Button>
           </p>
         ) : null}
       </div>
@@ -391,10 +386,9 @@ function GetIt({ model, kind }: { model: Model; kind: JobKind }) {
     return <span role={state.kind === 'error' ? 'alert' : undefined}>{state.text}</span>;
   }
   return (
-    <button
-      type="button"
-      className={styles.getIt}
-      disabled={state.kind === 'busy'}
+    <Button
+      variant="primary"
+      busy={state.kind === 'busy'}
       onClick={() => {
         setState({ kind: 'busy' });
         readinessApi
@@ -424,7 +418,7 @@ function GetIt({ model, kind }: { model: Model; kind: JobKind }) {
       }}
     >
       {state.kind === 'busy' ? 'Starting…' : 'Get it'}
-    </button>
+    </Button>
   );
 }
 

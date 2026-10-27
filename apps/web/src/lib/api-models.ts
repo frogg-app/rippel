@@ -130,9 +130,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     throw new ApiRequestError(
       response.status,
       error.error ?? 'error',
-      error.message ?? (response.status >= 500
-        ? 'The rippel server could not complete the request. Try again shortly.'
-        : `The request failed (${response.status}). Try again.`),
+      error.message ?? '',
     );
   }
 

@@ -19,6 +19,7 @@ import { useCollections } from '../library/useCollections';
 import { useLibraryActions } from '../library/useLibraryActions';
 import { useLibraryFeed } from '../library/useLibraryFeed';
 import { DeleteButton } from '../components/ConfirmDelete';
+import { Button } from '../components/Button';
 import styles from './LibraryPage.module.css';
 
 /**
@@ -174,13 +175,9 @@ export function LibraryPage() {
         {activeCollection ? (
           <div className={styles.context}>
             Showing <strong>{activeCollection.name}</strong>
-            <button
-              type="button"
-              className={styles.clear}
-              onClick={() => setFilters((prev) => ({ q: prev.q }))}
-            >
+            <Button variant="quiet" onClick={() => setFilters((prev) => ({ q: prev.q }))}>
               Show everything
-            </button>
+            </Button>
           </div>
         ) : null}
 
@@ -198,13 +195,7 @@ export function LibraryPage() {
           ) : feed.error ? (
             <div className={styles.failure} role="alert">
               <p className={styles.failureText}>{feed.error}</p>
-              <button
-                type="button"
-                className={styles.clear}
-                onClick={feed.reload}
-              >
-                Try again
-              </button>
+              <Button onClick={feed.reload}>Try again</Button>
             </div>
           ) : feed.items.length === 0 ? (
             <EmptyState

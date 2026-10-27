@@ -202,7 +202,7 @@ function fakeDb(
       const url = params[1] as string;
       return backends.filter((b) => b.name.toLowerCase() === name || b.base_url === url).map((b) => ({ id: b.id }));
     }
-    // Engine bookkeeping on the backend row (034_engines.sql): nothing the
+    // Engine bookkeeping on the backend row (035_engines.sql): nothing the
     // scripted backends need to remember.
     if (sql.startsWith('UPDATE backends SET engine')) return [];
     if (sql.startsWith('INSERT INTO backends')) {

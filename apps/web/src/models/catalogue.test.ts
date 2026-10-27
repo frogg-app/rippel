@@ -17,7 +17,7 @@ import {
   foldFamily,
   formatCount,
   groupInstalled,
-  latestByFilename,
+  installsByFilename,
   matchesRunFilter,
   runs,
   formatBytes,
@@ -124,19 +124,19 @@ describe('filterCatalogue', () => {
   });
 });
 
-describe('latestByFilename', () => {
-  it('keeps the newest install per file, whatever its state', () => {
+describe('installsByFilename', () => {
+  it('keeps every install per file, newest first, whatever its state', () => {
     // Newest first, as useInstalls returns them. A completed install still
     // indexes, so a card that has just finished keeps saying so.
-    const index = latestByFilename([
+    const index = installsByFilename([
       makeInstall({ id: 'new', status: 'complete', filename: 'a.safetensors' }),
       makeInstall({ id: 'old', status: 'failed', filename: 'a.safetensors' }),
     ]);
-    expect(index.get('a.safetensors')?.id).toBe('new');
+    expect(index.get('a.safetensors')?.map((install) => install.id)).toEqual(['new', 'old']);
   });
 
   it('indexes on the basename', () => {
-    const index = latestByFilename([makeInstall({ filename: 'SDXL\\a.safetensors' })]);
+    const index = installsByFilename([makeInstall({ filename: 'SDXL\\a.safetensors' })]);
     expect(index.has('a.safetensors')).toBe(true);
   });
 });

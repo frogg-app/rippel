@@ -13,6 +13,7 @@
  * URL would make a refresh of a finished job look like a permalink to results
  * that live in the Library instead.
  */
+import { messageOr } from '../lib/api';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { JobFit, GenerationParams, Job, JobEvent } from '@comfy/shared';
 import { type ConnectionState, jobsApi, subscribeToEvents } from '../lib/api-jobs';
@@ -140,7 +141,7 @@ export function useJobStage(): JobStage {
         setState((prev) => ({
           ...prev,
           submitting: false,
-          submitError: error instanceof Error ? error.message : 'Could not start the job.',
+          submitError: messageOr(error, 'Could not start the job.'),
         }));
         return null;
       }

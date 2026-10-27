@@ -113,7 +113,7 @@
   padding: var(--space-4);
   border-radius: var(--radius-md);
   border: 1px solid var(--line);
-  background: var(--surface-0, #14121f);
+  background: var(--ground-sunken);
   color: var(--text-3);
   font-size: var(--text-xs);
   line-height: 1.55;
@@ -191,7 +191,7 @@
   padding: 8px 11px;
   border-radius: var(--radius);
   border: 1px solid var(--line-input);
-  background: var(--surface-0, #14121f);
+  background: var(--ground-sunken);
   color: var(--text-2);
   font-size: var(--text-xs);
   line-height: 1.5;
@@ -223,20 +223,13 @@
   color: var(--warn-text, var(--text-3));
 }
 
-/* A button that behaves like the sentence it sits in. */
-.linkButton {
-  padding: 0;
-  border: 0;
-  background: none;
-  font: inherit;
-  color: var(--accent);
-  text-decoration: underline;
-  text-underline-offset: 2px;
-  cursor: pointer;
-}
-
-.linkButton:hover {
-  color: var(--text);
+/* A line of text with its action beside it, never run into the words. */
+.withAction {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: var(--gap-sm);
+  row-gap: 4px;
 }
 
 .details {

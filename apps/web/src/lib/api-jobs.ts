@@ -676,7 +676,7 @@ export const uploadsApi = {
       throw new ApiRequestError(
         res.status,
         problem?.error ?? 'upload_failed',
-        problem?.message ?? `Upload failed (${res.status})`,
+        problem?.message ?? '',
       );
     }
 

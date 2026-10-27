@@ -7,6 +7,7 @@
  * this is a picker and not the Library screen.
  */
 
+import { messageOr } from '../lib/api';
 import { useEffect, useState } from 'react';
 import type { Asset } from '@comfy/shared';
 
@@ -29,7 +30,7 @@ export function LibraryPicker({ onPick, onClose }: Props) {
       .then((page) => setAssets(page.items))
       .catch((err: unknown) => {
         if (controller.signal.aborted) return;
-        setError(err instanceof Error ? err.message : 'Could not load your library.');
+        setError(messageOr(err, 'Could not load your library.'));
       });
     return () => controller.abort();
   }, []);

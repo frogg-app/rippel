@@ -897,6 +897,8 @@ export interface ModelInstall {
   type: ModelType;
   base: string;
   url: string;
+  /** The catalogue entry it was started from; null on older installs. */
+  catalogueRef: string | null;
   status: ModelInstallStatus;
   /** What the transport last said, verbatim-ish. Null while queued. */
   detail: string | null;

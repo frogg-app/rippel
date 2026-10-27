@@ -82,7 +82,7 @@ New `sdcpp.go`, mirroring `comfy.go`:
 
 ### API
 
-- Migration `034_engines.sql`.
+- Migration `035_engines.sql`.
 - `lib/sdcpp.ts`: a small client (status, model files, load, unload, submit,
   job, cancel) and the category → `ModelType` mapping for discovery.
 - `orchestrator/sdcpp-plan.ts`: family → recipe, and which of the backend's

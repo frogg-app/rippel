@@ -2,6 +2,7 @@
  * Checkpoints and LoRAs for the pickers, plus the answer to "can I actually
  * generate with this one?".
  */
+import { messageOr } from '../lib/api';
 import { useCallback, useEffect, useState, useMemo } from 'react';
 import { useTargetBackend } from '../shell/useTargetBackend';
 import type { JobKind, Model } from '@comfy/shared';
@@ -60,7 +61,7 @@ export function useModels(): ModelsState {
         setState((prev) => ({
           ...prev,
           loading: false,
-          error: error instanceof Error ? error.message : 'Could not load models.',
+          error: messageOr(error, 'Could not load models.'),
         }));
       }
     })();

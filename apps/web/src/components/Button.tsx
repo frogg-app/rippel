@@ -38,6 +38,11 @@ const VARIANT: Record<ButtonVariant, string | undefined> = {
   'danger-soft': styles.dangerSoft,
 };
 
+/** The same look for an <a>, which must stay a link to navigate. */
+export function buttonClass(variant: ButtonVariant = 'secondary', size: 'sm' | 'md' = 'sm'): string {
+  return [styles.button, VARIANT[variant], styles[size]].filter(Boolean).join(' ');
+}
+
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
   { variant = 'secondary', size = 'sm', pill = false, busy = false, icon, className, children, disabled, type, ...rest },
   ref,

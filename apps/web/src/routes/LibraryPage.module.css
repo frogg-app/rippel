@@ -42,16 +42,6 @@
   font-weight: 500;
 }
 
-.clear {
-  font-size: var(--text-sm);
-  color: var(--accent);
-  transition: color var(--transition);
-}
-
-.clear:hover {
-  color: var(--accent-hover);
-}
-
 .skeletonGrid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(var(--library-tile-min), 1fr));

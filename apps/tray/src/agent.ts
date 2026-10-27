@@ -36,6 +36,15 @@ export interface EngineState {
   diskTotal: number | null;
   memoryMode: string;
   vaeOnGpu: boolean;
+  /** The card's own memory, from the OS. */
+  gpuMemory?: number | null;
+  gpuHealth?: { state: string; device?: string };
+  /** From ComfyUI while it runs (agent 0.4.15+): its device and memory in use. */
+  gpuName?: string;
+  vramTotal?: number;
+  vramFree?: number;
+  ramTotal?: number;
+  ramFree?: number;
 }
 
 export interface AgentTask {
@@ -93,10 +102,17 @@ const sample: AgentStatus = {
     version: '0.3.44',
     commit: 'a1b2c3d4e5f6',
     port: 8188,
-    diskFree: 412 * 1024 ** 3,
-    diskTotal: 931 * 1024 ** 3,
+    diskFree: 813 * 1024 ** 3,
+    diskTotal: 1861 * 1024 ** 3,
     memoryMode: 'balanced',
     vaeOnGpu: true,
+    gpuMemory: 16 * 1024 ** 3,
+    gpuHealth: { state: 'ready', device: 'AMD Radeon RX 6900 XT' },
+    gpuName: 'cuda:0 AMD Radeon RX 6900 XT : native',
+    vramTotal: 16 * 1024 ** 3,
+    vramFree: 9.8 * 1024 ** 3,
+    ramTotal: 59.4 * 1024 ** 3,
+    ramFree: 38.8 * 1024 ** 3,
   },
   tasks: [
     {
@@ -116,6 +132,8 @@ const sample: AgentStatus = {
   update: { current: '0.4.2', latest: '0.4.5', available: true, checkedAt: new Date().toISOString(), error: '' },
 };
 
+let stash: Partial<EngineState> = {};
+
 async function preview(route: Path): Promise<unknown> {
   await new Promise((resolve) => setTimeout(resolve, route.startsWith('POST') ? 600 : 80));
   switch (route) {
@@ -125,11 +143,14 @@ async function preview(route: Path): Promise<unknown> {
       return { ok: true };
     case 'POST /engine/stop':
       sample.engine.running = false;
+      // Memory in use comes from ComfyUI, so it goes when ComfyUI does.
+      stash = { ...sample.engine };
+      for (const key of ['gpuName', 'vramTotal', 'vramFree', 'ramTotal', 'ramFree'] as const) delete sample.engine[key];
       sample.queue = { running: [], pending: [] };
       return {};
     case 'POST /engine/start':
     case 'POST /engine/restart':
-      sample.engine.running = true;
+      sample.engine = { ...stash, ...sample.engine, running: true };
       return {};
     case 'POST /update/check':
       sample.update!.checkedAt = new Date().toISOString();

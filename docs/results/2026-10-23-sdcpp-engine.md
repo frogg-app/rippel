@@ -53,7 +53,7 @@ saved on the machine.
 
 ### API (`apps/api`)
 
-- Migration `034_engines.sql`: `backends.engine`, `deployments.engine`,
+- Migration `035_engines.sql`: `backends.engine`, `deployments.engine`,
   `deployments.sdcpp`.
 - `lib/sdcpp.ts`: the client and the category → model-type mapping.
 - `orchestrator/sdcpp-plan.ts`: family → recipe, and which of the backend's

@@ -62,6 +62,7 @@ import { isTerminal } from '../create/jobProgress';
 import { useTargetBackend } from '../shell/useTargetBackend';
 import { useBackends } from '../shell/useBackends';
 import { GPU_SETUP_LINE, GpuSetupLine, gpuBlocked } from '../create/GpuSetupLine';
+import { Button } from '../components/Button';
 import styles from './CreatePage.module.css';
 
 export function CreatePage() {
@@ -301,9 +302,9 @@ export function CreatePage() {
                 <span />
               )}
               {hasContent ? (
-                <button type="button" className={styles.startOver} onClick={startOver}>
+                <Button variant="quiet" onClick={startOver}>
                   Start over
-                </button>
+                </Button>
               ) : null}
             </div>
           ) : null}
@@ -394,8 +395,9 @@ export function CreatePage() {
                     options={[...new Set([...videoFpsOptions(videoLimits), fittedVideo.fps])].sort((a, b) => a - b).map((fps) => ({ value: String(fps), label: `${fps} fps` }))}
                     onChange={(fps) => patch({ video: fitVideoState({ ...form.video, fps: Number(fps) }, videoLimits) })}
                   />
-                </> : <p role="status">{videoSettings.error ?? (form.modelId ? 'Loading video settings…' : 'Select a model to load its video settings.')}
-                  {videoSettings.error && <button type="button" onClick={videoSettings.retry}>Retry</button>}
+                </> : <p role="status" className={styles.retryLine}>
+                  <span>{videoSettings.error ?? (form.modelId ? 'Loading video settings…' : 'Select a model to load its video settings.')}</span>
+                  {videoSettings.error && <Button onClick={videoSettings.retry}>Retry</Button>}
                 </p>}
               </Group>
             </div>

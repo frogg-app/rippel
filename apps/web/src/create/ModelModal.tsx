@@ -45,6 +45,7 @@ import type { CreateMode } from './mode';
 import { modeOfKind } from './form';
 import type { ReadinessMap } from './useReadiness';
 import type { ModelEntry, Partition } from './visibility';
+import { Button } from '../components/Button';
 import styles from './modelModal.module.css';
 
 export function ModelModal({
@@ -322,14 +323,9 @@ export function ModelModal({
               {hiddenCount} {hiddenCount === 1 ? 'model' : 'models'} hidden — no workflow for{' '}
               {hiddenCount === 1 ? 'it' : 'them'} yet.
             </span>
-            <button
-              type="button"
-              className={styles.link}
-              aria-expanded={revealed}
-              onClick={() => setRevealed((open) => !open)}
-            >
-              {revealed ? 'Hide again' : 'Show anyway'}
-            </button>
+            <Button variant="quiet" aria-label={revealed ? 'Hide the hidden models' : 'Show hidden models'} aria-expanded={revealed} onClick={() => setRevealed((open) => !open)}>
+              {revealed ? 'Hide' : 'Show'}
+            </Button>
           </footer>
         ) : null}
       </div>

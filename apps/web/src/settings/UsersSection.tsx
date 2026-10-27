@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { messageOr } from '../lib/api';
 import type { ManagedUser } from '@comfy/shared';
 import { usersApi, type UsersApi, type UserPermissions } from '../lib/api-users';
 import { Dropdown } from '../components/Dropdown';
@@ -15,7 +16,7 @@ export function UsersSection({ currentUserId, api = usersApi }: { currentUserId?
   useEffect(() => {
     const controller = new AbortController(); setLoading(true); setError(null);
     api.list(controller.signal).then(rows => { if (!controller.signal.aborted) setUsers(rows); })
-      .catch(cause => { if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : 'Could not load users.'); })
+      .catch(cause => { if (!controller.signal.aborted) setError(messageOr(cause, 'Could not load users.')); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
   }, [api, reload]);
@@ -24,7 +25,7 @@ export function UsersSection({ currentUserId, api = usersApi }: { currentUserId?
     try {
       const user = await api.create({ email: String(fields.get('email')), displayName: String(fields.get('displayName')), password: String(fields.get('password')) });
       setUsers(previous => [...previous, user]); setAdding(false);
-    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not create user.'); }
+    } catch (cause) { setError(messageOr(cause, 'Could not create user.')); }
     finally { setBusy(false); }
   }
   return <section className={styles.section}>
@@ -53,12 +54,12 @@ function UserEditor({ user, own, api, onSaved, onDeleted }: { onDeleted: () => v
   async function save() {
     setBusy(true); setMessage(null); setError(null);
     try { onSaved(await api.update(user.id, draft)); setMessage('Saved.'); }
-    catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not save user.'); }
+    catch (cause) { setError(messageOr(cause, 'Could not save user.')); }
     finally { setBusy(false); }
   }
   async function remove() {
     try { await api.remove(user.id); }
-    catch (cause) { throw new Error(cause instanceof Error ? cause.message : 'Could not delete user.'); }
+    catch (cause) { throw new Error(messageOr(cause, 'Could not delete user.')); }
     onDeleted();
   }
   return <article className={styles.userRow}>

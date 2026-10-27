@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ModelInstall } from '@comfy/shared';
 import type { ModelsApi } from '../lib/api-models';
+import { Button } from '../components/Button';
 import styles from './HostApproval.module.css';
 
 export function HostApproval({ installs, api }: { installs: ModelInstall[]; api: ModelsApi }) {
@@ -29,7 +30,7 @@ export function HostApproval({ installs, api }: { installs: ModelInstall[]; api:
     } finally { setBusy(false); }
   }
   return <>
-    {key && !open ? <button className={styles.review} onClick={() => setLater(null)}>Download paused · Review host</button> : null}
+    {key && !open ? <Button size="md" className={styles.review} onClick={() => setLater(null)}>Download paused · Review host</Button> : null}
     <dialog ref={dialog} className={styles.dialog} aria-labelledby="host-approval-title"
       onCancel={event => { event.preventDefault(); if (!busy) setLater(key); }}>
       <h2 id="host-approval-title">Approve download host?</h2>
@@ -38,9 +39,9 @@ export function HostApproval({ installs, api }: { installs: ModelInstall[]; api:
       <p>Approving lets this backend use this host for future model downloads too.</p>
       {error ? <p role="alert">{error}</p> : null}
       <div className={styles.actions}>
-        <button disabled={busy} onClick={() => setLater(key)}>Later</button>
-        <button disabled={busy} onClick={() => void decide(false)}>Deny</button>
-        <button className={styles.approve} disabled={busy} onClick={() => void decide(true)}>{busy ? 'Saving…' : 'Approve host'}</button>
+        <Button size="md" variant="quiet" disabled={busy} onClick={() => setLater(key)}>Later</Button>
+        <Button size="md" disabled={busy} onClick={() => void decide(false)}>Deny</Button>
+        <Button size="md" variant="primary" busy={busy} onClick={() => void decide(true)}>{busy ? 'Saving…' : 'Approve host'}</Button>
       </div>
     </dialog>
   </>;

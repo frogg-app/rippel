@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import type { JobKind } from '@comfy/shared';
-import { request } from '../lib/api';
+import { request, messageOr } from '../lib/api';
 import { Dropdown } from '../components/Dropdown';
+import { Button, buttonClass } from '../components/Button';
 import styles from './ModelsPanels.module.css';
 interface Entry { name: string; title: string; description: string; models: string[]; tags: string[] }
 interface Check { assessment: { status: string; reasons: string[] }; files: { name: string; directory: string }[]; omitted: string[] }
@@ -40,7 +41,7 @@ function OfficialEntry({entry,backendId,version,family}:{entry:Entry;backendId:s
   if(action==='test'){await request(`/workflow-library/${importId}/test`,{method:'POST',body:{backendId}});setMessage('Test queued on this backend. The workflow becomes available after the test produces an output.');}
   else if(action==='import'){const result=await request<{imported:{id:string}}>(`/workflow-library/import`,{method:'POST',body});setImportId(result.imported.id);setMessage('Imported for setup. A successful test is required before generation.');}
   else {setCheck(await request<Check>('/workflow-library/check',{method:'POST',body}));}
- }catch(e){setError(e instanceof Error ? e.message : 'Could not check workflow.');}finally{setBusy(false);}}
+ }catch(e){setError(messageOr(e, 'Could not check workflow.'));}finally{setBusy(false);}}
  return <li className={styles.sheetOption}><div className={styles.sheetOptionBody}>
   <button className={styles.workflowHeading} type="button" aria-expanded={open} onClick={()=>setOpen(!open)}>{entry.title}</button>
   <p className={styles.sheetOptionDesc}>{entry.description}</p>
@@ -48,13 +49,13 @@ function OfficialEntry({entry,backendId,version,family}:{entry:Entry;backendId:s
    <p className={styles.sheetOptionDesc}>Declared models: {entry.models.join(', ') || 'Not specified'}</p>
    <label>Input task<Dropdown aria-label={`Input task for ${entry.title}`} disabled={busy||!!importId} value={capability} options={kinds} onChange={value=>{setCapability(value as JobKind);setCheck(null)}}/></label>
    <label>Model family<input disabled={busy||!!importId} value={base} onChange={e=>{setBase(e.target.value);setCheck(null)}}/></label>
-   <button type="button" disabled={busy||!base||!!importId} onClick={()=>void run('check')}>Check requirements</button>
+   <Button disabled={busy||!base||!!importId} onClick={()=>void run('check')}>Check requirements</Button>
    {check && <><p>{check.assessment.status.replaceAll('-',' ')}. {check.assessment.reasons.join(' ')}</p>
-    <ul>{check.files.map(file=><li key={`${file.directory}/${file.name}`}><span className="mono">{file.directory}/{file.name}</span> <a href={`/models?tab=discover&backend=${encodeURIComponent(backendId)}&q=${encodeURIComponent(file.name)}`}>Find download</a></li>)}</ul>
+    <ul className={styles.workflowFiles}>{check.files.map(file=><li key={`${file.directory}/${file.name}`}><span className="mono">{file.directory}/{file.name}</span><a className={buttonClass('quiet')} href={`/models?tab=discover&backend=${encodeURIComponent(backendId)}&q=${encodeURIComponent(file.name)}`}>Find download</a></li>)}</ul>
     {check.omitted.length>0 && <p>{check.omitted.join(' ')}</p>}
-    {!importId && <button type="button" disabled={busy||!['untested','ready'].includes(check.assessment.status)} onClick={()=>void run('import')}>Import workflow</button>}
+    {!importId && <Button variant="primary" disabled={busy||!['untested','ready'].includes(check.assessment.status)} onClick={()=>void run('import')}>Import workflow</Button>}
    </>}
-   {importId && <button type="button" disabled={busy} onClick={()=>void run('test')}>Run test generation</button>}
+   {importId && <Button variant="primary" disabled={busy} onClick={()=>void run('test')}>Run test generation</Button>}
    {error && <p role="alert">{error}</p>}{message && <p role="status">{message}</p>}
   </div>}
  </div></li>;

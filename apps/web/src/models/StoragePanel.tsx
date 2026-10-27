@@ -16,10 +16,11 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { Backend, BackendStorage, StorageFile, StorageFolder } from '@comfy/shared';
 import { Mark } from '../components/Mark';
-import { ApiRequestError } from '../lib/api';
+import { ApiRequestError, messageOr } from '../lib/api';
 import { ageLabel, formatBytes, type StorageApi } from '../lib/api-storage';
 import { Notice } from './Notice';
 import { TrashIcon } from '../library/icons';
+import { Button } from '../components/Button';
 import { DeleteButton } from '../components/ConfirmDelete';
 import styles from './StoragePanel.module.css';
 
@@ -40,7 +41,7 @@ export function StoragePanel({ api, backend }: { api: StorageApi; backend: Backe
         if (!signal?.aborted) setData(next);
       } catch (cause) {
         if (signal?.aborted) return;
-        setError(cause instanceof Error ? cause.message : 'Could not read the backend.');
+        setError(messageOr(cause, 'Could not read the backend.'));
       } finally {
         if (!signal?.aborted) setLoading(false);
       }
@@ -340,9 +341,9 @@ function FolderSection({
             <strong>{count}</strong> {count === 1 ? 'file' : 'files'} selected ·{' '}
             <span className="mono">{formatBytes(selectedBytes)}</span>
           </span>
-          <button type="button" className={styles.barClear} onClick={() => setSelected(new Set())}>
+          <Button variant="quiet" size="md" pill onClick={() => setSelected(new Set())}>
             Clear
-          </button>
+          </Button>
           <DeleteButton
             size="md"
             pill
@@ -415,9 +416,9 @@ function HelperMissing({
           </li>
         </ol>
       )}
-      <button type="button" className={styles.helperRetry} onClick={onRetry}>
+      <Button variant="primary" size="md" pill className={styles.helperRetry} onClick={onRetry}>
         Check again
-      </button>
+      </Button>
     </div>
   );
 }

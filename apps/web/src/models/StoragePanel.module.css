@@ -328,18 +328,6 @@
   font-weight: 600;
 }
 
-.barClear {
-  padding: 6px 10px;
-  border-radius: 999px;
-  font-size: var(--text-sm);
-  color: var(--text-4);
-}
-
-.barClear:hover {
-  color: var(--text);
-  background: var(--surface-hover);
-}
-
 /* The shared DeleteButton; only its place on the bar is set here. */
 .barRemove {
   margin-left: auto;
@@ -437,20 +425,8 @@
 }
 
 .helperRetry {
+  align-self: flex-start;
   margin-top: 6px;
-  height: 36px;
-  padding: 0 16px;
-  border-radius: 999px;
-  border: 1px solid var(--accent-line);
-  background: var(--accent-tint);
-  color: var(--accent);
-  font-size: var(--text-sm);
-  font-weight: 500;
-}
-
-.helperRetry:hover {
-  background: var(--accent-tint-hover);
-  color: var(--accent-hover);
 }
 
 @media (max-width: 720px) {

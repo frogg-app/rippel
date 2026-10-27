@@ -469,20 +469,23 @@ export function isLive(install: ModelInstall): boolean {
  * The most recent install per file, so a catalogue card can show what happened
  * to it — running, finished, or failed with the transport's error.
  *
- * Keyed on the basename because a `ModelInstall` carries no catalogue ref (the
- * API stores the resolved filename) and a filename may carry a subfolder. The
- * *latest* rather than the live one: a card whose install has just completed
+ * Keyed on the basename because a filename may carry a subfolder, and every
+ * install of that file is kept, newest first: re-uploads of the same weights
+ * share a filename, so the card picks its own by `catalogueRef`. The *latest*
+ * rather than the live one: a card whose install has just completed
  * must keep saying so, since the catalogue's own `installed` flag can lag a
  * completion by a poll and the card would otherwise flick back to offering an
  * install the API would refuse.
  *
  * `installs` is expected newest-first, as `useInstalls` returns it.
  */
-export function latestByFilename(installs: ModelInstall[]): Map<string, ModelInstall> {
-  const index = new Map<string, ModelInstall>();
+export function installsByFilename(installs: ModelInstall[]): Map<string, ModelInstall[]> {
+  const index = new Map<string, ModelInstall[]>();
   for (const install of installs) {
     const key = basename(install.filename);
-    if (!index.has(key)) index.set(key, install);
+    const list = index.get(key);
+    if (list) list.push(install);
+    else index.set(key, [install]);
   }
   return index;
 }
